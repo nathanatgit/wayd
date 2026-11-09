@@ -192,3 +192,18 @@ interface DnsDao {
     @Query("SELECT * FROM DnsRecord WHERE uid IN (:uids) AND ts >= :start AND ts < :end ORDER BY ts")
     suspend fun forUids(uids: List<Int>, start: Long, end: Long): List<DnsRecord>
 }
+
+@Dao
+interface AiAnalysisDao {
+    @Insert
+    suspend fun insert(row: AiAnalysis): Long
+
+    @Query("SELECT * FROM AiAnalysis WHERE inputRefsJson = :inputRefsJson AND validated = 1 AND promptVersion = :promptVersion ORDER BY createdAt DESC LIMIT 1")
+    suspend fun latestValidFor(inputRefsJson: String, promptVersion: Int): AiAnalysis?
+
+    @Query("SELECT * FROM AiAnalysis ORDER BY createdAt DESC LIMIT :limit")
+    suspend fun recent(limit: Int): List<AiAnalysis>
+
+    @Query("DELETE FROM AiAnalysis")
+    suspend fun deleteAll()
+}

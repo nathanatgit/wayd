@@ -23,6 +23,7 @@ abstract class WaydDatabase : RoomDatabase() {
     abstract fun permEventDao(): PermEventDao
     abstract fun messageDao(): MessageDao
     abstract fun interceptAppDao(): InterceptAppDao
+    abstract fun aiAnalysisDao(): AiAnalysisDao
 
     companion object {
         const val NAME = "wayd.db"

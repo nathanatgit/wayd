@@ -37,6 +37,8 @@ object DbModule {
 
     @Provides fun messageDao(db: WaydDatabase): MessageDao = db.messageDao()
 
+    @Provides fun aiAnalysisDao(db: WaydDatabase): AiAnalysisDao = db.aiAnalysisDao()
+
     @Provides fun interceptAppDao(db: WaydDatabase): InterceptAppDao = db.interceptAppDao()
 
     @Provides
