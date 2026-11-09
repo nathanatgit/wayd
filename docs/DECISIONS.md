@@ -9,10 +9,10 @@ Add new entries at the bottom. Never delete; supersede instead.
 Local-only product. No servers, accounts, analytics or crash upload.
 *Why:* trust is the product; simplifies PIPL position. *Alt:* opt-in telemetry (rejected for v1).
 
-**D-002 · 2026-11-09 · proposed**
-Netstack: gVisor netstack via tun2socks (Go + gomobile) for M1.
-*Why:* mature, widely used on Android, handles TCP/UDP/IPv6. *Alt:* Rust smoltcp via JNI (smaller, more work), lwIP (C, older).
-*To confirm:* license compatibility and APK size impact.
+**D-002 · 2026-11-09 · accepted (supersedes the Go proposal)**
+Netstack: Rust userspace stack (smoltcp-based) via JNI, built with cargo-ndk.
+*Why:* Nat wants an efficient one: no Go runtime/GC, smaller APK, lower memory and battery cost. *Alt:* gVisor via gomobile (mature, heavier), lwIP (C, older).
+*Consequence:* needs rustup, Android NDK and cargo-ndk installed; native code lives in `capture/native/`.
 
 **D-003 · 2026-11-09 · accepted**
 Rules decide severity; Gemma only explains. AI output must cite evidence IDs and pass schema validation.
@@ -34,8 +34,8 @@ LLM runtime: LiteRT-LM with Gemma 4 E2B default, E4B on ≥ 12 GB RAM; llama.cpp
 **D-008 · 2026-11-09 · accepted (M0)**
 DI: Hilt. *Alt:* Koin (simpler, runtime).
 
-**D-009 · 2026-11-09 · proposed**
-License for WAYD source: decide before M1 (affects whether GPL code from PCAPdroid/NetGuard can be reused).
+**D-009 · 2026-11-09 · accepted**
+WAYD source is **GPL-3.0-or-later**; reusing GPL code from PCAPdroid / NetGuard is allowed. Keep upstream copyright headers and note provenance in the file header of any reused code.
 
 **D-010 · 2026-11-09 · accepted**
 Toolchain pins for M0: AGP 9.5.1 (built-in Kotlin, no `kotlin-android` plugin), Kotlin 2.4.21, KSP 2.3.13, Hilt 2.60.1, Room 2.8.5, SQLCipher 4.20.0, Compose BOM 2026.09.00, Gradle 9.8.1. `compileSdk` 37 (required by current AndroidX), `targetSdk` 36, `minSdk` 29.
