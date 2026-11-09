@@ -4,8 +4,29 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Placeholder eye glyph. Replace when the brand icon direction is chosen. -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,34C38,34 26,46 20,54C26,62 38,74 54,74C70,74 82,62 88,54C82,46 70,34 54,34ZM54,66C47.4,66 42,60.6 42,54C42,47.4 47.4,42 54,42C60.6,42 66,47.4 66,54C66,60.6 60.6,66 54,66ZM54,48C50.7,48 48,50.7 48,54C48,57.3 50.7,60 54,60C57.3,60 60,57.3 60,54C60,50.7 57.3,48 54,48Z" />
+    <!-- "I'm watching you": an eye with a two-finger V pointing at it.
+         Group scales the artwork into the adaptive-icon safe zone (66dp circle). -->
+    <group
+        android:pivotX="55"
+        android:pivotY="62"
+        android:scaleX="0.8"
+        android:scaleY="0.8"
+        android:translateX="-1"
+        android:translateY="-8">
+        <path
+            android:pathData="M26,40 Q56,12 86,40 Q56,68 26,40 Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M48,40 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0"
+            android:fillColor="#FFFFFF" />
+        <path
+            android:pathData="M34,66 L46,96 L60,68"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="9"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
 </vector>
