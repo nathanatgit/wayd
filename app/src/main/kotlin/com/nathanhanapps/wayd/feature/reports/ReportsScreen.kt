@@ -65,7 +65,11 @@ fun ReportsScreen(onOpenDay: (String) -> Unit, vm: ReportsViewModel = hiltViewMo
 }
 
 @Composable
-fun ReportDetailScreen(onBack: () -> Unit, onOpenApp: (pkg: String, window: String) -> Unit, vm: ReportDetailViewModel = hiltViewModel()) {
+fun ReportDetailScreen(
+    onBack: () -> Unit,
+    onOpenApp: (pkg: String, window: String) -> Unit,
+    onOpenCompany: (company: String, window: String) -> Unit,
+    vm: ReportDetailViewModel = hiltViewModel()) {
     val state by vm.report.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -74,13 +78,19 @@ fun ReportDetailScreen(onBack: () -> Unit, onOpenApp: (pkg: String, window: Stri
         }
         when (val s = state) {
             Loadable.Loading -> Text("…")
-            is Loadable.Ready -> ReportBody(s.value, vm.labels, vm.windowKey, onOpenApp)
+            is Loadable.Ready -> ReportBody(s.value, vm.labels, vm.windowKey, onOpenApp, onOpenCompany)
         }
     }
 }
 
 @Composable
-private fun ReportBody(r: DailyReport, labels: AppLabels, window: String, onOpenApp: (String, String) -> Unit) {
+private fun ReportBody(
+    r: DailyReport,
+    labels: AppLabels,
+    window: String,
+    onOpenApp: (String, String) -> Unit,
+    onOpenCompany: (String, String) -> Unit,
+) {
     val context = LocalContext.current
     fun name(pkg: String) = labels.label(pkg)
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -110,7 +120,7 @@ private fun ReportBody(r: DailyReport, labels: AppLabels, window: String, onOpen
 
         item { Text(stringResource(R.string.report_companies), style = MaterialTheme.typography.titleMedium) }
         items(r.companies.take(15)) { c ->
-            Column(Modifier.padding(vertical = 4.dp)) {
+            Column(Modifier.fillMaxWidth().clickable { onOpenCompany(c.company, window) }.padding(vertical = 4.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(c.company, style = MaterialTheme.typography.bodyLarge)
                     categoryLabel(c.category)?.let { Badge(it, categoryColor(c.category)) }

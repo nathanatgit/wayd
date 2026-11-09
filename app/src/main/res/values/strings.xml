@@ -150,4 +150,6 @@ That content can include things other people sent you or that were sent about th
     <string name="settings_shizuku_ready">Shizuku: ready</string>
     <string name="settings_root_check">Check root</string>
     <string name="settings_root_checking">Waiting for root access…</string>
+    <string name="company_summary">%1$d apps · %2$d connections · ↑ %3$s ↓ %4$s</string>
+    <string name="company_empty">No recorded traffic to this company in this window.</string>
 </resources>

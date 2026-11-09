@@ -150,4 +150,6 @@
     <string name="settings_shizuku_ready">Shizuku：已就绪</string>
     <string name="settings_root_check">检测 root</string>
     <string name="settings_root_checking">正在等待 root 授权…</string>
+    <string name="company_summary">%1$d 个应用 · %2$d 个连接 · 发送 %3$s 接收 %4$s</string>
+    <string name="company_empty">此时间段内没有与该公司相关的流量记录。</string>
 </resources>
