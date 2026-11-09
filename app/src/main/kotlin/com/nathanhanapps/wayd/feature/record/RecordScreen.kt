@@ -137,7 +137,7 @@ private fun Stat(label: String, value: String) {
 private fun FlowRow(f: Flow, context: Context) {
     Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Text(
-            "${f.host ?: stringResource(R.string.flow_no_host)}:${f.dstPort}",
+            "${f.host ?: f.dstIp.let { if (':' in it) "[$it]" else it }}:${f.dstPort}",
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

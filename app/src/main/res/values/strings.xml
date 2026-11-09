@@ -139,4 +139,5 @@ That content can include things other people sent you or that were sent about th
     <string name="export_saved">Saved %1$s (%2$d connections, %3$d messages). Keep it private.</string>
     <string name="export_empty">Nothing recorded to export yet.</string>
     <string name="export_failed">Export failed.</string>
+    <string name="dest_unnamed_more">%1$s +%2$d more addresses</string>
 </resources>

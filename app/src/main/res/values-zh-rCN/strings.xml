@@ -139,4 +139,5 @@
     <string name="export_saved">已保存 %1$s（%2$d 个连接，%3$d 条消息）。请妥善保密。</string>
     <string name="export_empty">还没有可导出的记录。</string>
     <string name="export_failed">导出失败。</string>
+    <string name="dest_unnamed_more">%1$s 等另外 %2$d 个地址</string>
 </resources>
