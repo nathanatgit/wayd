@@ -104,12 +104,7 @@ private fun Detail(r: AppReport, vm: AppDetailViewModel, context: android.conten
         if (r.findings.isEmpty()) item { Text(stringResource(R.string.no_findings), style = MaterialTheme.typography.bodyMedium) }
         items(r.findings) { f -> FindingRow(f, vm, context) }
 
-        item {
-            Text(stringResource(R.string.section_permissions), style = MaterialTheme.typography.titleMedium)
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Text(stringResource(R.string.permissions_soon), Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
-            }
-        }
+        item { PermissionSection(vm) }
     }
 }
 

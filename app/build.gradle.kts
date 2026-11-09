@@ -61,6 +61,8 @@ dependencies {
     implementation(project(":core:ui"))
     implementation(project(":capture"))
     implementation(project(":analysis"))
+    implementation(project(":collectors"))
+    implementation(project(":privilege"))
     implementation(project(":enrich"))
 
     implementation(libs.androidx.core.ktx)

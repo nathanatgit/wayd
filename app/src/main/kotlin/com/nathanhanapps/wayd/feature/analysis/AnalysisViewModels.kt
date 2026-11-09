@@ -49,6 +49,7 @@ class AppsViewModel @Inject constructor(private val analysis: AnalysisService) :
 class AppDetailViewModel @Inject constructor(
     private val analysis: AnalysisService,
     val labels: AppLabels,
+    private val permissionService: PermissionHistoryService,
     savedState: SavedStateHandle,
 ) : ViewModel() {
     val pkg: String = savedState["pkg"] ?: ""
@@ -56,8 +57,24 @@ class AppDetailViewModel @Inject constructor(
     private val _report = MutableStateFlow<Loadable<AppReport?>>(Loadable.Loading)
     val report: StateFlow<Loadable<AppReport?>> = _report
 
+    private val _permissions = MutableStateFlow<PermissionHistory>(PermissionHistory.Loading)
+    val permissions: StateFlow<PermissionHistory> = _permissions
+
     init {
         viewModelScope.launch { _report.value = Loadable.Ready(analysis.analyse(windowKey).apps[pkg]) }
+        // The user may allow WAYD in Shizuku while this screen is open: reload whenever Shizuku's state changes.
+        viewModelScope.launch { permissionService.state.collect { loadPermissions() } }
+    }
+
+    private fun loadPermissions() {
+        viewModelScope.launch { _permissions.value = permissionService.forApp(pkg, windowKey) }
+    }
+
+    fun requestShizuku() = permissionService.requestAccess()
+
+    fun retryPermissions() {
+        permissionService.refresh()
+        loadPermissions()
     }
 
     suspend fun evidence(json: String): List<Flow> = analysis.flowsByIds(analysis.evidenceIds(json))

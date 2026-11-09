@@ -23,6 +23,14 @@ Do not create `local.properties` on this machine: lint rejects its path escaping
 
 `adb install`, then `scrcpy -s <dev> --new-display=1080x2400/420 --start-app=<pkg> --no-audio -N --record=<file>`; screenshot with `adb exec-out screencap -d <SurfaceFlinger display id> -p` (id from `dumpsys SurfaceFlinger --display-id`, not the logical id); tap with `input -d <logical id>`. Kill `scrcpy.exe` afterwards.
 
+## M3 status (permission-use history, first slice)
+
+Done: `collectors` (parser for `dumpsys appops --history`, `PermissionCategory`, `PermissionTimeline` with proportional window clipping, 5 tests on a trimmed real-device fixture), `privilege` (AIDL `IPrivilegedService` with fixed calls, `PrivilegedService`, `HistoryFilter`, `PackageNames`, `ShizukuClient` with NOT_INSTALLED / NOT_RUNNING / NEEDS_PERMISSION / READY), app detail "Permission use" section: per category counts, background share and a 24-hour lane (visible vs background), blocked-only wording. Verified on NX733J with Shizuku 13.6 (Douyin: thousands of background location / file / Bluetooth accesses today).
+
+Shizuku was started with its own starter binary over adb (`<apk dir>/lib/arm64/libshizuku.so`), which lasts until reboot. After a reboot the user must restart it from the Shizuku app (wireless debugging).
+
+Not done: rules R-CLIPBOARD-BG, R-SCREEN-CAPTURE, R-LOC-THEN-UP, R-BOOT-REPORT (inputs now exist at bucket resolution), `appOpsGet` "last used" times, persisting history (PermEvent) for long retention, alarms / netstats / package collectors, libsu fallback, Command allowlist doc update (docs/04). Counts are system AppOps accesses, not proof of data leaving the phone; always show them next to network evidence.
+
 ## M2 status (enrichment + analysis)
 
 Done: `enrich` (seed tracker/company DB, DoH hosts, private-address check), `analysis` (8 rules, risk score with reasons, `AppReportBuilder`, `DailyReportBuilder`), Apps tab (list ranked by activity, window chips Today/Yesterday/7 days), app detail (plain-language summary, hourly chart, destinations by company+purpose, findings that expand to their evidence connections, permission-use placeholder), Reports tab (days list, report detail with alerts / background / who-received-data / new / coverage). Flows are enriched with company+category at capture and backfilled on analysis. 42 unit tests.
