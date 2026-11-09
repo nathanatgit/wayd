@@ -1,8 +1,6 @@
 package com.nathanhanapps.wayd.research
 
-import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +19,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -53,16 +52,6 @@ import javax.inject.Inject
 
 @HiltViewModel
 class DangerZoneViewModel @Inject constructor(val controller: MitmController) : ViewModel()
-
-private data class PickableApp(val pkg: String, val label: String)
-
-private fun loadPickable(ctx: Context): List<PickableApp> {
-    val pm = ctx.packageManager
-    return pm.getInstalledApplications(PackageManager.GET_META_DATA)
-        .filter { pm.getLaunchIntentForPackage(it.packageName) != null && !MitmExclusions.isExcludedPackage(it.packageName) }
-        .map { PickableApp(it.packageName, pm.getApplicationLabel(it).toString()) }
-        .sortedBy { it.label.lowercase() }
-}
 
 /** Settings section for HTTPS decryption (research build only). Collapsed by default, as docs/08 requires. */
 @Composable
@@ -108,10 +97,20 @@ fun DangerZone(vm: DangerZoneViewModel = hiltViewModel()) {
                     Text(stringResource(R.string.dz_ca_title), style = MaterialTheme.typography.titleSmall)
                     Text(stringResource(R.string.dz_ca_body), style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { c.userInstallIntent()?.let { ctx.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }) {
+                        OutlinedButton(onClick = {
+                            val res = c.startUserInstall()
+                            Toast.makeText(
+                                ctx,
+                                ctx.getString(if (res == MitmController.UserInstall.FAILED) R.string.dz_toast_failed else R.string.dz_toast_install_steps),
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }) {
                             Text(stringResource(R.string.dz_install_user))
                         }
-                        OutlinedButton(onClick = { c.exportCertificate() }) { Text(stringResource(R.string.dz_export)) }
+                        OutlinedButton(onClick = {
+                            val ok = c.exportCertificate()
+                            Toast.makeText(ctx, ctx.getString(if (ok) R.string.dz_toast_saved else R.string.dz_toast_failed), Toast.LENGTH_LONG).show()
+                        }) { Text(stringResource(R.string.dz_export)) }
                     }
                     SwitchRow(stringResource(R.string.dz_system_ca), st.systemCa, enabled = !st.busy) { on ->
                         if (on) confirmSystem = true else scope.launch { c.removeSystemCa() }
@@ -184,21 +183,43 @@ fun DangerZone(vm: DangerZoneViewModel = hiltViewModel()) {
         )
     }
     if (picker) {
-        var apps by remember { mutableStateOf<List<PickableApp>>(emptyList()) }
-        LaunchedEffect(Unit) { apps = withContext(Dispatchers.IO) { loadPickable(ctx) } }
+        var apps by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+        var extra by remember { mutableStateOf<Set<String>>(emptySet()) }
+        var typed by remember { mutableStateOf("") }
+        LaunchedEffect(extra) { apps = c.candidateApps(extra) }
         Dialog(onDismissRequest = { picker = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Surface(Modifier.fillMaxSize()) {
-                Column(Modifier.padding(16.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.dz_picker_title), style = MaterialTheme.typography.titleLarge)
                     Text(stringResource(R.string.dz_picker_note), style = MaterialTheme.typography.bodySmall)
+                    if (apps.isEmpty()) Text(stringResource(R.string.dz_picker_empty), style = MaterialTheme.typography.bodyMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = typed, onValueChange = { typed = it }, singleLine = true, modifier = Modifier.weight(1f),
+                            label = { Text(stringResource(R.string.dz_picker_type)) },
+                        )
+                        Button(
+                            onClick = {
+                                val p = typed.trim()
+                                if (p.isNotEmpty() && !MitmExclusions.isExcludedPackage(p)) {
+                                    scope.launch { c.setApp(p, true) }
+                                    extra = extra + p
+                                }
+                                typed = ""
+                            },
+                        ) { Text(stringResource(R.string.dz_picker_add)) }
+                    }
+                    OutlinedButton(onClick = { scope.launch { extra = extra + c.rootPackages() } }) {
+                        Text(stringResource(R.string.dz_picker_root))
+                    }
                     LazyColumn(Modifier.weight(1f)) {
-                        items(apps, key = { it.pkg }) { a ->
+                        items(apps, key = { it.first }) { (pkg, label) ->
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
-                                    Text(a.label, style = MaterialTheme.typography.bodyLarge)
-                                    Text(a.pkg, style = MaterialTheme.typography.bodySmall)
+                                    Text(label, style = MaterialTheme.typography.bodyLarge)
+                                    Text(pkg, style = MaterialTheme.typography.bodySmall)
                                 }
-                                Checkbox(checked = a.pkg in st.apps, onCheckedChange = { on -> scope.launch { c.setApp(a.pkg, on) } })
+                                Checkbox(checked = pkg in st.apps, onCheckedChange = { on -> scope.launch { c.setApp(pkg, on) } })
                             }
                         }
                     }

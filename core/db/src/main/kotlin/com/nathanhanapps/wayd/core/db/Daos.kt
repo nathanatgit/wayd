@@ -81,6 +81,9 @@ interface FlowDao {
     @Query("SELECT * FROM Flow WHERE startAt >= :start AND startAt < :end")
     suspend fun between(start: Long, end: Long): List<Flow>
 
+    @Query("SELECT DISTINCT pkg FROM Flow WHERE pkg != '?'")
+    suspend fun distinctPackages(): List<String>
+
     /** Hosts each app contacted before [before]; used to detect first contacts. */
     @Query("SELECT DISTINCT pkg, host FROM Flow WHERE startAt < :before AND host IS NOT NULL")
     suspend fun hostsBefore(before: Long): List<PkgHost>

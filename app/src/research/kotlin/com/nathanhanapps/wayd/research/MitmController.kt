@@ -11,6 +11,7 @@ import com.nathanhanapps.wayd.capture.InterceptProvider
 import com.nathanhanapps.wayd.capture.MitmConfig
 import com.nathanhanapps.wayd.core.db.ConsentDao
 import com.nathanhanapps.wayd.core.db.ConsentRecord
+import com.nathanhanapps.wayd.core.db.FlowDao
 import com.nathanhanapps.wayd.core.db.InterceptApp
 import com.nathanhanapps.wayd.core.db.InterceptAppDao
 import com.nathanhanapps.wayd.core.db.MessageDao
@@ -44,6 +45,7 @@ class MitmController @Inject constructor(
     private val consents: ConsentDao,
     private val appDao: InterceptAppDao,
     private val messages: MessageDao,
+    private val flowDao: FlowDao,
     private val hook: InterceptHook,
 ) : InterceptProvider {
     private val prefs = context.getSharedPreferences("mitm", Context.MODE_PRIVATE)
@@ -128,25 +130,84 @@ class MitmController @Inject constructor(
         refresh((r as? SystemCa.Result.Failed)?.detail)
     }
 
-    /** Intent that asks Android to install the CA as a user certificate (the user confirms in system settings). */
-    fun userInstallIntent(): Intent? {
-        val pem = ca.certPem() ?: return null
-        return KeyChain.createInstallIntent()
-            .putExtra(KeyChain.EXTRA_CERTIFICATE, pem.toByteArray())
+    enum class UserInstall { OPENED_INSTALLER, OPENED_SETTINGS, FAILED }
+
+    /**
+     * Saves the certificate to Downloads and sends the user to the installer. Android 11+ does not let apps install CA
+     * certificates silently, so the last step (Settings → Security → Encryption & credentials → Install a certificate
+     * → CA certificate → wayd-ca.crt) is always the user's.
+     */
+    fun startUserInstall(): UserInstall {
+        val pem = ca.certPem() ?: return UserInstall.FAILED
+        exportCertificate()
+        val der = pemToDer(pem)
+        val installer = KeyChain.createInstallIntent()
+            .putExtra(KeyChain.EXTRA_CERTIFICATE, der)
             .putExtra(KeyChain.EXTRA_NAME, "WAYD Local CA")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (runCatching { context.startActivity(installer) }.isSuccess) return UserInstall.OPENED_INSTALLER
+        val settings = Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return if (runCatching { context.startActivity(settings) }.isSuccess) UserInstall.OPENED_SETTINGS else UserInstall.FAILED
     }
 
-    /** Saves a copy of the CA certificate into Downloads so it can be installed manually. Returns true on success. */
+    private fun pemToDer(pem: String): ByteArray =
+        android.util.Base64.decode(pem.lines().filter { !it.startsWith("-----") }.joinToString(""), android.util.Base64.DEFAULT)
+
+    /** Saves (or overwrites) `wayd-ca.crt` in Downloads, DER encoded as Android's installer expects. */
     fun exportCertificate(): Boolean = runCatching {
         val pem = ca.certPem() ?: return false
-        val values = ContentValues().apply {
-            put(MediaStore.Downloads.DISPLAY_NAME, "wayd-ca.crt")
-            put(MediaStore.Downloads.MIME_TYPE, "application/x-x509-ca-cert")
-        }
-        val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return false
-        context.contentResolver.openOutputStream(uri)?.use { it.write(pem.toByteArray()) }
+        val der = pemToDer(pem)
+        val resolver = context.contentResolver
+        val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+        val existing = resolver.query(
+            collection, arrayOf(MediaStore.Downloads._ID), "${MediaStore.Downloads.DISPLAY_NAME} = ?", arrayOf(CERT_FILE), null,
+        )?.use { c -> if (c.moveToFirst()) android.content.ContentUris.withAppendedId(collection, c.getLong(0)) else null }
+        val uri = existing ?: resolver.insert(
+            collection,
+            ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, CERT_FILE)
+                put(MediaStore.Downloads.MIME_TYPE, "application/x-x509-ca-cert")
+            },
+        ) ?: return false
+        resolver.openOutputStream(uri, "wt")?.use { it.write(der) } ?: return false
         true
     }.getOrDefault(false)
+
+    /**
+     * Apps the user can choose from. The ROM may hide the app list from ordinary apps, so this combines the package manager,
+     * launcher entries and apps seen in recorded traffic, plus [extra] (root listing / typed names).
+     */
+    suspend fun candidateApps(extra: Set<String> = emptySet()): List<Pair<String, String>> =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val pm = context.packageManager
+            val names = LinkedHashSet<String>()
+            runCatching { pm.getInstalledApplications(0).forEach { names += it.packageName } }
+            runCatching {
+                val i = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                pm.queryIntentActivities(i, 0).forEach { names += it.activityInfo.packageName }
+            }
+            runCatching { names += flowDao.distinctPackages() }
+            names += extra
+            names += _state.value.apps
+            names.filter { !MitmExclusions.isExcludedPackage(it) && (it in _state.value.apps || isUserApp(pm, it)) }
+                .map { p -> p to (runCatching { pm.getApplicationLabel(pm.getApplicationInfo(p, 0)).toString() }.getOrDefault(p)) }
+                .sortedBy { it.second.lowercase() }
+        }
+
+    private fun isUserApp(pm: android.content.pm.PackageManager, pkg: String): Boolean = runCatching {
+        val f = pm.getApplicationInfo(pkg, 0).flags
+        f and android.content.pm.ApplicationInfo.FLAG_SYSTEM == 0 || f and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0
+    }.getOrDefault(true) // unknown to the package manager (hidden by the ROM): keep it, the user typed or saw it
+
+    /** Third-party packages according to root's `pm`, for ROMs that hide the app list. Empty if root is unavailable. */
+    suspend fun rootPackages(): Set<String> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        runCatching {
+            val p = ProcessBuilder("su", "-c", "pm list packages -3").redirectErrorStream(true).start()
+            val text = p.inputStream.bufferedReader().readText()
+            p.waitFor(20, java.util.concurrent.TimeUnit.SECONDS)
+            text.lines().filter { it.startsWith("package:") }.map { it.removePrefix("package:").trim() }.toSet()
+        }.getOrDefault(emptySet())
+    }
 
     suspend fun deleteCapturedContent() {
         messages.deleteAll()
@@ -169,6 +230,7 @@ class MitmController @Inject constructor(
 
     companion object {
         const val FEATURE = "MITM"
+        private const val CERT_FILE = "wayd-ca.crt"
         /** Bump when the privacy statement text changes; consent must then be given again. */
         const val STATEMENT_VERSION = 1
         private const val KEY_CONSENT = "consent_version"

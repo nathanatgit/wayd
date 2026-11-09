@@ -31,4 +31,11 @@
     <string name="dz_sys_warn_title">设为系统级信任？</string>
     <string name="dz_sys_warn_body">这将使用 root，让 Android 系统信任库包含在干嘛的证书。不接受用户证书的应用也会信任它，在干嘛因此可以读取它们的流量。\n\n开启期间，任何拿到在干嘛证书私钥的人都可以向本机冒充任意网站，部分应用也可能出现异常。不会永久安装任何东西：重启或在此关闭即可撤销。\n\n请仅在你自己的手机上继续。</string>
     <string name="dz_sys_warn_ok">设为系统级信任</string>
+    <string name="dz_toast_saved">已将 wayd-ca.crt 保存到“下载”。</string>
+    <string name="dz_toast_failed">操作失败。</string>
+    <string name="dz_toast_install_steps">请在 设置 → 安全 → 加密与凭据 → 安装证书 → CA 证书 中，选择“下载”里的 wayd-ca.crt。</string>
+    <string name="dz_picker_empty">在干嘛暂时看不到任何应用。你的系统可能隐藏了应用列表：可手动输入包名、使用 root 读取，或先录制一些流量。</string>
+    <string name="dz_picker_type">包名</string>
+    <string name="dz_picker_add">添加</string>
+    <string name="dz_picker_root">用 root 读取应用列表</string>
 </resources>
