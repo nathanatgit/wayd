@@ -131,12 +131,12 @@
     <string name="export_capture">导出最近一次录制（JSON）</string>
     <string name="export_app">导出此应用的原始数据（JSON）</string>
     <string name="export_title">请妥善保密此文件</string>
-    <string name="export_warning">文件将以未加密形式保存在“下载/WAYD”中，包含原始记录：应用、主机、地址、时间、DNS 查询、权限使用，以及（若开启了研究版的解密功能）请求和响应的内容。
+    <string name="export_warning">文件将以未加密形式保存在你选择的位置，包含原始记录：应用、主机、地址、时间、DNS 查询、权限使用，以及（若开启了研究版的解密功能）请求和响应的内容。
 
 这些内容可能包含他人发给你、或与他人有关的信息：他们的聊天内容、姓名、照片、位置和账号信息，而他们并未同意。请保密，不要上传或分享该文件，不再需要时请及时删除。</string>
     <string name="export_confirm">我会保密 — 导出</string>
     <string name="export_cancel">取消</string>
-    <string name="export_saved">已将 %1$s 保存到“下载/WAYD”（%2$d 个连接，%3$d 条消息）。请妥善保密。</string>
+    <string name="export_saved">已保存 %1$s（%2$d 个连接，%3$d 条消息）。请妥善保密。</string>
     <string name="export_empty">还没有可导出的记录。</string>
     <string name="export_failed">导出失败。</string>
 </resources>

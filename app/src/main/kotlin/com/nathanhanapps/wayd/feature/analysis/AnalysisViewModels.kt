@@ -71,7 +71,9 @@ class AppDetailViewModel @Inject constructor(
         viewModelScope.launch { _permissions.value = permissionService.forApp(pkg, windowKey) }
     }
 
-    suspend fun export() = exporter.exportApp(pkg, windowKey)
+    fun exportName() = exporter.appFileName(pkg)
+
+    suspend fun export(target: android.net.Uri) = exporter.exportApp(pkg, windowKey, target)
 
     fun requestShizuku() = permissionService.requestAccess()
 

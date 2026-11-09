@@ -29,7 +29,9 @@ class RecordViewModel @Inject constructor(
     val coverage: StateFlow<CoverageCounts> = flowDao.observeCoverage()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CoverageCounts(0, 0, 0, 0))
 
-    suspend fun exportCapture() = exporter.exportLatestCapture()
+    fun exportName() = exporter.captureFileName()
+
+    suspend fun exportCapture(target: android.net.Uri) = exporter.exportLatestCapture(target)
 
     fun start() = controller.start()
 

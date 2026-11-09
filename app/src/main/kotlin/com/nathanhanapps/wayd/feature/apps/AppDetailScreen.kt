@@ -69,7 +69,7 @@ fun AppDetailScreen(onBack: () -> Unit, vm: AppDetailViewModel = hiltViewModel()
                 Text(vm.pkg, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        com.nathanhanapps.wayd.feature.export.ExportButton(stringResource(R.string.export_app), Modifier.fillMaxWidth()) { vm.export() }
+        com.nathanhanapps.wayd.feature.export.ExportButton(stringResource(R.string.export_app), vm::exportName, Modifier.fillMaxWidth()) { vm.export(it) }
         when (val s = state) {
             Loadable.Loading -> Text("…")
             is Loadable.Ready -> {

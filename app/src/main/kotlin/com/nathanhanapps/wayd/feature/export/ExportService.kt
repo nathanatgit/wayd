@@ -1,9 +1,8 @@
 package com.nathanhanapps.wayd.feature.export
 
-import android.content.ContentUris
-import android.content.ContentValues
 import android.content.Context
-import android.provider.MediaStore
+import android.net.Uri
+import android.provider.DocumentsContract
 import android.util.Base64
 import android.util.JsonWriter
 import com.nathanhanapps.wayd.core.db.DnsDao
@@ -49,14 +48,21 @@ class ExportService @Inject constructor(
     private val perms: PermEventDao,
     private val findings: FindingDao,
 ) {
-    /** The most recent recording session with everything recorded in it. */
-    suspend fun exportLatestCapture(): ExportResult = withContext(Dispatchers.IO) {
-        val session = sessions.latest() ?: return@withContext ExportResult.Empty
+    private fun stamp() = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+
+    /** Default file name offered in the system file picker; the user can change it. */
+    fun captureFileName() = "wayd-capture-${stamp()}.json"
+
+    fun appFileName(pkg: String) = "wayd-app-${pkg.replace(Regex("[^A-Za-z0-9._-]"), "_")}-${stamp()}.json"
+
+    /** The most recent recording session with everything recorded in it, written to the document the user chose. */
+    suspend fun exportLatestCapture(target: Uri): ExportResult = withContext(Dispatchers.IO) {
+        val session = sessions.latest() ?: return@withContext discard(target)
         val f = flows.forSession(session.id)
-        if (f.isEmpty()) return@withContext ExportResult.Empty
+        if (f.isEmpty()) return@withContext discard(target)
         val d = dns.forSession(session.id)
         val m = messages.forSession(session.id)
-        write("wayd-capture-${session.id}") { w ->
+        write(target) { w ->
             header(w, "capture")
             w.name("session").beginObject()
                 .name("id").value(session.id).name("startedAt").value(session.startedAt)
@@ -68,16 +74,16 @@ class ExportService @Inject constructor(
         }?.let { ExportResult.Saved(it, f.size, m.size) } ?: ExportResult.Failed
     }
 
-    /** Everything recorded for [pkg] in the analysis window [windowKey]. */
-    suspend fun exportApp(pkg: String, windowKey: String): ExportResult = withContext(Dispatchers.IO) {
+    /** Everything recorded for [pkg] in the analysis window [windowKey], written to the document the user chose. */
+    suspend fun exportApp(pkg: String, windowKey: String, target: Uri): ExportResult = withContext(Dispatchers.IO) {
         val (start, end) = Windows.resolve(windowKey)
         val f = flows.forApp(pkg, start, end)
         val p = perms.forApp(pkg, start, end)
-        if (f.isEmpty() && p.isEmpty()) return@withContext ExportResult.Empty
+        if (f.isEmpty() && p.isEmpty()) return@withContext discard(target)
         val d = dns.forUids(f.map { it.uid }.distinct().ifEmpty { listOf(-2) }, start, end)
         val m = messages.forApp(pkg, start, end)
         val found = findings.forApp(pkg, start, end)
-        write("wayd-app-${pkg.replace(Regex("[^A-Za-z0-9._-]"), "_")}") { w ->
+        write(target) { w ->
             header(w, "app")
             w.name("app").beginObject().name("pkg").value(pkg).name("window").value(windowKey)
                 .name("from").value(start).name("to").value(end).endObject()
@@ -156,21 +162,17 @@ class ExportService @Inject constructor(
             .decode(ByteBuffer.wrap(b)).toString()
     }.getOrNull()
 
-    /** Writes `<base>-<timestamp>.json` into Downloads/WAYD. Returns the file name, or null on failure. */
-    private fun write(base: String, body: (JsonWriter) -> Unit): String? = runCatching {
-        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-        val name = "$base-$stamp.json"
+    /** Nothing to export: remove the empty document the picker just created. */
+    private fun discard(target: Uri): ExportResult {
+        runCatching { DocumentsContract.deleteDocument(context.contentResolver, target) }
+        return ExportResult.Empty
+    }
+
+    /** Writes the JSON into [target] (a document the user picked). Returns the file's display name, or null on failure. */
+    private fun write(target: Uri, body: (JsonWriter) -> Unit): String? = runCatching {
         val resolver = context.contentResolver
-        val uri = resolver.insert(
-            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-            ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, name)
-                put(MediaStore.Downloads.MIME_TYPE, "application/json")
-                put(MediaStore.Downloads.RELATIVE_PATH, "Download/WAYD")
-            },
-        ) ?: return null
         try {
-            resolver.openOutputStream(uri)?.use { out ->
+            resolver.openOutputStream(target, "wt")?.use { out ->
                 JsonWriter(OutputStreamWriter(out, Charsets.UTF_8).buffered()).use { w ->
                     w.setIndent(" ")
                     w.beginObject()
@@ -179,9 +181,10 @@ class ExportService @Inject constructor(
                 }
             } ?: error("no stream")
         } catch (t: Throwable) {
-            runCatching { resolver.delete(uri, null, null) }
+            runCatching { DocumentsContract.deleteDocument(resolver, target) }
             throw t
         }
-        name
+        resolver.query(target, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: "export.json"
     }.getOrNull()
 }
