@@ -3,7 +3,7 @@
 > An on-device Android privacy monitor that records what every app on your phone sends and receives, explains it in plain language, and helps you stop what you don't want.
 
 - **Package:** `com.nathanhanapps.wayd`
-- **Publisher:** nathanhanapps (sibling of AppDualZuku)
+- **Publisher:** nathanhanapps
 - **Platform:** Android 10+ (API 29+) — target latest stable SDK
 - **UI:** Jetpack Compose + Material 3 Expressive
 - **Core principle:** *Everything stays on the phone.* WAYD never uploads captured data, reports, or AI analyses anywhere.
