@@ -89,6 +89,7 @@ class FlowTracker(
             is NativeEvent.Open -> onOpen(e)
             is NativeEvent.Data -> onData(e)
             is NativeEvent.Message -> onMessage(e)
+            is NativeEvent.Progress -> open[e.flowId]?.let { if (e.down) it.down = e.total else it.up = e.total }
             is NativeEvent.TlsNote -> open[e.flowId]?.let {
                 if (e.kind == 1) it.intercepted = true
                 if (e.kind == 2) it.pinned = true

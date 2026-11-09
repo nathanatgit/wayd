@@ -225,6 +225,7 @@ where
     let (mut up, mut down) = (0u64, 0u64);
     let (mut a_open, mut u_open) = (true, true);
     let idle = Duration::from_secs(3600);
+    let mut last_report = std::time::Instant::now();
 
     while a_open || u_open {
         tokio::select! {
@@ -232,6 +233,11 @@ where
                 Ok(n) if n > 0 => {
                     if uw.write_all(&ab[..n]).await.is_err() { break; }
                     up += n as u64;
+                    if last_report.elapsed() >= Duration::from_secs(2) {
+                        sink.progress(id, false, up);
+                        sink.progress(id, true, down);
+                        last_report = std::time::Instant::now();
+                    }
                     req.feed(&ab[..n]);
                     for m in req.take() {
                         resp.push_request_context(m.method.clone(), m.url.clone());
@@ -244,6 +250,11 @@ where
                 Ok(n) if n > 0 => {
                     if aw.write_all(&ub[..n]).await.is_err() { break; }
                     down += n as u64;
+                    if last_report.elapsed() >= Duration::from_secs(2) {
+                        sink.progress(id, false, up);
+                        sink.progress(id, true, down);
+                        last_report = std::time::Instant::now();
+                    }
                     resp.feed(&ub[..n]);
                     for m in resp.take() { emit(sink, id, &m); }
                 }

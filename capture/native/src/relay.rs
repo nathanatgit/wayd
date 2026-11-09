@@ -27,6 +27,7 @@ pub const TCP_IDLE: Duration = Duration::from_secs(3600);
 pub const UDP_IDLE: Duration = Duration::from_secs(300);
 const DNS_IDLE: Duration = Duration::from_secs(15);
 const DNS_PORT: u16 = 53;
+const PROGRESS_EVERY: Duration = Duration::from_secs(2);
 /// How long a flow waits for Kotlin's intercept decision before falling back to passthrough.
 const DECISION_WAIT: Duration = Duration::from_millis(600);
 
@@ -193,6 +194,7 @@ async fn pump<R, W>(
     W: AsyncWrite + Unpin,
 {
     let mut buf = vec![0u8; 32 * 1024];
+    let mut last_report = Instant::now();
     loop {
         let n = read_idle(&mut from, &mut buf, &act, TCP_IDLE).await;
         if n == 0 {
@@ -207,7 +209,11 @@ async fn pump<R, W>(
             break;
         }
         act.touch();
-        counter.fetch_add(n as u64, Ordering::Relaxed);
+        let total = counter.fetch_add(n as u64, Ordering::Relaxed) + n as u64;
+        if last_report.elapsed() >= PROGRESS_EVERY {
+            sink.progress(id, down, total);
+            last_report = Instant::now();
+        }
     }
     let _ = to.shutdown().await;
 }

@@ -34,6 +34,9 @@ sealed interface NativeEvent {
     /** kind: 1 intercepted, 2 app rejected our certificate (pinned), 3 upstream TLS failed, 4 skipped host. */
     class TlsNote(override val flowId: Long, val kind: Int) : NativeEvent
 
+    /** Running byte total of one direction for a flow that is still open. */
+    class Progress(override val flowId: Long, val down: Boolean, val total: Long) : NativeEvent
+
     class Close(override val flowId: Long, val bytesUp: Long, val bytesDown: Long) : NativeEvent
 }
 
@@ -43,6 +46,7 @@ object NativeEvents {
     private const val CLOSE = 3
     private const val MESSAGE = 4
     private const val TLS_NOTE = 5
+    private const val PROGRESS = 6
 
     /** Decodes whole events from `buf[0, len)`. Malformed trailing bytes are ignored. */
     fun decode(buf: ByteArray, len: Int): List<NativeEvent> {
@@ -72,6 +76,7 @@ object NativeEvents {
                 }
                 type == MESSAGE -> decodeMessage(buf, b, e, id)?.let { out += it }
                 type == TLS_NOTE && e - b >= 1 -> out += NativeEvent.TlsNote(id, buf[b].toInt())
+                type == PROGRESS && e - b >= 9 -> out += NativeEvent.Progress(id, buf[b].toInt() == 1, u64(buf, b + 1))
                 type == CLOSE && e - b >= 16 -> out += NativeEvent.Close(id, u64(buf, b), u64(buf, b + 8))
             }
             p = e

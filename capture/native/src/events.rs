@@ -7,6 +7,8 @@
 //! * `CLOSE (3)`: `u64 bytes_up | u64 bytes_down`
 //! * `MESSAGE (4)`: `u8 response | u16 status | u8 method_len | method | u16 url_len | url | u32 headers_len | headers |
 //!   u64 body_total | u8 truncated | u32 body_len | body` (decrypted HTTP/1.1 message, research flavor only)
+//! * `PROGRESS (6)`: `u8 dir(0=up,1=down) | u64 total_bytes_so_far` — sent every few seconds while a flow moves data, so
+//!   flows still open when recording stops keep their byte counts
 //! * `TLS_NOTE (5)`: `u8 kind` (1 intercepted, 2 app rejected our certificate, 3 upstream TLS failed, 4 skipped host)
 
 use std::net::{IpAddr, SocketAddr};
@@ -17,6 +19,7 @@ pub const DATA: u8 = 2;
 pub const CLOSE: u8 = 3;
 pub const MESSAGE: u8 = 4;
 pub const TLS_NOTE: u8 = 5;
+pub const PROGRESS: u8 = 6;
 
 /// `TLS_NOTE` kinds.
 pub const TLS_INTERCEPTED: u8 = 1;
@@ -85,6 +88,13 @@ impl EventSink {
 
     pub fn tls_note(&self, id: u64, kind: u8) {
         self.send(TLS_NOTE, id, &[kind]);
+    }
+
+    pub fn progress(&self, id: u64, down: bool, total: u64) {
+        let mut b = Vec::with_capacity(9);
+        b.push(down as u8);
+        b.extend_from_slice(&total.to_be_bytes());
+        self.send(PROGRESS, id, &b);
     }
 
     pub fn close(&self, id: u64, up: u64, down: u64) {
