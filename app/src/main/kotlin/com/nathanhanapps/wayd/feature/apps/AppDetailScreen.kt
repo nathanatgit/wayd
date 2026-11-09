@@ -108,6 +108,8 @@ private fun Detail(r: AppReport, vm: AppDetailViewModel, context: android.conten
         items(r.findings) { f -> FindingRow(f, vm, context) }
 
         item { PermissionSection(vm) }
+
+        item { com.nathanhanapps.wayd.feature.ai.AiSection() }
     }
 }
 

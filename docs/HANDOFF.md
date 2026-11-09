@@ -23,11 +23,11 @@ Do not create `local.properties` on this machine: lint rejects its path escaping
 
 `adb install`, then `scrcpy -s <dev> --new-display=1080x2400/420 --start-app=<pkg> --no-audio -N --record=<file>`; screenshot with `adb exec-out screencap -d <SurfaceFlinger display id> -p` (id from `dumpsys SurfaceFlinger --display-id`, not the logical id); tap with `input -d <logical id>`. Kill `scrcpy.exe` afterwards.
 
-## MITM status (Nat asked to do this next, before richer analysis and Gemma)
+## MITM status (research flavor) — working, verified on the phone 2026-11-09
 
-Done (native, research flavor only): `capture/native/src/mitm` with CA + leaf issuing (verified against a TLS verifier; subject hash verified against OpenSSL), HTTP/1.1 passive capture (chunked, content-length, body cap 128 KB, upgrade/garbage safe), TLS interception engine with passthrough fallback and pinned-host memory, end-to-end tests over real TLS on loopback (an app trusting only our CA gets a working connection and both messages are captured), per-flow decision channel and JNI controls (`nativeGenerateCa`, `nativeSubjectHash`, `nativeConfigureMitm`, `nativeDisableMitm`, `nativeDecide`), QUIC drop for intercepted apps. Separate native builds per flavor (standard 870 KB without any MITM code, research 2.1 MB). 16 native tests.
+Done and verified on Nat's NX733J: native engine, Kotlin side (MESSAGE/TLS_NOTE/PROGRESS events, messages stored in SQLCipher with the flow, `InterceptHook` seam), research-only consent flow (warning, scroll-to-end privacy statement, Keystore-encrypted CA key, per-app picker with search / checked-first / Name & Date-installed sort, exclusion list, "Disable and remove CA"), CA file saved through the document picker, optional volatile system-wide trust via root (D-024), raw-data JSON export (capture / per app) through the document picker with a privacy warning, Chrome capture (354 decrypted messages incl. Bilibili). Per-flow byte counts for flows still open at stop come from PROGRESS events.
 
-Not done: Kotlin side (decode MESSAGE/TLS_NOTE events, store `Message` rows + encrypted blobs, flow ids before messages, poll buffer size), research module (`CaStore` with Keystore-encrypted key, per-app allowlist table + exclusion list, consent/privacy flow per docs/08, "Disable and remove CA" with no residue), message inspector UI (M4), system-CA install via root. Phone facts: NX733J is rooted with KernelSU (`su` works); Android 16 loads system CAs from the Conscrypt APEX, so a plain overlay of /system/etc/security/cacerts is not enough: needs a bind-mount of the APEX cacerts into app namespaces. Without system CA only apps that trust user CAs (Chrome) are readable.
+Known limits: WeChat uses its own MMTLS protocol (metadata only even with system trust); apps that pin certificates stay metadata only; ModelScope range requests redirect (302) and were not verified; message inspector UI (M4) not built yet (export is the way to read messages).
 
 ## M3 status (permission-use history, first slice)
 
@@ -72,9 +72,15 @@ Causes found in the relay and fixed in the next build (not yet re-verified by Na
 - scrcpy: after `taskkill scrcpy.exe` the on-device server (`app_process ... scrcpy.Server`) can keep running and leave stale virtual displays that render black; kill them by PID (`adb shell kill <pid>` from `ps -A | grep scrcpy`) and verify `dumpsys SurfaceFlinger --display-id | grep -c scrcpy` is 0 before a new session. Screenshots must use the SurfaceFlinger id of the *live* display.
 - Only one VPN can be active: WAYD replaces other VPN/proxy apps (e.g. Clash on Nat's phone) while recording.
 
+## On-device AI (M6) status — implemented, NOT yet tested on the phone (Nat asked not to test live while away)
+
+`:ai` module: `Masker`, versioned `PromptBuilder` (inert `<data>` blocks, delimiter neutralising), `SchemaValidator` (schema v1, evidence-id checks, claim stripping), `AiAnalyzer` (one repair retry, cache in `AiAnalysis`), `ModelManager` (resumable download, SHA-256, free-space check, catalog E2B/E4B with Hugging Face + ModelScope + custom URL), `ModelDownloadService` (dataSync foreground service), `LiteRtEngine` (GPU then CPU). 19 JVM tests incl. prompt-injection fixtures. App: Settings → On-device AI (download/delete/use), App detail → "Analyse with AI" with an "AI opinion" card. Untested: real model loading and inference, download service on the device, UI layout. To test: Settings → On-device AI → Download E2B (about 2.6 GB, Wi-Fi), then open an app with findings → Analyse with AI; check latency (target < 30 s for 10 items), JSON validity rate, memory, and that cancelling works.
+
+Not built yet: tools / "ask about my data" chat, overnight summary (WorkManager), selection-based "Analyse selection" from the connection list, injection tests against the real model.
+
 ## Next step
 
-Finish M1 acceptance (soak test, host coverage, IPv6 check), then **M2 · Enrichment + daily report**.
+1. Test the AI path on the phone (above). 2. Message inspector (M4) and identifier matcher on decrypted data. 3. M7 blocking (docs/13-BLOCKING.md). 4. M1 soak / coverage.
 
 ## Open decisions (see DECISIONS.md)
 

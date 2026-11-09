@@ -80,3 +80,15 @@ Interception policy lives in Kotlin (only Kotlin knows the owning app): for each
 
 **D-022 · 2026-11-09 · accepted**
 The CA's Android system-store file name is `subject_hash_old` = first 4 bytes (little endian) of MD5 over the DER subject, verified against OpenSSL (`f28c7bdf` for the test CA).
+
+**D-023 · 2026-11-09 · accepted**
+Decrypted HTTP messages are stored in the existing SQLCipher database (`Message.body`, `bodyTruncated`; schema v3 via AutoMigration), not in a separate AES-GCM blob store. The database is already encrypted with a Keystore-wrapped key, so a second layer would add code without adding protection. Bodies are capped at 128 KB per message by the native engine. Interception policy: `InterceptApp` allowlist table (empty by default), `InterceptHook` is the only seam between capture and the research build.
+
+**D-024 · 2026-11-09 · accepted**
+System-store CA install (research, root, optional toggle with warning, off by default) = volatile tmpfs overlay, no module, nothing persistent. It runs in the GLOBAL mount namespace (`nsenter -t 1 -m`) because KernelSU gives the app's `su` a private namespace, applies the overlay in every zygote namespace too, verifies each namespace and rolls back on any mismatch (a first version left the zygote with an empty store; never again). Reboot or "Disable and remove CA" undoes it.
+
+**D-025 · 2026-11-09 · accepted**
+On-device AI = LiteRT-LM (`com.google.ai.edge.litertlm:litertlm-android` 0.19.1, Apache 2.0) running Gemma 4 `.litertlm` files (E2B 2.59 GB, E4B 3.66 GB; sizes and SHA-256 are the published values from Hugging Face and ModelScope). GPU backend first, CPU fallback. Model download is the only AI-related network use: user-initiated, user-chosen host (Hugging Face / ModelScope / custom https URL), resumable, SHA-256 verified, run in a `dataSync` foreground service. The model's JSON is validated against schema v1 (unknown enums rejected, every cited evidence id must exist in the input, claims without evidence stripped, one repair retry); the rule engine keeps deciding severity.
+
+**D-026 · 2026-11-09 · proposed**
+Blocking / content control (M7) design: see docs/13-BLOCKING.md.

@@ -45,6 +45,14 @@ WAYD holds the most sensitive data on the phone. Treat WAYD itself as a high-val
 
 No location, contacts, SMS or storage permissions. WAYD reads device identifiers only to match them in traffic, and only at the privilege level available.
 
+## Permissions added with on-device AI (2026-11-09)
+
+| Permission | Why | Risk / mitigation |
+|---|---|---|
+| `FOREGROUND_SERVICE_DATA_SYNC` (+ `INTERNET`, already declared) | Keep a 2-4 GB model download alive while the app is in the background. | The download starts only when the user taps Download, goes only to the host the user chose, is SHA-256 verified and can be cancelled. No other AI-related network use. |
+
+The captured data is masked (identifiers replaced by type tokens), wrapped in inert `<data>` blocks and size-bounded before it reaches the model; model output is schema- and evidence-validated and can never change rules, blocks, consents or privileges.
+
 ## Permissions added in M1 (2026-11-09)
 
 | Permission | Why | Risk / mitigation |

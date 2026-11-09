@@ -78,6 +78,8 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
             },
         )
 
+        com.nathanhanapps.wayd.feature.ai.AiSettingsSection()
+
         com.nathanhanapps.wayd.research.ResearchFeatures.Settings()
 
         Section(
