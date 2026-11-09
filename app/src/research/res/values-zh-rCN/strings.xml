@@ -38,4 +38,6 @@
     <string name="dz_picker_type">搜索应用或输入包名</string>
     <string name="dz_picker_add">添加</string>
     <string name="dz_picker_root">用 root 读取应用列表</string>
+    <string name="dz_sort_name">名称</string>
+    <string name="dz_sort_date">安装时间</string>
 </resources>

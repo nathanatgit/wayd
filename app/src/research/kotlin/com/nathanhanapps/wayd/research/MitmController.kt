@@ -20,6 +20,9 @@ import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** One app in the picker. [installedAt] is the first install time (0 if the ROM hides it). */
+class CandidateApp(val pkg: String, val label: String, val installedAt: Long)
+
 data class MitmState(
     val consented: Boolean = false,
     val enabled: Boolean = false,
@@ -150,7 +153,7 @@ class MitmController @Inject constructor(
      * Apps the user can choose from. The ROM may hide the app list from ordinary apps, so this combines the package manager,
      * launcher entries and apps seen in recorded traffic, plus [extra] (root listing / typed names).
      */
-    suspend fun candidateApps(extra: Set<String> = emptySet()): List<Pair<String, String>> =
+    suspend fun candidateApps(extra: Set<String> = emptySet()): List<CandidateApp> =
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val pm = context.packageManager
             val names = LinkedHashSet<String>()
@@ -163,8 +166,13 @@ class MitmController @Inject constructor(
             names += extra
             names += _state.value.apps
             names.filter { !MitmExclusions.isExcludedPackage(it) && (it in _state.value.apps || isUserApp(pm, it)) }
-                .map { p -> p to (runCatching { pm.getApplicationLabel(pm.getApplicationInfo(p, 0)).toString() }.getOrDefault(p)) }
-                .sortedBy { it.second.lowercase() }
+                .map { p ->
+                    CandidateApp(
+                        p,
+                        runCatching { pm.getApplicationLabel(pm.getApplicationInfo(p, 0)).toString() }.getOrDefault(p),
+                        runCatching { pm.getPackageInfo(p, 0).firstInstallTime }.getOrDefault(0L),
+                    )
+                }
         }
 
     private fun isUserApp(pm: android.content.pm.PackageManager, pkg: String): Boolean = runCatching {

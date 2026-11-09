@@ -38,4 +38,6 @@
     <string name="dz_picker_type">Search apps or type a package name</string>
     <string name="dz_picker_add">Add</string>
     <string name="dz_picker_root">Load app list with root</string>
+    <string name="dz_sort_name">Name</string>
+    <string name="dz_sort_date">Date installed</string>
 </resources>

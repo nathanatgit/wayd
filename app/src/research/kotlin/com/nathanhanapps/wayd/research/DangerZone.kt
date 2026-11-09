@@ -18,6 +18,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -190,10 +191,17 @@ fun DangerZone(vm: DangerZoneViewModel = hiltViewModel()) {
         )
     }
     if (picker) {
-        var apps by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+        var apps by remember { mutableStateOf<List<CandidateApp>>(emptyList()) }
+        var sortByDate by rememberSaveable { mutableStateOf(false) }
+        // Checked apps are listed first, using the selection at the moment the list opened or the sort changed, so rows
+        // do not jump around while the user ticks boxes.
+        var pinned by remember { mutableStateOf(st.apps) }
         var extra by remember { mutableStateOf<Set<String>>(emptySet()) }
         var typed by remember { mutableStateOf("") }
-        LaunchedEffect(extra) { apps = c.candidateApps(extra) }
+        LaunchedEffect(extra) {
+            apps = c.candidateApps(extra)
+            pinned = c.state.value.apps
+        }
         Dialog(onDismissRequest = { picker = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Surface(Modifier.fillMaxSize()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -207,7 +215,7 @@ fun DangerZone(vm: DangerZoneViewModel = hiltViewModel()) {
                         )
                         // Adding by name is only needed for packages the list does not show.
                         Button(
-                            enabled = typed.trim().isNotEmpty() && apps.none { it.first == typed.trim() },
+                            enabled = typed.trim().isNotEmpty() && apps.none { it.pkg == typed.trim() },
                             onClick = {
                                 val p = typed.trim()
                                 if (p.isNotEmpty() && !MitmExclusions.isExcludedPackage(p)) {
@@ -221,16 +229,35 @@ fun DangerZone(vm: DangerZoneViewModel = hiltViewModel()) {
                     OutlinedButton(onClick = { scope.launch { extra = extra + c.rootPackages() } }) {
                         Text(stringResource(R.string.dz_picker_root))
                     }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = !sortByDate, onClick = { sortByDate = false; pinned = st.apps },
+                            label = { Text(stringResource(R.string.dz_sort_name)) },
+                        )
+                        FilterChip(
+                            selected = sortByDate, onClick = { sortByDate = true; pinned = st.apps },
+                            label = { Text(stringResource(R.string.dz_sort_date)) },
+                        )
+                    }
                     val q = typed.trim()
-                    val shown = if (q.isEmpty()) apps else apps.filter { (pkg, label) ->
-                        label.contains(q, ignoreCase = true) || pkg.contains(q, ignoreCase = true)
+                    val shown = remember(apps, q, sortByDate, pinned) {
+                        val byQuery = if (q.isEmpty()) apps else apps.filter {
+                            it.label.contains(q, ignoreCase = true) || it.pkg.contains(q, ignoreCase = true)
+                        }
+                        val byOrder = if (sortByDate) byQuery.sortedByDescending { it.installedAt } else byQuery.sortedBy { it.label.lowercase() }
+                        byOrder.sortedBy { if (it.pkg in pinned) 0 else 1 } // stable: keeps the chosen order inside each group
                     }
                     LazyColumn(Modifier.weight(1f)) {
-                        items(shown, key = { it.first }) { (pkg, label) ->
+                        items(shown, key = { it.pkg }) { app ->
+                            val pkg = app.pkg
+                            val label = app.label
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text(label, style = MaterialTheme.typography.bodyLarge)
-                                    Text(pkg, style = MaterialTheme.typography.bodySmall)
+                                    Text(
+                                        if (app.installedAt > 0) pkg + " · " + java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(app.installedAt)) else pkg,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
                                 }
                                 Checkbox(checked = pkg in st.apps, onCheckedChange = { on -> scope.launch { c.setApp(pkg, on) } })
                             }
