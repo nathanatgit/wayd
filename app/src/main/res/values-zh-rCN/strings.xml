@@ -226,4 +226,14 @@
     <string name="ai_state_verifying">正在检查文件…</string>
     <string name="ai_state_failed">失败：%1$s</string>
     <string name="ft_id_in_request">在 %2$d 个解密请求中向 %3$s 发送了「%1$s」</string>
+    <string name="inspector_title">解密消息</string>
+    <string name="inspector_private">这里是该应用流量的原始内容，可能包含他人的信息。请妥善保密。</string>
+    <string name="inspector_empty">此时间段内该应用没有解密消息。</string>
+    <string name="inspector_analyse">用 AI 分析已选 %1$d 条</string>
+    <string name="inspector_open">查看 %1$d 条解密消息</string>
+    <string name="inspector_headers">请求/响应头</string>
+    <string name="inspector_body">正文</string>
+    <string name="inspector_no_body">（空）</string>
+    <string name="inspector_binary">（二进制，%1$d 字节）</string>
+    <string name="inspector_truncated">已截断</string>
 </resources>

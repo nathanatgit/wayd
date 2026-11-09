@@ -16,6 +16,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -55,7 +56,7 @@ import java.util.Date
 
 /** What one app did in the chosen window: summary sentences, activity by hour, who it talks to, findings. */
 @Composable
-fun AppDetailScreen(onBack: () -> Unit, vm: AppDetailViewModel = hiltViewModel()) {
+fun AppDetailScreen(onBack: () -> Unit, onOpenMessages: (pkg: String, window: String) -> Unit, vm: AppDetailViewModel = hiltViewModel()) {
     val state by vm.report.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val name = if (vm.pkg == UNKNOWN_PKG) stringResource(R.string.app_unknown) else vm.labels.label(vm.pkg)
@@ -75,14 +76,14 @@ fun AppDetailScreen(onBack: () -> Unit, vm: AppDetailViewModel = hiltViewModel()
             is Loadable.Ready -> {
                 val r = s.value
                 if (r == null) Text(stringResource(R.string.detail_quiet))
-                else Detail(r, vm, context)
+                else Detail(r, vm, context, onOpenMessages)
             }
         }
     }
 }
 
 @Composable
-private fun Detail(r: AppReport, vm: AppDetailViewModel, context: android.content.Context) {
+private fun Detail(r: AppReport, vm: AppDetailViewModel, context: android.content.Context, onOpenMessages: (String, String) -> Unit) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Text(stringResource(R.string.detail_summary_title), style = MaterialTheme.typography.titleMedium)
@@ -108,6 +109,13 @@ private fun Detail(r: AppReport, vm: AppDetailViewModel, context: android.conten
         items(r.findings) { f -> FindingRow(f, vm, context) }
 
         item { PermissionSection(vm) }
+
+        item {
+            val count by vm.decryptedCount.collectAsStateWithLifecycle()
+            if (count > 0) {
+                OutlinedButton(onClick = { onOpenMessages(vm.pkg, vm.windowKey) }) { Text(stringResource(R.string.inspector_open, count)) }
+            }
+        }
 
         item { com.nathanhanapps.wayd.feature.ai.AiSection() }
     }

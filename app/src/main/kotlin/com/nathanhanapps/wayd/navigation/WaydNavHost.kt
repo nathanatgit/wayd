@@ -28,6 +28,7 @@ import androidx.navigation.compose.rememberNavController
 import com.nathanhanapps.wayd.R
 import com.nathanhanapps.wayd.feature.apps.AppDetailScreen
 import com.nathanhanapps.wayd.feature.apps.AppsScreen
+import com.nathanhanapps.wayd.feature.inspector.InspectorScreen
 import com.nathanhanapps.wayd.feature.record.RecordScreen
 import com.nathanhanapps.wayd.feature.reports.CompanyScreen
 import com.nathanhanapps.wayd.feature.reports.ReportDetailScreen
@@ -37,7 +38,7 @@ import com.nathanhanapps.wayd.feature.settings.SettingsScreen
 private enum class Tab(val route: String, @StringRes val label: Int, val icon: ImageVector, val children: List<String> = emptyList()) {
     Record("record", R.string.tab_record, Icons.Filled.PlayArrow),
     Reports("reports", R.string.tab_reports, Icons.Filled.DateRange, listOf("report/", "company/")),
-    Apps("apps", R.string.tab_apps, Icons.AutoMirrored.Filled.List, listOf("app/")),
+    Apps("apps", R.string.tab_apps, Icons.AutoMirrored.Filled.List, listOf("app/", "messages/")),
     Settings("settings", R.string.tab_settings, Icons.Filled.Settings),
 }
 
@@ -82,7 +83,10 @@ fun WaydNavHost() {
             }
             composable(Tab.Apps.route) { AppsScreen(onOpenApp = { pkg, win -> nav.navigate("app/$pkg/$win") }) }
             composable("app/{pkg}/{win}", listOf(navArgument("pkg") { type = NavType.StringType }, navArgument("win") { type = NavType.StringType })) {
-                AppDetailScreen(onBack = { nav.popBackStack() })
+                AppDetailScreen(onBack = { nav.popBackStack() }, onOpenMessages = { pkg, win -> nav.navigate("messages/$pkg/$win") })
+            }
+            composable("messages/{pkg}/{win}", listOf(navArgument("pkg") { type = NavType.StringType }, navArgument("win") { type = NavType.StringType })) {
+                InspectorScreen(onBack = { nav.popBackStack() })
             }
             composable(Tab.Settings.route) { SettingsScreen() }
         }

@@ -58,15 +58,21 @@ fun AiSection(vm: AiAnalysisViewModel = hiltViewModel()) {
                 OutlinedButton(onClick = { vm.analyse() }) { Text(stringResource(R.string.ai_retry)) }
             }
             is AiUiState.Done -> {
-                when (val o = s.outcome) {
-                    is AiOutcome.Success -> AiResultCard(o)
-                    is AiOutcome.Unreliable -> Message(stringResource(R.string.ai_unreliable), error = true)
-                    AiOutcome.NoModel -> Message(stringResource(R.string.ai_no_model), error = false)
-                    is AiOutcome.Failed -> Message(stringResource(R.string.ai_failed, o.message.take(120)), error = true)
-                }
+                AiOutcomeView(s.outcome)
                 OutlinedButton(onClick = { vm.analyse(useCache = false) }) { Text(stringResource(R.string.ai_retry)) }
             }
         }
+    }
+}
+
+/** Renders any analysis outcome: the AI opinion card, or why there is none. */
+@Composable
+fun AiOutcomeView(o: AiOutcome) {
+    when (o) {
+        is AiOutcome.Success -> AiResultCard(o)
+        is AiOutcome.Unreliable -> Message(stringResource(R.string.ai_unreliable), error = true)
+        AiOutcome.NoModel -> Message(stringResource(R.string.ai_no_model), error = false)
+        is AiOutcome.Failed -> Message(stringResource(R.string.ai_failed, o.message.take(120)), error = true)
     }
 }
 

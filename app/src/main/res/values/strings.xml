@@ -226,4 +226,14 @@ That content can include things other people sent you or that were sent about th
     <string name="ai_state_verifying">Checking the file…</string>
     <string name="ai_state_failed">Failed: %1$s</string>
     <string name="ft_id_in_request">Sent %1$s in %2$d decrypted request(s) to %3$s</string>
+    <string name="inspector_title">Decrypted messages</string>
+    <string name="inspector_private">This is the raw content of this app’s traffic and may include other people’s information. Keep it private.</string>
+    <string name="inspector_empty">No decrypted messages for this app in this window.</string>
+    <string name="inspector_analyse">Analyse %1$d selected with AI</string>
+    <string name="inspector_open">View %1$d decrypted messages</string>
+    <string name="inspector_headers">Headers</string>
+    <string name="inspector_body">Body</string>
+    <string name="inspector_no_body">(empty)</string>
+    <string name="inspector_binary">(binary, %1$d bytes)</string>
+    <string name="inspector_truncated">truncated</string>
 </resources>

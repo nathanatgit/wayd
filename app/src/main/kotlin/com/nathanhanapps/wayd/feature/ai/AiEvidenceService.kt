@@ -58,6 +58,19 @@ class AiEvidenceService @Inject constructor(
         )
     }
 
+    /** Evidence made only of the messages the user picked in the inspector (plus their connections). */
+    suspend fun requestForMessages(pkg: String, label: String, windowKey: String, locale: String, messageIds: Collection<Long>): AiRequest? =
+        withContext(Dispatchers.IO) {
+            val picked = messages.byIds(messageIds.toList().take(MAX_PICKED))
+            if (picked.isEmpty()) return@withContext null
+            val flowRows = flows.byIds(picked.map { it.flowId }.distinct().take(MAX_FLOWS))
+            AiRequest(
+                subject = "$label ($pkg), ${picked.size} selected decrypted message(s)",
+                evidence = picked.map { EvidenceItem("m:${it.id}", messageText(it)) } + flowRows.map { EvidenceItem("f:${it.id}", flowText(it)) },
+                locale = locale,
+            )
+        }
+
     private fun time(ms: Long) = SimpleDateFormat("MM-dd HH:mm:ss", Locale.US).format(Date(ms))
 
     private fun flowText(f: Flow) =
@@ -82,6 +95,7 @@ class AiEvidenceService @Inject constructor(
         const val MAX_FLOWS = 24
         const val MAX_PERMS = 10
         const val MAX_MESSAGES = 8
+        const val MAX_PICKED = 16
         const val BODY_CHARS = 500
     }
 }
