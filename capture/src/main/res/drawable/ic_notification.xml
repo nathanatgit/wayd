@@ -2,27 +2,19 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Same eye-and-two-fingers mark as the launcher icon, recentred for a 24dp status-bar glyph. -->
+    android:viewportWidth="372"
+    android:viewportHeight="372">
+    <!-- Status-bar glyph: the watching eyes as a flat silhouette (pupils are holes), recentred in a 372-unit box. -->
     <group
-        android:pivotX="55"
-        android:pivotY="62"
-        android:translateY="-8">
+        android:translateX="-70"
+        android:translateY="-70">
         <path
-            android:pathData="M26,40 Q56,12 86,40 Q56,68 26,40 Z"
-            android:strokeColor="#FFFFFFFF"
-            android:strokeWidth="6"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round" />
+            android:fillColor="#FFFFFFFF"
+            android:fillType="evenOdd"
+            android:pathData="M77,256 a91,145 0 1,0 182,0 a91,145 0 1,0 -182,0 Z M78,274 a48,62 0 1,0 96,0 a48,62 0 1,0 -96,0 Z" />
         <path
-            android:pathData="M48,40 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0"
-            android:fillColor="#FFFFFFFF" />
-        <path
-            android:pathData="M34,66 L46,96 L60,68"
-            android:strokeColor="#FFFFFFFF"
-            android:strokeWidth="11"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round" />
+            android:fillColor="#FFFFFFFF"
+            android:fillType="evenOdd"
+            android:pathData="M253,256 a91,145 0 1,0 182,0 a91,145 0 1,0 -182,0 Z M254,274 a48,62 0 1,0 96,0 a48,62 0 1,0 -96,0 Z" />
     </group>
 </vector>

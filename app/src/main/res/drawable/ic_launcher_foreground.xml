@@ -1,32 +1,120 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- "I'm watching you": an eye with a two-finger V pointing at it.
-         Group scales the artwork into the adaptive-icon safe zone (66dp circle). -->
+    <!-- Watching eyes (docs/brand/watching_eyes.svg), converted from its 512-unit viewBox.
+         Group scale 0.173 + translate 9.71 centres it and keeps it inside the 66dp adaptive-icon safe zone. -->
     <group
-        android:pivotX="55"
-        android:pivotY="62"
-        android:scaleX="0.8"
-        android:scaleY="0.8"
-        android:translateX="-1"
-        android:translateY="-8">
+        android:scaleX="0.173"
+        android:scaleY="0.173"
+        android:translateX="9.71"
+        android:translateY="9.71">
+
+        <!-- Eyeballs (left, right) -->
         <path
-            android:pathData="M26,40 Q56,12 86,40 Q56,68 26,40 Z"
-            android:strokeColor="#FFFFFF"
-            android:strokeWidth="5"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round" />
+            android:pathData="M77,256 a91,145 0 1,0 182,0 a91,145 0 1,0 -182,0 Z"
+            android:strokeColor="#479B9DA3"
+            android:strokeWidth="1.7">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="radial"
+                    android:centerX="140"
+                    android:centerY="200"
+                    android:gradientRadius="190">
+                    <item android:offset="0" android:color="#FFFFFFFF" />
+                    <item android:offset="0.57" android:color="#FFFDFDFE" />
+                    <item android:offset="0.84" android:color="#FFF0F0F3" />
+                    <item android:offset="1" android:color="#FFB9BBC1" />
+                </gradient>
+            </aapt:attr>
+        </path>
         <path
-            android:pathData="M48,40 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0"
-            android:fillColor="#FFFFFF" />
+            android:pathData="M253,256 a91,145 0 1,0 182,0 a91,145 0 1,0 -182,0 Z"
+            android:strokeColor="#479B9DA3"
+            android:strokeWidth="1.7">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="radial"
+                    android:centerX="316"
+                    android:centerY="200"
+                    android:gradientRadius="190">
+                    <item android:offset="0" android:color="#FFFFFFFF" />
+                    <item android:offset="0.57" android:color="#FFFDFDFE" />
+                    <item android:offset="0.84" android:color="#FFF0F0F3" />
+                    <item android:offset="1" android:color="#FFB9BBC1" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Soft side shading -->
+        <path android:pathData="M77,256 a91,145 0 1,0 182,0 a91,145 0 1,0 -182,0 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="77"
+                    android:startY="256"
+                    android:endX="259"
+                    android:endY="256">
+                    <item android:offset="0" android:color="#387C7E87" />
+                    <item android:offset="0.23" android:color="#00FFFFFF" />
+                    <item android:offset="0.78" android:color="#00FFFFFF" />
+                    <item android:offset="1" android:color="#2E777A81" />
+                </gradient>
+            </aapt:attr>
+        </path>
+        <path android:pathData="M253,256 a91,145 0 1,0 182,0 a91,145 0 1,0 -182,0 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="253"
+                    android:startY="256"
+                    android:endX="435"
+                    android:endY="256">
+                    <item android:offset="0" android:color="#387C7E87" />
+                    <item android:offset="0.23" android:color="#00FFFFFF" />
+                    <item android:offset="0.78" android:color="#00FFFFFF" />
+                    <item android:offset="1" android:color="#2E777A81" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Irises, gaze offset to the left -->
+        <path android:pathData="M78,274 a48,62 0 1,0 96,0 a48,62 0 1,0 -96,0 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="radial"
+                    android:centerX="128"
+                    android:centerY="309"
+                    android:gradientRadius="90">
+                    <item android:offset="0" android:color="#FF70421E" />
+                    <item android:offset="0.52" android:color="#FF38251A" />
+                    <item android:offset="1" android:color="#FF1D1714" />
+                </gradient>
+            </aapt:attr>
+        </path>
+        <path android:pathData="M254,274 a48,62 0 1,0 96,0 a48,62 0 1,0 -96,0 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="radial"
+                    android:centerX="304"
+                    android:centerY="309"
+                    android:gradientRadius="90">
+                    <item android:offset="0" android:color="#FF70421E" />
+                    <item android:offset="0.52" android:color="#FF38251A" />
+                    <item android:offset="1" android:color="#FF1D1714" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Catchlights -->
         <path
-            android:pathData="M34,66 L46,96 L60,68"
-            android:strokeColor="#FFFFFF"
-            android:strokeWidth="9"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round" />
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M93,244 a14,17 0 1,0 28,0 a14,17 0 1,0 -28,0 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M269,244 a14,17 0 1,0 28,0 a14,17 0 1,0 -28,0 Z" />
     </group>
 </vector>
