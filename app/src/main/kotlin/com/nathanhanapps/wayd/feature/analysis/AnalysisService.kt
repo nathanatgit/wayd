@@ -14,6 +14,8 @@ import com.nathanhanapps.wayd.analysis.RuleEngine
 import com.nathanhanapps.wayd.core.db.FindingDao
 import com.nathanhanapps.wayd.core.db.Flow
 import com.nathanhanapps.wayd.core.db.FlowDao
+import com.nathanhanapps.wayd.core.db.Message
+import com.nathanhanapps.wayd.core.db.MessageDao
 import com.nathanhanapps.wayd.core.db.PermEvent
 import com.nathanhanapps.wayd.core.db.PermEventDao
 import com.nathanhanapps.wayd.enrich.TrackerDb
@@ -43,7 +45,7 @@ object Windows {
     }
 }
 
-class Evidence(val flows: List<Flow>, val permissions: List<PermEvent>)
+class Evidence(val flows: List<Flow>, val permissions: List<PermEvent>, val messages: List<Message> = emptyList())
 
 class AnalysisResult(val report: DailyReport, val apps: Map<String, AppReport>)
 
@@ -54,6 +56,7 @@ class AnalysisService @Inject constructor(
     private val findings: FindingDao,
     private val permEvents: PermEventDao,
     private val permissions: PermissionHistoryService,
+    private val messageDao: MessageDao,
 ) {
     private val engine = RuleEngine()
     private val tracker = TrackerDb()
@@ -68,7 +71,7 @@ class AnalysisService @Inject constructor(
         // Pull permission history for the apps that were active (best effort; needs Shizuku), then read what is stored.
         runCatching { permissions.sync(inWindow.map { it.pkg }.distinct(), start, end) }
         val known = flows.hostsBefore(start).groupBy({ it.pkg }, { it.host }).mapValues { it.value.toSet() }
-        val ctx = RuleContext(inWindow, start, end, known, tracker, System.currentTimeMillis(), permEvents.between(start, end))
+        val ctx = RuleContext(inWindow, start, end, known, tracker, System.currentTimeMillis(), permEvents.between(start, end), messageDao.between(start, end))
         val found = engine.run(ctx)
         findings.deleteBetween(start, end)
         findings.insertAll(found)
@@ -83,16 +86,23 @@ class AnalysisService @Inject constructor(
     /** Parses `["f:12","p:3"]` into flow ids. */
     fun evidenceIds(json: String): List<Long> = EVIDENCE.findAll(json).filter { it.groupValues[1] == "f" }.map { it.groupValues[2].toLong() }.toList()
 
+    fun messageIds(json: String): List<Long> = EVIDENCE.findAll(json).filter { it.groupValues[1] == "m" }.map { it.groupValues[2].toLong() }.toList()
+
     fun permissionEvidenceIds(json: String): List<Long> = EVIDENCE.findAll(json).filter { it.groupValues[1] == "p" }.map { it.groupValues[2].toLong() }.toList()
 
     suspend fun evidence(json: String): Evidence = withContext(Dispatchers.IO) {
         val f = evidenceIds(json)
         val p = permissionEvidenceIds(json)
-        Evidence(if (f.isEmpty()) emptyList() else flows.byIds(f), if (p.isEmpty()) emptyList() else permEvents.byIds(p))
+        val m = messageIds(json)
+        Evidence(
+            if (f.isEmpty()) emptyList() else flows.byIds(f),
+            if (p.isEmpty()) emptyList() else permEvents.byIds(p),
+            if (m.isEmpty()) emptyList() else messageDao.byIds(m),
+        )
     }
 
     private companion object {
-        val EVIDENCE = Regex("([fp]):(\\d+)")
+        val EVIDENCE = Regex("([fpm]):(\\d+)")
     }
 }
 

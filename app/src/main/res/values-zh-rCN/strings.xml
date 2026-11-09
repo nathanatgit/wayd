@@ -225,4 +225,5 @@
     <string name="ai_state_active">已安装 · 使用中</string>
     <string name="ai_state_verifying">正在检查文件…</string>
     <string name="ai_state_failed">失败：%1$s</string>
+    <string name="ft_id_in_request">在 %2$d 个解密请求中向 %3$s 发送了「%1$s」</string>
 </resources>

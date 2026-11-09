@@ -158,6 +158,12 @@ private fun FindingRow(f: Finding, vm: AppDetailViewModel, context: android.cont
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
+                evidence.messages.forEach { m ->
+                    Text(
+                        "${fmt.format(Date(m.ts))}  ${m.method.orEmpty()} ${m.url.orEmpty()}  ${m.dir.name}",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
                 evidence.flows.forEach { e ->
                     Text(
                         "${fmt.format(Date(e.startAt))}  ${e.host ?: e.dstIp}:${e.dstPort}  ${e.proto.name}  ↑${fmtBytes(context, e.bytesUp)} ↓${fmtBytes(context, e.bytesDown)}",

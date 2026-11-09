@@ -31,6 +31,12 @@ fun findingTitle(f: Finding): String {
         "R-CLEARTEXT-HTTP" -> stringResource(R.string.ft_cleartext, arg(0), arg(1))
         "R-CLIPBOARD-BG" -> stringResource(R.string.ft_clipboard_bg, num(0))
         "R-SCREEN-CAPTURE" -> stringResource(R.string.ft_screen_capture, num(0))
+        "R-ID-IN-REQUEST" -> stringResource(
+            R.string.ft_id_in_request,
+            com.nathanhanapps.wayd.core.model.DataType.entries.firstOrNull { it.name == arg(0) }
+                ?.let { com.nathanhanapps.wayd.feature.ai.dataTypeLabel(it) } ?: arg(0),
+            num(1), arg(2),
+        )
         "R-LOC-THEN-UP" -> stringResource(R.string.ft_loc_then_up, arg(0), num(1))
         else -> p.fallback
     }

@@ -2,6 +2,7 @@ package com.nathanhanapps.wayd.analysis
 
 import com.nathanhanapps.wayd.core.db.Finding
 import com.nathanhanapps.wayd.core.db.Flow
+import com.nathanhanapps.wayd.core.db.Message
 import com.nathanhanapps.wayd.core.db.PermEvent
 import com.nathanhanapps.wayd.core.model.Severity
 import com.nathanhanapps.wayd.core.model.Tier
@@ -23,7 +24,11 @@ class RuleContext(
     val now: Long,
     /** Permission-use records (AppOps history buckets) that started inside the window. */
     val permEvents: List<PermEvent> = emptyList(),
+    /** Decrypted messages of flows in the window (research build; empty otherwise). */
+    val messages: List<Message> = emptyList(),
 ) {
+    val flowsById: Map<Long, Flow> by lazy { flows.associateBy { it.id } }
+
     val attributed: List<Flow> by lazy { flows.filter { it.pkg != UNKNOWN_PKG } }
 }
 
@@ -39,8 +44,8 @@ interface Rule {
 }
 
 /** Helpers shared by rules. */
-internal fun evidenceJson(flowIds: Collection<Long>, permIds: Collection<Long> = emptyList()): String =
-    (permIds.map { "p:$it" } + flowIds.map { "f:$it" }).joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
+internal fun evidenceJson(flowIds: Collection<Long>, permIds: Collection<Long> = emptyList(), messageIds: Collection<Long> = emptyList()): String =
+    (permIds.map { "p:$it" } + messageIds.map { "m:$it" } + flowIds.map { "f:$it" }).joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
 
 internal fun finding(
     ctx: RuleContext,
@@ -51,6 +56,7 @@ internal fun finding(
     evidence: Collection<Long>,
     dataTypes: String = "",
     perm: Collection<Long> = emptyList(),
+    msgs: Collection<Long> = emptyList(),
 ) = Finding(
     sessionId = null,
     pkg = pkg,
@@ -58,7 +64,7 @@ internal fun finding(
     severity = severity,
     title = title,
     dataTypes = dataTypes,
-    evidenceJson = evidenceJson(evidence, perm),
+    evidenceJson = evidenceJson(evidence, perm, msgs),
     createdAt = ctx.windowStart, // anchors the finding to its day so a re-run can replace it
     userState = com.nathanhanapps.wayd.core.model.UserState.NEW,
 )

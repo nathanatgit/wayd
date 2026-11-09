@@ -172,7 +172,7 @@ private fun actionLabel(a: SuggestedAction) = stringResource(
 )
 
 @Composable
-private fun dataTypeLabel(t: DataType) = stringResource(
+fun dataTypeLabel(t: DataType) = stringResource(
     when (t) {
         DataType.DEVICE_ID -> R.string.ai_dt_device_id
         DataType.ADVERTISING_ID -> R.string.ai_dt_ad_id

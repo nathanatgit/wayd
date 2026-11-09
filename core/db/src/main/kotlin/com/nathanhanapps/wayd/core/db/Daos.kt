@@ -45,6 +45,12 @@ interface MessageDao {
     @Query("SELECT COUNT(*) FROM Message")
     suspend fun count(): Long
 
+    @Query("SELECT m.* FROM Message m JOIN Flow f ON f.id = m.flowId WHERE f.startAt >= :start AND f.startAt < :end ORDER BY m.id")
+    suspend fun between(start: Long, end: Long): List<Message>
+
+    @Query("SELECT * FROM Message WHERE id IN (:ids)")
+    suspend fun byIds(ids: List<Long>): List<Message>
+
     @Query("SELECT m.* FROM Message m JOIN Flow f ON f.id = m.flowId WHERE f.sessionId = :sessionId ORDER BY m.id")
     suspend fun forSession(sessionId: Long): List<Message>
 

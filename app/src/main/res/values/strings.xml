@@ -225,4 +225,5 @@ That content can include things other people sent you or that were sent about th
     <string name="ai_state_active">Installed · in use</string>
     <string name="ai_state_verifying">Checking the file…</string>
     <string name="ai_state_failed">Failed: %1$s</string>
+    <string name="ft_id_in_request">Sent %1$s in %2$d decrypted request(s) to %3$s</string>
 </resources>
