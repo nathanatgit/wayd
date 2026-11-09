@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -16,6 +17,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nathanhanapps.wayd.BuildConfig
 import com.nathanhanapps.wayd.R
+import com.nathanhanapps.wayd.privilege.ShizukuState
 
 @Composable
 fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
@@ -26,7 +28,46 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
     ) {
         Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineMedium)
 
-        Section(stringResource(R.string.settings_privilege), stringResource(R.string.settings_privilege_none))
+        val root by vm.root.collectAsStateWithLifecycle()
+        val shizuku by vm.shizuku.collectAsStateWithLifecycle()
+        val checking by vm.checking.collectAsStateWithLifecycle()
+        Column {
+            Text(stringResource(R.string.settings_privilege), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Text(
+                stringResource(
+                    when {
+                        root == RootState.AVAILABLE -> R.string.settings_privilege_root
+                        shizuku == ShizukuState.READY -> R.string.settings_privilege_shizuku
+                        else -> R.string.settings_privilege_none
+                    },
+                ),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Text(
+                stringResource(
+                    when (root) {
+                        RootState.AVAILABLE -> R.string.settings_root_available
+                        RootState.UNAVAILABLE -> R.string.settings_root_unavailable
+                        RootState.UNKNOWN -> R.string.settings_root_unknown
+                    },
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                stringResource(
+                    when (shizuku) {
+                        ShizukuState.NOT_INSTALLED -> R.string.settings_shizuku_not_installed
+                        ShizukuState.NOT_RUNNING -> R.string.settings_shizuku_not_running
+                        ShizukuState.NEEDS_PERMISSION -> R.string.settings_shizuku_needs_permission
+                        ShizukuState.READY -> R.string.settings_shizuku_ready
+                    },
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            OutlinedButton(onClick = vm::checkRoot, enabled = !checking) {
+                Text(stringResource(if (checking) R.string.settings_root_checking else R.string.settings_root_check))
+            }
+        }
 
         Section(
             stringResource(R.string.settings_database),

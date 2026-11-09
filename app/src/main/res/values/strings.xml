@@ -140,4 +140,15 @@ That content can include things other people sent you or that were sent about th
     <string name="export_empty">Nothing recorded to export yet.</string>
     <string name="export_failed">Export failed.</string>
     <string name="dest_unnamed_more">%1$s +%2$d more addresses</string>
+    <string name="settings_privilege_root">Root</string>
+    <string name="settings_privilege_shizuku">Shizuku (shell-level)</string>
+    <string name="settings_root_available">Root: available</string>
+    <string name="settings_root_unavailable">Root: not available, or access was denied</string>
+    <string name="settings_root_unknown">Root: not checked yet</string>
+    <string name="settings_shizuku_not_installed">Shizuku: not installed</string>
+    <string name="settings_shizuku_not_running">Shizuku: installed but not running</string>
+    <string name="settings_shizuku_needs_permission">Shizuku: running, WAYD is not allowed yet</string>
+    <string name="settings_shizuku_ready">Shizuku: ready</string>
+    <string name="settings_root_check">Check root</string>
+    <string name="settings_root_checking">Waiting for root access…</string>
 </resources>

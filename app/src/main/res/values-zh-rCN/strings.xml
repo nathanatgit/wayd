@@ -140,4 +140,15 @@
     <string name="export_empty">还没有可导出的记录。</string>
     <string name="export_failed">导出失败。</string>
     <string name="dest_unnamed_more">%1$s 等另外 %2$d 个地址</string>
+    <string name="settings_privilege_root">Root</string>
+    <string name="settings_privilege_shizuku">Shizuku（shell 级）</string>
+    <string name="settings_root_available">Root：可用</string>
+    <string name="settings_root_unavailable">Root：不可用，或已被拒绝</string>
+    <string name="settings_root_unknown">Root：尚未检测</string>
+    <string name="settings_shizuku_not_installed">Shizuku：未安装</string>
+    <string name="settings_shizuku_not_running">Shizuku：已安装但未运行</string>
+    <string name="settings_shizuku_needs_permission">Shizuku：运行中，尚未授权在干嘛</string>
+    <string name="settings_shizuku_ready">Shizuku：已就绪</string>
+    <string name="settings_root_check">检测 root</string>
+    <string name="settings_root_checking">正在等待 root 授权…</string>
 </resources>
