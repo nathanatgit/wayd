@@ -201,9 +201,22 @@ class AppReportTest {
         assertTrue(r.insights.any { it.kind == InsightKind.TRACKERS })
         assertTrue(r.insights.any { it.kind == InsightKind.BACKGROUND_SHARE })
         assertTrue(r.insights.any { it.kind == InsightKind.UNNAMED_DESTINATIONS })
+        val bucket = r.destinations.single { it.unnamed }
+        assertEquals(1, bucket.addressCount)
+        assertEquals(listOf("8.8.4.4"), bucket.hosts)
         assertTrue(r.insights.any { it.kind == InsightKind.LOCAL_NETWORK })
         assertEquals(fl.filter { it.dstIp != "192.168.1.2" }.sumOf { it.bytesUp + it.bytesDown }, r.total)
         assertEquals(r.total, r.hourlyUp.sum() + r.hourlyDown.sum())
+    }
+
+    @Test fun unnamedAddressesAreOneBucketAndNeverTheHeadline() {
+        val fl = (1..30).map { flow(host = null, dstIp = "42.63.50.$it", up = 10, down = 1_000_000) } + flow(host = "api.example.com", up = 10, down = 100)
+        val engine = RuleEngine()
+        val r = AppReportBuilder.build("p", fl, emptyList(), engine, TrackerDb())
+        assertEquals(2, r.destinations.size) // one named, one unnamed bucket
+        assertEquals(30, r.destinations.first { it.unnamed }.addressCount)
+        // The named destination has ~0% of the traffic, so there must be no "mostly talks to" headline.
+        assertTrue(r.insights.none { it.kind == InsightKind.TOP_DESTINATION })
     }
 
     @Test fun emptyOrQuietAppDoesNotCrash() {

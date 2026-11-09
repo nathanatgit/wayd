@@ -45,10 +45,10 @@ object DailyReportBuilder {
             .sortedByDescending { it.screenOffUp + it.screenOffDown }.take(10)
 
         val companies = attributed.mapNotNull { f -> tracker.lookup(f.host)?.let { Triple(f, it.company, it.category) } }
-            .groupBy { it.second }.map { (company, rows) ->
+            .groupBy { it.second to it.third }.map { (key, rows) ->
                 val perApp = rows.groupBy { it.first.pkg }.map { (pkg, r) -> pkg to r.sumOf { it.first.bytesUp + it.first.bytesDown } }
                     .sortedByDescending { it.second }
-                CompanyRow(company, rows.first().third, perApp, rows.sumOf { it.first.bytesUp })
+                CompanyRow(key.first, key.second, perApp, rows.sumOf { it.first.bytesUp })
             }.sortedByDescending { it.apps.sumOf { a -> a.second } }
 
         val hourly = LongArray(24)
@@ -66,7 +66,7 @@ object DailyReportBuilder {
             windowEnd = ctx.windowEnd,
             appCount = attributed.map { it.pkg }.distinct().size,
             domainCount = attributed.mapNotNull { it.host }.distinct().size,
-            companyCount = companies.size,
+            companyCount = companies.map { it.company }.distinct().size,
             trackerContacts = trackerContacts,
             alerts = findings.filter { it.severity == Severity.HIGH || it.severity == Severity.MEDIUM },
             others = findings.filter { it.severity == Severity.LOW || (it.severity == Severity.INFO && it.ruleId != "R-NEW-DOMAIN") },

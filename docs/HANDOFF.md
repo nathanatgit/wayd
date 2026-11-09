@@ -1,6 +1,6 @@
 # Handoff
 
-_Last updated: 2026-11-09 — M0 done; M1 capture MVP first slice working on NX733J._
+_Last updated: 2026-11-09 — M0 done; M1 capture working on NX733J; M2 (enrichment, rules, app-oriented analysis UI) built and verified on device._
 
 ## State
 
@@ -22,6 +22,14 @@ Do not create `local.properties` on this machine: lint rejects its path escaping
 ## Testing without disturbing the phone
 
 `adb install`, then `scrcpy -s <dev> --new-display=1080x2400/420 --start-app=<pkg> --no-audio -N --record=<file>`; screenshot with `adb exec-out screencap -d <SurfaceFlinger display id> -p` (id from `dumpsys SurfaceFlinger --display-id`, not the logical id); tap with `input -d <logical id>`. Kill `scrcpy.exe` afterwards.
+
+## M2 status (enrichment + analysis)
+
+Done: `enrich` (seed tracker/company DB, DoH hosts, private-address check), `analysis` (8 rules, risk score with reasons, `AppReportBuilder`, `DailyReportBuilder`), Apps tab (list ranked by activity, window chips Today/Yesterday/7 days), app detail (plain-language summary, hourly chart, destinations by company+purpose, findings that expand to their evidence connections, permission-use placeholder), Reports tab (days list, report detail with alerts / background / who-received-data / new / coverage). Flows are enriched with company+category at capture and backfilled on analysis. 42 unit tests.
+
+Not done: GeoIP/countries and the 24 h heatmap by app (report has hourly totals only), stored/versioned report objects (computed on demand, fast for current data), identifier matcher (needs M4 messages), Sankey, per-day baselines beyond "new domain". Report render time for 24 h not yet measured (acceptance: < 1 s).
+
+**Next (Nat's request): per-app permission-use history** (location, camera, mic, clipboard...) visualised in the app detail. Plan: M3 AppOpsCollector. Probe on the device shows `dumpsys appops --history --package` works from adb; in-app needs Shizuku/root. Decide: Shizuku vs adb-only dev path first.
 
 ## M1 status (capture MVP)
 
@@ -47,6 +55,7 @@ Causes found in the relay and fixed in the next build (not yet re-verified by Na
 
 - Wireless adb drops (`device offline`, scrcpy `Device disconnected`) whenever the WAYD VPN comes up, even with the PC excluded via the debug-only `--es exclude <cidr>` extra on `MainActivity`; root cause not found. If the scrcpy display dies, apps launched on it can fall back to the main display. Do not drive multi-app tests through scripts; cleanup commands can fail while adb is offline, so always re-verify `log.tag`, VPN state and `pidof` afterwards.
 - Nubia AutoLaunch blocks `am start-foreground-service` for the VPN service ("Blocked by AutoLaunch"); start only from the UI.
+- scrcpy: after `taskkill scrcpy.exe` the on-device server (`app_process ... scrcpy.Server`) can keep running and leave stale virtual displays that render black; kill them by PID (`adb shell kill <pid>` from `ps -A | grep scrcpy`) and verify `dumpsys SurfaceFlinger --display-id | grep -c scrcpy` is 0 before a new session. Screenshots must use the SurfaceFlinger id of the *live* display.
 - Only one VPN can be active: WAYD replaces other VPN/proxy apps (e.g. Clash on Nat's phone) while recording.
 
 ## Next step

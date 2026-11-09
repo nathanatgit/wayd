@@ -60,6 +60,8 @@ dependencies {
     implementation(project(":core:db"))
     implementation(project(":core:ui"))
     implementation(project(":capture"))
+    implementation(project(":analysis"))
+    implementation(project(":enrich"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

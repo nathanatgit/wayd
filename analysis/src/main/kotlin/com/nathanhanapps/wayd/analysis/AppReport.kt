@@ -17,6 +17,9 @@ data class Destination(
     val bytesDown: Long,
     val screenOffBytes: Long,
     val flowIds: List<Long>,
+    /** True for the single bucket of connections that have no hostname; [hosts] then holds sample IP addresses. */
+    val unnamed: Boolean = false,
+    val addressCount: Int = 0,
 ) {
     val total get() = bytesUp + bytesDown
 }
@@ -67,8 +70,12 @@ object AppReportBuilder {
             hourlyDown[h] += it.bytesDown
         }
 
-        // Group by company AND purpose, so an app's ad / analytics endpoints are not hidden inside a CDN row.
-        val destinations = remote.groupBy { f ->
+        // Named destinations are grouped by company AND purpose, so an app's ad / analytics endpoints are not
+        // hidden inside a CDN row. Connections without any hostname go into one bucket instead of a wall of IPs.
+        fun hasName(f: Flow) = f.host != null || f.company != null
+        val (namedFlows, unnamedFlows) = remote.partition(::hasName)
+
+        val named = namedFlows.groupBy { f ->
             val info = tracker.lookup(f.host)
             (f.company ?: info?.company ?: f.host ?: f.dstIp) to (f.category ?: info?.category)
         }.map { (key, fl) ->
@@ -83,7 +90,23 @@ object AppReportBuilder {
                 screenOffBytes = fl.filter { !it.screenOn }.sumOf { it.bytesUp + it.bytesDown },
                 flowIds = fl.sortedByDescending { it.bytesUp + it.bytesDown }.take(50).map { it.id },
             )
-        }.sortedByDescending { it.total }
+        }
+        val unnamedBucket = if (unnamedFlows.isEmpty()) emptyList() else listOf(
+            Destination(
+                label = "",
+                company = null,
+                category = null,
+                hosts = unnamedFlows.groupBy { it.dstIp }.entries.sortedByDescending { e -> e.value.sumOf { it.bytesUp + it.bytesDown } }.take(8).map { it.key },
+                flows = unnamedFlows.size,
+                bytesUp = unnamedFlows.sumOf { it.bytesUp },
+                bytesDown = unnamedFlows.sumOf { it.bytesDown },
+                screenOffBytes = unnamedFlows.filter { !it.screenOn }.sumOf { it.bytesUp + it.bytesDown },
+                flowIds = unnamedFlows.sortedByDescending { it.bytesUp + it.bytesDown }.take(50).map { it.id },
+                unnamed = true,
+                addressCount = unnamedFlows.map { it.dstIp }.distinct().size,
+            ),
+        )
+        val destinations = (named + unnamedBucket).sortedByDescending { it.total }
 
         val up = remote.sumOf { it.bytesUp }
         val down = remote.sumOf { it.bytesDown }
@@ -91,7 +114,8 @@ object AppReportBuilder {
         val total = up + down
 
         val insights = ArrayList<Insight>()
-        destinations.firstOrNull()?.takeIf { total > 0 }?.let {
+        // A headline only helps when one named destination clearly dominates.
+        destinations.firstOrNull { !it.unnamed }?.takeIf { total > 0 && it.total * 100 / total >= 20 }?.let {
             insights += Insight(InsightKind.TOP_DESTINATION, it.label, it.total, (it.total * 100 / total).toInt())
         }
         if (total > 0 && off > 0) insights += Insight(InsightKind.BACKGROUND_SHARE, number = off, percent = (off * 100 / total).toInt())
