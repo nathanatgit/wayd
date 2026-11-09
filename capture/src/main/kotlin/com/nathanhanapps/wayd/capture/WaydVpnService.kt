@@ -1,0 +1,207 @@
+package com.nathanhanapps.wayd.capture
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.net.VpnService
+import android.os.ParcelFileDescriptor
+import android.os.SystemClock
+import androidx.core.app.NotificationCompat
+import com.nathanhanapps.wayd.core.db.DnsDao
+import com.nathanhanapps.wayd.core.db.DnsRecord
+import com.nathanhanapps.wayd.core.db.Flow
+import com.nathanhanapps.wayd.core.db.FlowDao
+import com.nathanhanapps.wayd.core.db.Session
+import com.nathanhanapps.wayd.core.db.SessionDao
+import com.nathanhanapps.wayd.core.model.Privilege
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.runBlocking
+import javax.inject.Inject
+
+/**
+ * The recording VPN. Routes all traffic into the Rust netstack, which relays it to the real network.
+ * The app excludes itself from the VPN so the relay's own sockets bypass the tunnel (no `protect()` needed).
+ */
+@AndroidEntryPoint
+class WaydVpnService : VpnService() {
+    @Inject lateinit var state: CaptureState
+    @Inject lateinit var sessions: SessionDao
+    @Inject lateinit var flows: FlowDao
+    @Inject lateinit var dns: DnsDao
+
+    private var pfd: ParcelFileDescriptor? = null
+    private var native: NativeNet? = null
+    private var handle = 0L
+    private var worker: Thread? = null
+    @Volatile private var running = false
+    private var sessionId = 0L
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_STOP -> stopCapture()
+            else -> startCapture()
+        }
+        return START_NOT_STICKY
+    }
+
+    override fun onRevoke() {
+        stopCapture() // the user turned the VPN off in system settings
+    }
+
+    override fun onDestroy() {
+        stopCapture()
+        super.onDestroy()
+    }
+
+    private fun startCapture() {
+        if (running) return
+        state.reset(CapturePhase.STARTING)
+        promote(0, 0)
+
+        val tun = Builder()
+            .setSession("WAYD")
+            .setMtu(MTU)
+            .addAddress("10.111.222.1", 24)
+            .addRoute("0.0.0.0", 0)
+            .addAddress("fd00:111:222::1", 64)
+            .addRoute("::", 0)
+            .apply { runCatching { addDisallowedApplication(packageName) } }
+            .establish()
+        if (tun == null) {
+            fail()
+            return
+        }
+        val net = NativeNet()
+        val h = runCatching { net.nativeStart(tun.fd, MTU) }.getOrDefault(0L)
+        if (h == 0L) {
+            tun.close()
+            fail()
+            return
+        }
+        pfd = tun
+        native = net
+        handle = h
+        sessionId = runBlocking { sessions.insert(Session(startedAt = System.currentTimeMillis(), endedAt = null, privilege = Privilege.NONE, coverageJson = "{}")) }
+        running = true
+        state.reset(CapturePhase.RUNNING)
+
+        worker = Thread({ pollLoop(net, h) }, "wayd-capture").also { it.start() }
+    }
+
+    private inner class BatchSink : CaptureSink {
+        val flowBuf = ArrayList<Flow>()
+        val dnsBuf = ArrayList<DnsRecord>()
+        override fun flow(f: Flow) { flowBuf += f }
+        override fun dns(d: DnsRecord) { dnsBuf += d }
+
+        fun flush() {
+            if (flowBuf.isEmpty() && dnsBuf.isEmpty()) return
+            val f = ArrayList(flowBuf)
+            val d = ArrayList(dnsBuf)
+            flowBuf.clear()
+            dnsBuf.clear()
+            runBlocking {
+                if (f.isNotEmpty()) flows.insertAll(f)
+                if (d.isNotEmpty()) dns.insertAll(d)
+            }
+        }
+    }
+
+    private fun pollLoop(net: NativeNet, h: Long) {
+        val sink = BatchSink()
+        val t = FlowTracker(sessionId, AndroidUidResolver(this), sink, AndroidCaptureEnv(this))
+        val buf = ByteArray(POLL_BUF)
+        var lastFlush = SystemClock.elapsedRealtime()
+        var lastNotify = 0L
+        try {
+            while (running) {
+                val n = net.nativePoll(h, buf, 250)
+                if (n < 0) break
+                if (n > 0) NativeEvents.decode(buf, n).forEach(t::onEvent)
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastFlush >= FLUSH_MS) {
+                    sink.flush()
+                    state.set(t.stats())
+                    lastFlush = now
+                    if (now - lastNotify >= NOTIFY_MS) {
+                        promote(t.stats().flows, t.stats().apps)
+                        lastNotify = now
+                    }
+                }
+            }
+        } finally {
+            t.finishAll()
+            sink.flush()
+            state.set(t.stats())
+        }
+    }
+
+    private fun stopCapture() {
+        val wasRunning = running
+        running = false
+        worker?.join(2_000)
+        worker = null
+        if (handle != 0L) {
+            native?.nativeStop(handle)
+            handle = 0L
+        }
+        native = null
+        pfd?.close()
+        pfd = null
+        if (wasRunning && sessionId != 0L) {
+            runBlocking { sessions.end(sessionId, System.currentTimeMillis()) }
+            sessionId = 0L
+        }
+        state.set(CapturePhase.IDLE)
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    private fun fail() {
+        state.set(CapturePhase.ERROR)
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    /** (Re)posts the foreground notification. Falls back gracefully if the OS refuses the service type. */
+    private fun promote(flowCount: Int, appCount: Int) {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL, getString(R.string.capture_channel_name), NotificationManager.IMPORTANCE_LOW),
+        )
+        val open = packageManager.getLaunchIntentForPackage(packageName)?.let {
+            PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE)
+        }
+        val stop = PendingIntent.getService(
+            this, 1, Intent(this, WaydVpnService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE,
+        )
+        val n: Notification = NotificationCompat.Builder(this, CHANNEL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(getString(R.string.capture_notif_title))
+            .setContentText(getString(R.string.capture_notif_text, flowCount, appCount))
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(open)
+            .addAction(0, getString(R.string.capture_notif_stop), stop)
+            .build()
+        runCatching {
+            startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
+        }.onFailure {
+            runCatching { nm.notify(NOTIF_ID, n) }
+        }
+    }
+
+    companion object {
+        const val ACTION_START = "com.nathanhanapps.wayd.capture.START"
+        const val ACTION_STOP = "com.nathanhanapps.wayd.capture.STOP"
+        private const val CHANNEL = "capture"
+        private const val NOTIF_ID = 1
+        private const val MTU = 1500
+        private const val POLL_BUF = 64 * 1024
+        private const val FLUSH_MS = 500L
+        private const val NOTIFY_MS = 2_000L
+    }
+}

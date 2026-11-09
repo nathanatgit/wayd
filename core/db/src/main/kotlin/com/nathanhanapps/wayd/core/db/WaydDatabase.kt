@@ -15,6 +15,8 @@ import androidx.room.RoomDatabase
 abstract class WaydDatabase : RoomDatabase() {
     abstract fun consentDao(): ConsentDao
     abstract fun sessionDao(): SessionDao
+    abstract fun flowDao(): FlowDao
+    abstract fun dnsDao(): DnsDao
 
     companion object {
         const val NAME = "wayd.db"

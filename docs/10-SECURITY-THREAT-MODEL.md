@@ -44,3 +44,14 @@ WAYD holds the most sensitive data on the phone. Treat WAYD itself as a high-val
 | Shizuku permission | ADB/root features |
 
 No location, contacts, SMS or storage permissions. WAYD reads device identifiers only to match them in traffic, and only at the privilege level available.
+
+## Permissions added in M1 (2026-11-09)
+
+| Permission | Why | Risk / mitigation |
+|---|---|---|
+| `INTERNET` | The userspace stack relays the user's own traffic to its real destination. WAYD makes no network calls of its own. | Code review rule: no other `Socket`/`URL` use outside `capture/native` relay. The app excludes itself from the VPN (`addDisallowedApplication`) so relay sockets bypass the tunnel. |
+| `BIND_VPN_SERVICE` (service) | Declared on `WaydVpnService`; only the system can bind. | User must accept the system VPN consent dialog. |
+| `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SYSTEM_EXEMPTED`, `POST_NOTIFICATIONS` | Keep recording alive and show a persistent "recording" notification with a Stop action. | Notification permission is optional; recording works without it. |
+| `QUERY_ALL_PACKAGES` | Map connection UIDs to package names for every installed app. | Sideload/`research` distribution only; a store build needs a policy declaration. Package names never leave the device. |
+
+Native code (`capture/native`) parses no payloads; it reports only bounded prefixes (2 KB TCP per direction, DNS datagrams, first UDP datagram) to Kotlin, where parsers are size-limited and treat input as hostile.

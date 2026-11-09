@@ -8,7 +8,20 @@
     <string name="tab_settings">Settings</string>
 
     <string name="record_title">Record</string>
-    <string name="record_placeholder">Traffic recording arrives in a later version. Nothing is captured yet.</string>
+    <string name="record_start">Start recording</string>
+    <string name="record_stop">Stop recording</string>
+    <string name="record_status_idle">Not recording</string>
+    <string name="record_status_starting">Starting…</string>
+    <string name="record_status_running">Recording</string>
+    <string name="record_status_error">Could not start the VPN</string>
+    <string name="record_notice">Recording routes this phone\'s traffic through WAYD on the device. Nothing leaves the phone.</string>
+    <string name="stat_flows">Connections</string>
+    <string name="stat_apps">Apps</string>
+    <string name="stat_up">Sent</string>
+    <string name="stat_down">Received</string>
+    <string name="flows_title">Recent connections</string>
+    <string name="flows_empty">No connections recorded yet.</string>
+    <string name="flow_no_host">no hostname</string>
     <string name="reports_title">Reports</string>
     <string name="reports_empty">No reports yet. Reports appear after you record a session.</string>
     <string name="apps_title">Apps</string>

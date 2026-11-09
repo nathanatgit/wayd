@@ -10,3 +10,7 @@
 .cxx/
 *.jks
 *.keystore
+
+# Built by capture/build.gradle.kts (cargo-ndk)
+capture/src/main/jniLibs/
+capture/native/target/

@@ -8,7 +8,20 @@
     <string name="tab_settings">设置</string>
 
     <string name="record_title">录制</string>
-    <string name="record_placeholder">流量录制将在后续版本提供，目前不会捕获任何数据。</string>
+    <string name="record_start">开始录制</string>
+    <string name="record_stop">停止录制</string>
+    <string name="record_status_idle">未在录制</string>
+    <string name="record_status_starting">正在启动…</string>
+    <string name="record_status_running">录制中</string>
+    <string name="record_status_error">无法启动 VPN</string>
+    <string name="record_notice">录制会在本机内将手机流量经由在干嘛转发，数据不会离开手机。</string>
+    <string name="stat_flows">连接</string>
+    <string name="stat_apps">应用</string>
+    <string name="stat_up">已发送</string>
+    <string name="stat_down">已接收</string>
+    <string name="flows_title">最近的连接</string>
+    <string name="flows_empty">尚未记录任何连接。</string>
+    <string name="flow_no_host">无主机名</string>
     <string name="reports_title">报告</string>
     <string name="reports_empty">暂无报告。录制一次会话后将生成报告。</string>
     <string name="apps_title">应用</string>

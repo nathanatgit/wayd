@@ -27,6 +27,10 @@ object DbModule {
 
     @Provides fun sessionDao(db: WaydDatabase): SessionDao = db.sessionDao()
 
+    @Provides fun flowDao(db: WaydDatabase): FlowDao = db.flowDao()
+
+    @Provides fun dnsDao(db: WaydDatabase): DnsDao = db.dnsDao()
+
     @Provides
     @Singleton
     fun dbHealth(db: WaydDatabase): DbHealth = DbHealth(db)
