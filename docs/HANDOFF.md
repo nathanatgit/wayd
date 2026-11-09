@@ -37,6 +37,10 @@ Fixed during testing: missing `ACCESS_NETWORK_STATE` crashed the poll thread (pr
 
 Consent dialog persists after the first accept (Nat accepts it once on the main display). Then drive the app on a scrcpy virtual display. scrcpy may drop (`Device disconnected`) the moment the VPN comes up; just start a new scrcpy session afterwards. Always finish with: stop recording, `am force-stop com.nathanhanapps.wayd`, confirm `dumpsys connectivity` shows no WAYD VPN, ping works, `setprop log.tag S`, kill `scrcpy.exe`. Crash details without logcat: `dumpsys dropbox --print data_app_crash`.
 
+## Interference found by Nat (2026-11-09): Douyin comments / new videos failed while recording
+
+Causes found in the relay and fixed in the next build (not yet re-verified by Nat): (1) `ipstack` force-RSTs any TCP session idle for 60 s, breaking pooled/push connections: now 2 h; (2) per-direction idle timers half-closed the server side of long downloads/streams after 5 min with no upload: idle is now per flow (shared activity clock, 1 h TCP / 5 min UDP / 15 s DNS); (3) UDP flows ended when either direction was idle: same fix; (4) 16 KB TCP send window and 16 KB read buffer raised to 256 KB / 64 KB; (5) outbound connect timeout 10 s -> 6 s. **Still open suspects:** the stack completes the client's handshake before the outbound connect succeeds, so apps cannot fail over quickly from dead addresses (needs a stack change); ICMP/ICMPv6 is dropped; DoT/DoH hides DNS; QUIC behaviour untested. Re-test with Douyin including a 1-2 min idle then refresh.
+
 ## Known testing problems
 
 - Wireless adb drops (`device offline`, scrcpy `Device disconnected`) whenever the WAYD VPN comes up, even with the PC excluded via the debug-only `--es exclude <cidr>` extra on `MainActivity`; root cause not found. If the scrcpy display dies, apps launched on it can fall back to the main display. Do not drive multi-app tests through scripts; cleanup commands can fail while adb is offline, so always re-verify `log.tag`, VPN state and `pidof` afterwards.

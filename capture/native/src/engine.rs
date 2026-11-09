@@ -12,7 +12,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use ipstack::{IpStack, IpStackConfig, IpStackStream};
+use ipstack::{IpStack, IpStackConfig, IpStackStream, TcpConfig};
 use jni::objects::{JByteArray, JObject};
 use jni::sys::{jint, jlong};
 use jni::EnvUnowned;
@@ -42,7 +42,14 @@ fn start_engine(tun_fd: i32, mtu: u16) -> std::io::Result<Engine> {
         let mut cfg = IpStackConfig::default();
         let _ = cfg.mtu(mtu);
         cfg.packet_information(false);
-        cfg.udp_timeout(Duration::from_secs(30));
+        // Defaults are tuned for short-lived proxy sessions: a 60 s TCP idle limit resets pooled/push
+        // connections and 16 KB windows throttle streaming. Relay-level idle limits are shorter than these.
+        let mut tcp = TcpConfig::default();
+        tcp.timeout = Duration::from_secs(7200);
+        tcp.max_unacked_bytes = 256 * 1024;
+        tcp.read_buffer_size = 64 * 1024;
+        cfg.with_tcp_config(tcp);
+        cfg.udp_timeout(Duration::from_secs(600));
         let mut stack = IpStack::new(cfg, dev);
         let ids = Arc::new(AtomicU64::new(1));
         while let Ok(stream) = stack.accept().await {
