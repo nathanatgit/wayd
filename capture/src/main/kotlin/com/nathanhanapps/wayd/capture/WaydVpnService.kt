@@ -7,7 +7,9 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
 import android.net.IpPrefix
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -69,8 +71,14 @@ class WaydVpnService : VpnService() {
             .setMtu(MTU)
             .addAddress("10.111.222.1", 24)
             .addRoute("0.0.0.0", 0)
-            .addAddress("fd00:111:222::1", 64)
-            .addRoute("::", 0)
+            .apply {
+                // Only offer IPv6 when the real network has it. Otherwise dual-stack apps try IPv6 first, our
+                // stack accepts the connection, the relay then fails, and the app never falls back to IPv4.
+                if (underlyingHasIpv6()) {
+                    addAddress("fd00:111:222::1", 64)
+                    addRoute("::", 0)
+                }
+            }
             .apply { runCatching { addDisallowedApplication(packageName) } }
             .apply { applyDebugExclusions(this, intent) }
             .establish()
@@ -94,6 +102,21 @@ class WaydVpnService : VpnService() {
 
         worker = Thread({ pollLoop(net, h) }, "wayd-capture").also { it.start() }
     }
+
+    /** True if the network the phone's traffic currently uses (Wi-Fi preferred, else any non-VPN) has an IPv6 default route. */
+    private fun underlyingHasIpv6(): Boolean = runCatching {
+        val cm = getSystemService(ConnectivityManager::class.java)
+        val candidates = cm.allNetworks.mapNotNull { n -> cm.getNetworkCapabilities(n)?.let { n to it } }
+            .filter { (_, c) ->
+                !c.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
+                    c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            }
+        val chosen = candidates.firstOrNull { (_, c) -> c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) }
+            ?: candidates.firstOrNull()
+        val lp = chosen?.let { cm.getLinkProperties(it.first) }
+        lp != null && lp.routes.any { it.isDefaultRoute && it.destination.address is java.net.Inet6Address }
+    }.getOrDefault(false)
 
     /**
      * Debug builds only: `--es exclude 192.168.1.5/32,...` keeps those prefixes out of the tunnel. Needed so a
