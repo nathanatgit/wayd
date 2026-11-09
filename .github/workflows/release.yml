@@ -41,7 +41,7 @@ jobs:
         run: |
           SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKM" --licenses > /dev/null || true
-          "$SDKM" "ndk;$NDK_VERSION" "platforms;android-37" "build-tools;37.0.0"
+          "$SDKM" "ndk;$NDK_VERSION" "platforms;android-37.0" "build-tools;37.0.0"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
