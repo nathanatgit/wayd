@@ -1,94 +1,94 @@
 # Handoff
 
-_Last updated: 2026-11-09 — M0 done; M1 capture working on NX733J; M2 (enrichment, rules, app-oriented analysis UI) built and verified on device._
+_Last updated: 2026-11-09 · released **v0.1.2** (GitHub release, signed) · branch `main` = released state · working branch for the next work: `feat/m7-control`_
 
-## State
+WAYD (在干嘛, `com.nathanhanapps.wayd`) is a local-only Android privacy monitor: a VpnService relay records what each app sends, a rule engine judges it, optional decryption (research features) reads HTTPS content, and an on-device Gemma model explains findings. Read [AGENTS.md](../AGENTS.md) first (non-negotiables), then this file, then [DECISIONS.md](DECISIONS.md) (D-001 .. D-027).
 
-- M0 done on branch `feat/m0-skeleton`: modules `app`, `core:model`, `core:db`, `core:ui`; flavors `standard` / `research` (`.research` app-id suffix).
-- `WaydTheme` (Material 3 Expressive, dynamic colour), 4-tab navigation, strings in en + zh-Hans.
-- Room schema v1 with all entities from `docs/02-DATA-MODEL.md` (schema exported to `core/db/schemas/`), SQLCipher with Keystore-wrapped key. Settings tab shows the live `PRAGMA cipher_version`.
-- CI workflow: unit tests, both flavor builds, lint.
-- Verified on NX733J (Android 16) on a scrcpy virtual display: all tabs render in zh, DB reports encrypted.
-- Not yet: release build/signing, instrumented tests (no Room migration test yet — nothing to migrate from v1).
+## 1. Where things stand
 
-## Build
+| Area | State |
+|---|---|
+| **M0** skeleton, theme (Material 3 Expressive), en + 简体中文, Room v3 + SQLCipher | done |
+| **M1** capture (VpnService + Rust netstack), UID attribution, SNI/Host/DNS | working; acceptance soak not done (§7) |
+| **M2** enrichment + rules + app-oriented UI (Apps, app detail, Reports, company drill-down) | done, verified on device |
+| **M3** per-app permission history (Shizuku AppOps) + permission rules | first slice done |
+| **M4** message inspector + identifier rule (R-ID-IN-REQUEST) | built; inspector UI not yet seen on the phone |
+| **M6** on-device Gemma (LiteRT-LM) | **working on the NX733J**, quality tuning open |
+| **M8 (research)** MITM CA, consent, per-app picker, optional root system-CA | working; Chrome verified, WeChat metadata-only |
+| **M7** blocking / content control | designed only → [13-BLOCKING.md](13-BLOCKING.md) |
+| Release pipeline | working: tag `vX.Y.Z` → GitHub Actions → signed APK (§5) |
+
+## 2. Repository map
 
 ```
-export ANDROID_HOME=C:/Users/Han/AppData/Local/Android/Sdk
-./gradlew test :app:assembleStandardDebug :app:assembleResearchDebug :app:lintStandardDebug :app:lintResearchDebug
+app/            UI (Compose), navigation, feature/{analysis,apps,reports,record,settings,ai,inspector,export}
+                src/research + src/standard hold the flavor twins (research/ResearchFeatures, Danger zone, MITM controller)
+core/model      enums, EvidenceRef
+core/db         Room v3 (AutoMigrations 1→2→3), DAOs, SQLCipher key wrapper, schemas/ exported
+core/ui         theme
+capture/        VpnService, FlowTracker, JNI bridge; capture/native = Rust (ipstack relay, mitm feature)
+enrich/         tracker/company seed DB (~350 entries)
+analysis/       rules (12), RiskScorer, AppReport/DailyReport builders, DecryptedRules (IdentifierScan)
+collectors/     AppOps history parser, PermissionTimeline
+privilege/      Shizuku UserService (AIDL), HistoryFilter
+ai/             Masker, PromptBuilder (+JSON schema), SchemaValidator, AiAnalyzer, ModelManager, ModelDownloadService, LiteRtEngine
+docs/           PRD, architecture, decisions, analysis rules, AI, MITM consent, blocking design, testing …
+.github/workflows/  ci.yml (branches/PR), release.yml (tags)
 ```
-Do not create `local.properties` on this machine: lint rejects its path escaping; use `ANDROID_HOME`.
 
-## Testing without disturbing the phone
+Flavors: `standard` (no TLS code; native 870 KB) and `research` (MITM engine; native 2.1 MB). **Releases ship `research` under the plain app id** (D-027). Native libs are built per flavor by Gradle through cargo-ndk (arm64-v8a only).
 
-`adb install`, then `scrcpy -s <dev> --new-display=1080x2400/420 --start-app=<pkg> --no-audio -N --record=<file>`; screenshot with `adb exec-out screencap -d <SurfaceFlinger display id> -p` (id from `dumpsys SurfaceFlinger --display-id`, not the logical id); tap with `input -d <logical id>`. Kill `scrcpy.exe` afterwards.
+## 3. Build, test, run (this Windows machine)
 
-## MITM status (research flavor) — working, verified on the phone 2026-11-09
+```
+export ANDROID_HOME=C:/Users/Han/AppData/Local/Android/Sdk      # never create local.properties (lint rejects its escaping)
+./gradlew test :app:assembleStandardDebug :app:assembleResearchDebug            # builds Rust too
+./gradlew test -PskipNative …                                                    # reuse the prebuilt .so files
+cd capture/native && cargo test --features mitm                                  # 16 Rust tests (needs PATH with ~/.cargo/bin + WinLibs MinGW)
+```
+JDK: Android Studio's JBR. Rust: GNU host toolchain + winget WinLibs MinGW + cargo-ndk, NDK r29 (`29.0.14206865`), SDK platform package is `platforms;android-37.0`. Tests: ~110 JVM tests + 16 Rust tests, all green at v0.1.2.
 
-Done and verified on Nat's NX733J: native engine, Kotlin side (MESSAGE/TLS_NOTE/PROGRESS events, messages stored in SQLCipher with the flow, `InterceptHook` seam), research-only consent flow (warning, scroll-to-end privacy statement, Keystore-encrypted CA key, per-app picker with search / checked-first / Name & Date-installed sort, exclusion list, "Disable and remove CA"), CA file saved through the document picker, optional volatile system-wide trust via root (D-024), raw-data JSON export (capture / per app) through the document picker with a privacy warning, Chrome capture (354 decrypted messages incl. Bilibili). Per-flow byte counts for flows still open at stop come from PROGRESS events.
+Local signed release build (does not touch the phone): set `WAYD_KEYSTORE_FILE`, `WAYD_KEYSTORE_PASSWORD`, `WAYD_KEY_ALIAS=key1`, `WAYD_KEY_PASSWORD` (key lives in `C:\Users\Han\Project\nebulaThemePorter\NebulaThemePorterKey\key11`, password in `keypalin.txt`; or a git-ignored `keystore.properties`), then `./gradlew :app:assembleResearchRelease -PappIdSuffix=.reltest` (the suffix lets it install next to other builds).
 
-Known limits: WeChat uses its own MMTLS protocol (metadata only even with system trust); apps that pin certificates stay metadata only; ModelScope range requests redirect (302) and were not verified; message inspector UI (M4) not built yet (export is the way to read messages).
+## 4. Testing on the phone (Nat's NX733J, Android 16, KernelSU, Shizuku 13.6, 15 GB RAM)
 
-## M3 status (permission-use history, first slice)
+- Wireless adb: **the port changes every time Wireless debugging is toggled**; ask Nat for the current `IP:port` (`adb connect`). It also drops whenever the VPN starts/stops.
+- Drive the UI on a **scrcpy virtual display**, never the main screen (Nat uses the phone): `scrcpy -s <dev> --new-display=1080x2400/420 --start-app=<pkg> --no-audio --screen-off-timeout=3600 --window-title=...` (a window on the PC shows it; with `-N --record=file` it is hidden). `--screen-off-timeout` is essential: when the phone's own screen sleeps the virtual display sleeps and screenshots come back as 15,580-byte black PNGs. Screenshot with `adb exec-out screencap -p -d <SurfaceFlinger display id>`; tap with `input -d <logical display id>`. Kill stale `app_process … scrcpy` PIDs after `taskkill scrcpy.exe`.
+- Logcat is muted on this ROM: `setprop log.tag I` while capturing and **always** `setprop log.tag S` afterwards. After any VPN test: `am force-stop`, no WAYD VPN in `dumpsys connectivity`, ping works.
+- The VPN consent dialog is accepted by Nat on the main display (do not tap it via adb). Nubia AutoLaunch blocks starting the VPN service via `am`; start recording from the UI.
+- Do not run `su` mount tricks without the safeguards in D-024 (an earlier attempt left the zygote with an empty CA store).
+- Nat said: when he is away, do **no live testing** on the phone.
 
-Done: `collectors` (parser for `dumpsys appops --history`, `PermissionCategory`, `PermissionTimeline` with proportional window clipping, 5 tests on a trimmed real-device fixture), `privilege` (AIDL `IPrivilegedService` with fixed calls, `PrivilegedService`, `HistoryFilter`, `PackageNames`, `ShizukuClient` with NOT_INSTALLED / NOT_RUNNING / NEEDS_PERMISSION / READY), app detail "Permission use" section: per category counts, background share and a 24-hour lane (visible vs background), blocked-only wording. Verified on NX733J with Shizuku 13.6 (Douyin: thousands of background location / file / Bluetooth accesses today).
+## 5. Releases
 
-Shizuku was started with its own starter binary over adb (`<apk dir>/lib/arm64/libshizuku.so`), which lasts until reboot. After a reboot the user must restart it from the Shizuku app (wireless debugging).
+`git tag -a vX.Y.Z -m … && git push origin vX.Y.Z` (the tag must equal `versionName` in `app/build.gradle.kts`; bump `versionCode` too) → `.github/workflows/release.yml`: version check, Rust tests, JVM tests, signed `assembleResearchRelease`, `apksigner verify`, GitHub release with `wayd-vX.Y.Z.apk` + `.sha256` (~8 min). Secrets (already set): `WAYD_KEYSTORE_BASE64`, `WAYD_KEYSTORE_PASSWORD`, `WAYD_KEY_ALIAS`, `WAYD_KEY_PASSWORD`. Signing certificate SHA-256: `c3ec78c2…d890db`. `main` is the release branch: merge with `--no-ff`, then tag. Commit messages carry **no** Claude co-author line (Nat's rule).
 
-Not done: rules R-CLIPBOARD-BG, R-SCREEN-CAPTURE, R-LOC-THEN-UP, R-BOOT-REPORT (inputs now exist at bucket resolution), `appOpsGet` "last used" times, persisting history (PermEvent) for long retention, alarms / netstats / package collectors, libsu fallback, Command allowlist doc update (docs/04). Counts are system AppOps accesses, not proof of data leaving the phone; always show them next to network evidence.
+Caveats: tag `v0.1.1` exists on GitHub but its release failed (wrong SDK package name) — delete it when convenient (`git push origin :refs/tags/v0.1.1`; a safety check stopped me doing it unasked). The release app id has no suffix, so installing it over the debug `com.nathanhanapps.wayd` build fails (different signature): uninstall the debug app first. The research debug app (`.research`) on the phone holds the downloaded Gemma E2B (2.6 GB) and test data; the release app would need its own download.
 
-## M2 status (enrichment + analysis)
+## 6. Feature notes worth knowing
 
-Done: `enrich` (seed tracker/company DB, DoH hosts, private-address check), `analysis` (8 rules, risk score with reasons, `AppReportBuilder`, `DailyReportBuilder`), Apps tab (list ranked by activity, window chips Today/Yesterday/7 days), app detail (plain-language summary, hourly chart, destinations by company+purpose, findings that expand to their evidence connections, permission-use placeholder), Reports tab (days list, report detail with alerts / background / who-received-data / new / coverage). Flows are enriched with company+category at capture and backfilled on analysis. 42 unit tests.
+- **Capture/relay:** idle handling is per flow (TCP 1 h, UDP 5 min, DNS 15 s; ipstack timeout 2 h; 256 KB windows); IPv6 is offered only if the underlying network has an IPv6 default route (an IPv4-only Wi-Fi + advertised `::/0` broke Douyin); the app excludes itself from the VPN; flows still open at stop keep their byte counts through PROGRESS events.
+- **MITM (research):** Rust rustls engine; policy in Kotlin (`InterceptHook`/`nativeDecide`, 600 ms, default passthrough); per-app allowlist (empty by default) + exclusion list (banking, payment, government, password managers, OS/store); consent per [08-MITM-AND-CONSENT.md](08-MITM-AND-CONSENT.md); CA key Keystore-encrypted; messages stored in SQLCipher (≤128 KB bodies). Chrome works with a user CA; WeChat/Douyin-class apps need the optional root system-wide trust, and WeChat's own MMTLS stays metadata-only. The ROM hides the app list from ordinary apps, so the picker combines package manager + traffic history + typed names + a root `pm list`.
+- **Export:** raw JSON (latest capture / one app) via the system document picker, with a "keep this private — other people's data" warning.
+- **AI:** Gemma 4 E2B/E4B `.litertlm` via `litertlm-android` 0.19.1. Hugging Face is unreachable from the phone; **ModelScope works (~30 MB/s)**. GPU needs `uses-native-library libOpenCL.so`; the engine falls back to CPU on failure and uses schema-constrained JSON, repetition penalty and a 1,400-token cap. E2B ≈ 27 s for ~10 items. First run compiles for the GPU (the UI says so). Answers follow the UI language. Debug builds log validator complaints under tag `WAYD-AI`.
+- **Blocking:** not built; design in 13-BLOCKING.md (host/app level works for every app, path/content level needs decryption + a trusted CA).
 
-Not done: GeoIP/countries and the 24 h heatmap by app (report has hourly totals only), stored/versioned report objects (computed on demand, fast for current data), identifier matcher (needs M4 messages), Sankey, per-day baselines beyond "new domain". Report render time for 24 h not yet measured (acceptance: < 1 s).
+## 7. Open items (suggested order)
 
-**Next (Nat's request): per-app permission-use history** (location, camera, mic, clipboard...) visualised in the app detail. Plan: M3 AppOpsCollector. Probe on the device shows `dumpsys appops --history --package` works from adb; in-app needs Shizuku/root. Decide: Shizuku vs adb-only dev path first.
+1. **AI quality:** still mixes in an odd "OTHER" data type; compare E4B (recommended for 15 GB), add injection tests against the real model, "Analyse selection" from the connection list, tools / chat, overnight summary (WorkManager).
+2. **M7 blocking:** rule model + matcher (Kotlin spec, Rust implementation), host/app level first, then history actions and a rules screen, then path/content rules in the MITM loop.
+3. **M4:** look at the inspector on the phone; add search/filter; more identifier rules (R-APPLIST variants, cookies).
+4. **M1 acceptance:** 1 h soak; hostname coverage was 84–90% (target ≥ 90%); external-router IPv6 check; ICMP is dropped; DoH/DoT and QUIC SNI are invisible.
+5. **M3 leftovers:** R-BOOT-REPORT, alarms/netstats/package collectors, GeoIP (needs a licensed DB), 24 h per-app heatmap, stored/versioned reports, report render time (< 1 s) measurement, libsu fallback, docs/04 update.
+6. Release hygiene: delete the dead `v0.1.1` tag, add release notes/changelog, consider a store-safe `standard` release later.
 
-## M1 status (capture MVP)
+## 8. Known problems
 
-Working on device: VpnService + Rust `ipstack` relay (arm64), UID attribution, TLS SNI / HTTP Host / DNS enrichment, batched Room writes, foreground notification, Record tab with live counters and flow list. Verified: 19 flows / 5 apps attributed correctly in a ~1 min run; tunnel teardown restores connectivity.
+- Wireless adb flaps with the VPN; scrcpy displays die when the phone's screen sleeps (see §4); only one VPN can be active (WAYD replaces Clash while recording).
+- Apps that pin certificates, and WeChat's MMTLS, cannot be decrypted; pinned hosts are remembered and passed through.
+- The report screen's "new today" section was removed on purpose; findings still appear in the lists.
+- `docs/HANDOFF.md` is the living status; `docs/DECISIONS.md` is the log of why.
 
-Fixed during testing: missing `ACCESS_NETWORK_STATE` crashed the poll thread (process died, VPN lingered until force-stop). Tracker now survives enrichment failures.
+## 9. Inputs Nat can provide
 
-**Measured (cumulative, NX733J, 2026-11-09):** 512 flows, 99% with package (target >=99% OK); hostname coverage 84% over 103 public TCP flows that carried data (target >=90%, not yet met). The Record tab shows this live; LAN probes and zero-byte flows are excluded from the hostname metric because they cannot have a hostname. Relay now captures the client's first bytes while the outbound connect is in flight (SNI of slow/failed connections).
-
-**Not yet met (M1 acceptance):** 1 h soak with browse/video/WeChat; >=99% flows with package; >=90% TCP flows with host (many flows are still "no hostname": IP-only/QUIC/cached DNS); external-router IPv4/IPv6 completeness check. **Known gaps:** ICMP is dropped (ping fails inside the tunnel), DoH/DoT bypasses DNS visibility, QUIC SNI not parsed, arm64 only, `appForeground` is always false until M3, no pkt counters, `nativePoll` allocates a 64 KB scratch buffer per call (optimise).
-
-## Testing a VPN build without disturbing the phone
-
-Consent dialog persists after the first accept (Nat accepts it once on the main display). Then drive the app on a scrcpy virtual display. scrcpy may drop (`Device disconnected`) the moment the VPN comes up; just start a new scrcpy session afterwards. Always finish with: stop recording, `am force-stop com.nathanhanapps.wayd`, confirm `dumpsys connectivity` shows no WAYD VPN, ping works, `setprop log.tag S`, kill `scrcpy.exe`. Crash details without logcat: `dumpsys dropbox --print data_app_crash`.
-
-## Interference found by Nat (2026-11-09): Douyin comments / new videos failed while recording
-
-Causes found in the relay and fixed in the next build (not yet re-verified by Nat): (1) `ipstack` force-RSTs any TCP session idle for 60 s, breaking pooled/push connections: now 2 h; (2) per-direction idle timers half-closed the server side of long downloads/streams after 5 min with no upload: idle is now per flow (shared activity clock, 1 h TCP / 5 min UDP / 15 s DNS); (3) UDP flows ended when either direction was idle: same fix; (4) 16 KB TCP send window and 16 KB read buffer raised to 256 KB / 64 KB; (5) outbound connect timeout 10 s -> 6 s. **Still open suspects:** the stack completes the client's handshake before the outbound connect succeeds, so apps cannot fail over quickly from dead addresses (needs a stack change); ICMP/ICMPv6 is dropped; DoT/DoH hides DNS; QUIC behaviour untested. Re-test with Douyin including a 1-2 min idle then refresh.
-
-**Resolved 2026-11-09 (confirmed by Nat on Wi-Fi):** the remaining cause was IPv6: the VPN advertised `::/0` although the IPv4-only Wi-Fi had no IPv6, so dual-stack apps picked IPv6, our stack accepted, the relay failed and they never fell back. The VPN now offers IPv6 only if the underlying network has an IPv6 default route (decided at start; not re-evaluated on network switch). Douyin works with the idle/window fixes plus this.
-
-## Known testing problems
-
-- Wireless adb drops (`device offline`, scrcpy `Device disconnected`) whenever the WAYD VPN comes up, even with the PC excluded via the debug-only `--es exclude <cidr>` extra on `MainActivity`; root cause not found. If the scrcpy display dies, apps launched on it can fall back to the main display. Do not drive multi-app tests through scripts; cleanup commands can fail while adb is offline, so always re-verify `log.tag`, VPN state and `pidof` afterwards.
-- Nubia AutoLaunch blocks `am start-foreground-service` for the VPN service ("Blocked by AutoLaunch"); start only from the UI.
-- scrcpy: after `taskkill scrcpy.exe` the on-device server (`app_process ... scrcpy.Server`) can keep running and leave stale virtual displays that render black; kill them by PID (`adb shell kill <pid>` from `ps -A | grep scrcpy`) and verify `dumpsys SurfaceFlinger --display-id | grep -c scrcpy` is 0 before a new session. Screenshots must use the SurfaceFlinger id of the *live* display.
-- Only one VPN can be active: WAYD replaces other VPN/proxy apps (e.g. Clash on Nat's phone) while recording.
-
-## On-device AI (M6) status — working on Nat's NX733J (2026-11-09)
-
-Verified on the phone: ModelScope download of Gemma 4 E2B (2.59 GB, resumable, SHA-256 verified, foreground service), GPU backend after declaring `libOpenCL.so` (`uses-native-library`), CPU fallback when the GPU path fails at the first message, schema-constrained JSON (`ResponseFormat.json`) plus repetition penalty and a 1400-token cap, a valid evidence-citing analysis in about 27 s for about 10 items, first-run notice ("compiling the model for your phone, once"). Hugging Face is unreachable from the phone's network; ModelScope works (about 30 MB/s). Phone has 15 GB RAM, so E4B is recommended there (not yet tried).
-
-Learned: the E2B model without constrained decoding emitted trailing commas and looped for thousands of characters; constrained decoding fixed it. It still sometimes mixes languages in free text (prompt now forbids it) and adds a vague "OTHER" data type; quality tuning and E4B comparison are open. Debug builds log validator complaints and the start of an invalid reply under tag `WAYD-AI` (never in release).
-
-Not built yet: tools / "ask about my data" chat, overnight summary (WorkManager), "Analyse selection" from the connection list, injection tests against the real model.
-
-## Next step
-
-1. Test the AI path on the phone (above). 2. Message inspector (M4) and identifier matcher on decrypted data. 3. M7 blocking (docs/13-BLOCKING.md). 4. M1 soak / coverage.
-
-## Open decisions (see DECISIONS.md)
-
-- D-007 LLM runtime.
-
-## Inputs Nat can provide
-
-- AppDualZuku's `ShellClient` / Shizuku UserService files (for M3).
-- Test device list; brand seed colour and icon (placeholders in use).
+Test device list, brand seed colour (placeholders in use), AppDualZuku `ShellClient` files (M3 reference), which apps matter most for the research builds, ModelScope/own-CDN mirror for the models.
