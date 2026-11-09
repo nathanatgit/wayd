@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dz_title">危险区 · 研究版</string>
+    <string name="dz_expand">展开</string>
+    <string name="dz_collapse">收起</string>
+    <string name="dz_intro">解密 HTTPS 后，在干嘛可以读取你所选应用收发的内容。默认关闭，所有内容只保存在本机。</string>
+    <string name="dz_decrypt">解密 HTTPS 内容</string>
+    <string name="dz_apply_hint">下次开始记录时生效。不信任该证书的应用仍可正常使用，只会显示为“仅元数据”。</string>
+    <string name="dz_ca_failed">无法创建证书，未做任何更改。</string>
+    <string name="dz_pick_apps">选择应用（已选 %1$d 个）</string>
+    <string name="dz_ca_title">证书</string>
+    <string name="dz_ca_body">大多数应用只有在主动选择信任时才接受用户安装的证书（浏览器通常会）。可安装为用户证书，或保存一份到“下载”后在 设置 → 安全 中安装。</string>
+    <string name="dz_install_user">安装为用户证书</string>
+    <string name="dz_export">保存到“下载”</string>
+    <string name="dz_system_ca">同时设为系统级信任（需要 root）</string>
+    <string name="dz_system_ca_note">可选，默认关闭。需要 root，重启后失效，可随时在此关闭。开启后请重启所选应用。</string>
+    <string name="dz_delete_content">删除已捕获的内容</string>
+    <string name="dz_remove">停用并移除 CA</string>
+    <string name="dz_remove_body">将关闭解密、撤销系统级信任、删除证书私钥和应用列表，并记录你已撤回同意。已捕获的内容会保留，直到你删除。如果你安装过用户证书，请同时在 设置 → 安全 中移除。</string>
+    <string name="dz_cancel">取消</string>
+    <string name="dz_done">完成</string>
+    <string name="dz_continue">继续</string>
+    <string name="dz_agree">同意并继续</string>
+    <string name="dz_understand">我已了解</string>
+    <string name="dz_picker_title">要解密的应用</string>
+    <string name="dz_picker_note">银行、支付、政务、密码管理器和系统应用不会出现在这里，也无法添加。</string>
+    <string name="dz_warn_title">解密 HTTPS 存在风险</string>
+    <string name="dz_warn_body">在干嘛将作为你所选应用的“中间人”，以读取其加密流量。这可能会暴露密码、聊天内容、支付信息等敏感内容——这些内容只保存在本机的在干嘛中。\n\n• 大多数应用不信任用户安装的证书，这些应用只会显示“仅元数据”。\n• 开启期间部分应用可能无法正常使用。\n• 若他人获取在干嘛的证书私钥，可能拦截你的流量。私钥加密保存，关闭功能时会删除。\n• 请勿在不属于你的手机上、或在他人未同意的情况下开启。</string>
+    <string name="dz_stmt_title">隐私声明</string>
+    <string name="dz_stmt_body">1. 收集的内容\n流量元数据（应用、主机、大小、时间）、明文内容，以及你所选应用被解密后的请求与响应内容、应用权限使用记录、已安装应用的信息。\n\n2. 存放位置\n仅在本设备上，保存在加密数据库中，不参与备份。证书私钥由 Android Keystore 中的密钥加密保存。\n\n3. 上传到设备之外的内容\n无。唯一的联网行为是你主动发起的操作，例如下载模型或数据库。\n\n4. 保留期限\n解密内容会一直保留，直到你在“危险区 → 删除已捕获的内容”中删除，或关闭功能并清除数据。\n\n5. 导出与清除\n你可以随时删除已捕获的内容。“停用并移除 CA”会删除证书私钥、应用列表以及系统级信任。\n\n6. 他人的信息\n解密后的流量可能包含他人的信息（例如聊天内容）。请合法使用，并且只在你有权检查的设备和账号上使用。\n\n7. 版本\n声明版本 1。</string>
+    <string name="dz_sys_warn_title">设为系统级信任？</string>
+    <string name="dz_sys_warn_body">这将使用 root，让 Android 系统信任库包含在干嘛的证书。不接受用户证书的应用也会信任它，在干嘛因此可以读取它们的流量。\n\n开启期间，任何拿到在干嘛证书私钥的人都可以向本机冒充任意网站，部分应用也可能出现异常。不会永久安装任何东西：重启或在此关闭即可撤销。\n\n请仅在你自己的手机上继续。</string>
+    <string name="dz_sys_warn_ok">设为系统级信任</string>
+</resources>

@@ -5,6 +5,10 @@ import com.nathanhanapps.wayd.capture.parse.HttpParser
 import com.nathanhanapps.wayd.capture.parse.TlsSniParser
 import com.nathanhanapps.wayd.core.db.DnsRecord
 import com.nathanhanapps.wayd.core.db.Flow
+import com.nathanhanapps.wayd.core.db.Message
+import com.nathanhanapps.wayd.core.model.Dir
+import com.nathanhanapps.wayd.core.model.Tier
+import com.nathanhanapps.wayd.core.model.TierSource
 import com.nathanhanapps.wayd.core.model.CaptureSource
 import com.nathanhanapps.wayd.core.model.HostSource
 import com.nathanhanapps.wayd.core.model.NetType
@@ -23,6 +27,9 @@ fun interface UidResolver {
 
 interface CaptureSink {
     fun flow(f: Flow)
+
+    /** A flow that carried decrypted messages; the sink assigns the stored flow id to each message. */
+    fun flowWithMessages(f: Flow, messages: List<Message>) = flow(f)
     fun dns(d: DnsRecord)
 }
 
@@ -47,6 +54,8 @@ class FlowTracker(
     private val env: CaptureEnv,
     private val dnsMap: DnsIpMap = DnsIpMap(),
     private val trackers: TrackerDb = TrackerDb(),
+    private val gate: InterceptGate? = null,
+    private val reply: (flowId: Long, intercept: Boolean) -> Unit = { _, _ -> },
 ) {
     private class State(
         val open: NativeEvent.Open,
@@ -62,6 +71,9 @@ class FlowTracker(
         var sawUp = false
         var up = 0L
         var down = 0L
+        var messages: ArrayList<Message>? = null
+        var intercepted = false
+        var pinned = false
     }
 
     private val open = HashMap<Long, State>()
@@ -76,6 +88,11 @@ class FlowTracker(
         when (e) {
             is NativeEvent.Open -> onOpen(e)
             is NativeEvent.Data -> onData(e)
+            is NativeEvent.Message -> onMessage(e)
+            is NativeEvent.TlsNote -> open[e.flowId]?.let {
+                if (e.kind == 1) it.intercepted = true
+                if (e.kind == 2) it.pinned = true
+            }
             is NativeEvent.Close -> open.remove(e.flowId)?.let { finish(it, e.bytesUp, e.bytesDown) }
         }
     }
@@ -94,6 +111,36 @@ class FlowTracker(
         val screenOn = runCatching { env.screenOn() }.getOrDefault(false)
         val net = runCatching { env.netType() }.getOrDefault(NetType.OTHER)
         open[e.flowId] = State(e, owner, runCatching { env.now() }.getOrDefault(0L), screenOn, net)
+        // The native side waits briefly for this answer; no answer means plain passthrough.
+        val g = gate
+        if (g != null && (e.proto == 6 || e.dstPort == 443)) {
+            val allow = owner != null && runCatching { g.allow(owner.pkg, e.proto, e.dstPort) }.getOrDefault(false)
+            runCatching { reply(e.flowId, allow) }
+        }
+    }
+
+    private fun onMessage(e: NativeEvent.Message) {
+        val s = open[e.flowId] ?: return
+        val list = s.messages ?: ArrayList<Message>().also { s.messages = it }
+        if (list.size >= MAX_MESSAGES_PER_FLOW) return
+        val ctype = e.headers.lineSequence()
+            .firstOrNull { it.startsWith("content-type:", ignoreCase = true) }?.substringAfter(':')?.trim()
+        list += Message(
+            flowId = 0,
+            dir = if (e.response) Dir.DOWN else Dir.UP,
+            ts = runCatching { env.now() }.getOrDefault(0L),
+            tier = Tier.DECRYPTED,
+            tierSource = TierSource.MITM,
+            method = e.method.ifEmpty { null },
+            url = e.url,
+            status = if (e.response) e.status else null,
+            headersJson = e.headers,
+            bodyBlobId = null,
+            bodySize = e.bodyTotal.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+            contentType = ctype,
+            body = e.body.takeIf { it.isNotEmpty() },
+            bodyTruncated = e.truncated,
+        )
     }
 
     private fun onData(e: NativeEvent.Data) {
@@ -148,7 +195,7 @@ class FlowTracker(
         totalFlows++
         totalUp += up
         totalDown += down
-        sink.flow(
+        val flowRow =
             Flow(
                 sessionId = sessionId,
                 uid = s.owner?.uid ?: -1,
@@ -177,13 +224,20 @@ class FlowTracker(
                 company = info?.company,
                 category = info?.category,
                 source = CaptureSource.VPN,
-            ),
-        )
+            )
+        val msgs = s.messages
+        if (msgs.isNullOrEmpty()) sink.flow(flowRow) else sink.flowWithMessages(flowRow, msgs)
     }
 
     companion object {
         const val UNKNOWN_PKG = "?"
+        private const val MAX_MESSAGES_PER_FLOW = 400
     }
+}
+
+/** Decides, per new flow, whether its TLS may be decrypted. Only the research flavor ever provides one. */
+fun interface InterceptGate {
+    fun allow(pkg: String, proto: Int, dstPort: Int): Boolean
 }
 
 /** Small LRU of IP -> most recent DNS name that resolved to it. */

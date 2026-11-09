@@ -18,6 +18,22 @@ sealed interface NativeEvent {
 
     class Data(override val flowId: Long, val down: Boolean, val bytes: ByteArray) : NativeEvent
 
+    /** A decrypted HTTP/1.1 message (research flavor only). */
+    class Message(
+        override val flowId: Long,
+        val response: Boolean,
+        val status: Int,
+        val method: String,
+        val url: String,
+        val headers: String,
+        val bodyTotal: Long,
+        val truncated: Boolean,
+        val body: ByteArray,
+    ) : NativeEvent
+
+    /** kind: 1 intercepted, 2 app rejected our certificate (pinned), 3 upstream TLS failed, 4 skipped host. */
+    class TlsNote(override val flowId: Long, val kind: Int) : NativeEvent
+
     class Close(override val flowId: Long, val bytesUp: Long, val bytesDown: Long) : NativeEvent
 }
 
@@ -25,6 +41,8 @@ object NativeEvents {
     private const val OPEN = 1
     private const val DATA = 2
     private const val CLOSE = 3
+    private const val MESSAGE = 4
+    private const val TLS_NOTE = 5
 
     /** Decodes whole events from `buf[0, len)`. Malformed trailing bytes are ignored. */
     fun decode(buf: ByteArray, len: Int): List<NativeEvent> {
@@ -52,11 +70,41 @@ object NativeEvents {
                     val n = u16(buf, b + 1)
                     if (3 + n <= e - b) out += NativeEvent.Data(id, buf[b].toInt() == 1, buf.copyOfRange(b + 3, b + 3 + n))
                 }
+                type == MESSAGE -> decodeMessage(buf, b, e, id)?.let { out += it }
+                type == TLS_NOTE && e - b >= 1 -> out += NativeEvent.TlsNote(id, buf[b].toInt())
                 type == CLOSE && e - b >= 16 -> out += NativeEvent.Close(id, u64(buf, b), u64(buf, b + 8))
             }
             p = e
         }
         return out
+    }
+
+    private fun decodeMessage(buf: ByteArray, start: Int, end: Int, id: Long): NativeEvent.Message? {
+        var p = start
+        if (end - p < 4) return null
+        val response = buf[p].toInt() == 1
+        val status = u16(buf, p + 1)
+        val mlen = buf[p + 3].toInt() and 0xFF
+        p += 4
+        if (p + mlen + 2 > end) return null
+        val method = String(buf, p, mlen, Charsets.UTF_8)
+        p += mlen
+        val ulen = u16(buf, p)
+        p += 2
+        if (p + ulen + 4 > end) return null
+        val url = String(buf, p, ulen, Charsets.UTF_8)
+        p += ulen
+        val hlen = u32(buf, p)
+        p += 4
+        if (hlen < 0 || p + hlen + 13 > end) return null
+        val headers = String(buf, p, hlen, Charsets.UTF_8)
+        p += hlen
+        val total = u64(buf, p)
+        val truncated = buf[p + 8].toInt() == 1
+        val blen = u32(buf, p + 9)
+        p += 13
+        if (blen < 0 || p + blen > end) return null
+        return NativeEvent.Message(id, response, status, method, url, headers, total, truncated, buf.copyOfRange(p, p + blen))
     }
 
     private fun u16(b: ByteArray, i: Int) = ((b[i].toInt() and 0xFF) shl 8) or (b[i + 1].toInt() and 0xFF)

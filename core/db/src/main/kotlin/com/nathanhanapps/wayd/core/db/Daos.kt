@@ -28,9 +28,49 @@ interface SessionDao {
 }
 
 @Dao
+interface MessageDao {
+    @Insert
+    suspend fun insertAll(messages: List<Message>)
+
+    @Query("SELECT * FROM Message WHERE flowId = :flowId ORDER BY ts, id")
+    suspend fun forFlow(flowId: Long): List<Message>
+
+    /** Newest decrypted messages of one app, via its flows. Bodies included; callers should limit. */
+    @Query("SELECT m.* FROM Message m JOIN Flow f ON f.id = m.flowId WHERE f.pkg = :pkg ORDER BY m.ts DESC, m.id DESC LIMIT :limit")
+    suspend fun recentForApp(pkg: String, limit: Int): List<Message>
+
+    @Query("SELECT COUNT(*) FROM Message")
+    suspend fun count(): Long
+
+    @Query("DELETE FROM Message")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface InterceptAppDao {
+    @Query("SELECT pkg FROM InterceptApp")
+    suspend fun packages(): List<String>
+
+    @Query("SELECT pkg FROM InterceptApp")
+    fun observe(): KFlow<List<String>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun add(app: InterceptApp)
+
+    @Query("DELETE FROM InterceptApp WHERE pkg = :pkg")
+    suspend fun remove(pkg: String)
+
+    @Query("DELETE FROM InterceptApp")
+    suspend fun clear()
+}
+
+@Dao
 interface FlowDao {
     @Insert
     suspend fun insertAll(flows: List<Flow>)
+
+    @Insert
+    suspend fun insert(flow: Flow): Long
 
     @Query("SELECT * FROM Flow ORDER BY startAt DESC LIMIT :limit")
     fun observeRecent(limit: Int): KFlow<List<Flow>>

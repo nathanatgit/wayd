@@ -37,6 +37,8 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
             },
         )
 
+        com.nathanhanapps.wayd.research.ResearchFeatures.Settings()
+
         Section(
             stringResource(R.string.settings_about),
             stringResource(R.string.settings_version, BuildConfig.VERSION_NAME) +

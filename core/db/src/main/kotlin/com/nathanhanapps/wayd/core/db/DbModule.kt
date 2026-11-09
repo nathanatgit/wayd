@@ -35,6 +35,10 @@ object DbModule {
 
     @Provides fun permEventDao(db: WaydDatabase): PermEventDao = db.permEventDao()
 
+    @Provides fun messageDao(db: WaydDatabase): MessageDao = db.messageDao()
+
+    @Provides fun interceptAppDao(db: WaydDatabase): InterceptAppDao = db.interceptAppDao()
+
     @Provides
     @Singleton
     fun dbHealth(db: WaydDatabase): DbHealth = DbHealth(db)

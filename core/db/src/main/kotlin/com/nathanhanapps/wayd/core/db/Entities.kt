@@ -76,7 +76,17 @@ data class Message(
     val bodyBlobId: String?,
     val bodySize: Int,
     val contentType: String?,
-)
+    /** Captured body prefix. The whole database is SQLCipher-encrypted, so no extra blob layer is used (D-023). */
+    val body: ByteArray? = null,
+    @ColumnInfo(defaultValue = "0") val bodyTruncated: Boolean = false,
+) {
+    override fun equals(other: Any?) = other is Message && id == other.id && flowId == other.flowId && ts == other.ts && dir == other.dir
+    override fun hashCode() = 31 * id.hashCode() + flowId.hashCode()
+}
+
+/** Apps whose TLS traffic WAYD may decrypt (research flavor; empty unless the user adds apps after consenting). */
+@Entity
+data class InterceptApp(@PrimaryKey val pkg: String, val addedAt: Long)
 
 @Entity
 data class DnsRecord(

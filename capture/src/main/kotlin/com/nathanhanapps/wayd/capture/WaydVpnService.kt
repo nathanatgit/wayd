@@ -19,6 +19,8 @@ import com.nathanhanapps.wayd.core.db.DnsDao
 import com.nathanhanapps.wayd.core.db.DnsRecord
 import com.nathanhanapps.wayd.core.db.Flow
 import com.nathanhanapps.wayd.core.db.FlowDao
+import com.nathanhanapps.wayd.core.db.Message
+import com.nathanhanapps.wayd.core.db.MessageDao
 import com.nathanhanapps.wayd.core.db.Session
 import com.nathanhanapps.wayd.core.db.SessionDao
 import com.nathanhanapps.wayd.core.model.Privilege
@@ -36,6 +38,8 @@ class WaydVpnService : VpnService() {
     @Inject lateinit var sessions: SessionDao
     @Inject lateinit var flows: FlowDao
     @Inject lateinit var dns: DnsDao
+    @Inject lateinit var messageDao: MessageDao
+    @Inject lateinit var interceptHook: InterceptHook
 
     private var pfd: ParcelFileDescriptor? = null
     private var native: NativeNet? = null
@@ -136,17 +140,25 @@ class WaydVpnService : VpnService() {
     private inner class BatchSink : CaptureSink {
         val flowBuf = ArrayList<Flow>()
         val dnsBuf = ArrayList<DnsRecord>()
+        val withMessages = ArrayList<Pair<Flow, List<Message>>>()
         override fun flow(f: Flow) { flowBuf += f }
+        override fun flowWithMessages(f: Flow, messages: List<Message>) { withMessages += f to messages }
         override fun dns(d: DnsRecord) { dnsBuf += d }
 
         fun flush() {
-            if (flowBuf.isEmpty() && dnsBuf.isEmpty()) return
+            if (flowBuf.isEmpty() && dnsBuf.isEmpty() && withMessages.isEmpty()) return
             val f = ArrayList(flowBuf)
             val d = ArrayList(dnsBuf)
+            val m = ArrayList(withMessages)
             flowBuf.clear()
             dnsBuf.clear()
+            withMessages.clear()
             runBlocking {
                 if (f.isNotEmpty()) flows.insertAll(f)
+                for ((flow, msgs) in m) {
+                    val id = flows.insert(flow)
+                    messageDao.insertAll(msgs.map { it.copy(flowId = id) })
+                }
                 if (d.isNotEmpty()) dns.insertAll(d)
             }
         }
@@ -154,7 +166,17 @@ class WaydVpnService : VpnService() {
 
     private fun pollLoop(net: NativeNet, h: Long) {
         val sink = BatchSink()
-        val t = FlowTracker(sessionId, AndroidUidResolver(this), sink, AndroidCaptureEnv(this))
+        // Research flavor only: switch TLS interception on if the user consented and chose apps.
+        val provider = interceptHook.provider
+        val mitm = runCatching { provider?.config() }.getOrNull()
+        val active = mitm != null && runCatching {
+            net.nativeConfigureMitm(h, mitm.certPem, mitm.keyPem, mitm.excludedHosts.joinToString(","))
+        }.getOrDefault(false)
+        val t = FlowTracker(
+            sessionId, AndroidUidResolver(this), sink, AndroidCaptureEnv(this),
+            gate = if (active) provider?.gate() else null,
+            reply = { id, allow -> net.nativeDecide(h, id, allow) },
+        )
         val buf = ByteArray(POLL_BUF)
         var lastFlush = SystemClock.elapsedRealtime()
         var lastNotify = 0L
@@ -248,7 +270,7 @@ class WaydVpnService : VpnService() {
         private const val CHANNEL = "capture"
         private const val NOTIF_ID = 1
         private const val MTU = 1500
-        private const val POLL_BUF = 64 * 1024
+        private const val POLL_BUF = 512 * 1024
         private const val FLUSH_MS = 500L
         private const val NOTIFY_MS = 2_000L
     }
