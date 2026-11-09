@@ -236,4 +236,6 @@
     <string name="inspector_no_body">（空）</string>
     <string name="inspector_binary">（二进制，%1$d 字节）</string>
     <string name="inspector_truncated">已截断</string>
+    <string name="ai_phase_first">首次运行：正在为你的手机准备并编译模型。这只会发生一次，可能需要几分钟，之后的分析会快得多。</string>
+    <string name="ai_phase_loading">正在加载模型…</string>
 </resources>

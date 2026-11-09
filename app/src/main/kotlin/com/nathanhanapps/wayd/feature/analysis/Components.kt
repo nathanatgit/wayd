@@ -69,8 +69,19 @@ fun severityColor(s: Severity): Color = when (s) {
 @Composable
 fun Badge(text: String, color: Color, modifier: Modifier = Modifier) {
     Surface(modifier, shape = RoundedCornerShape(8.dp), color = color.copy(alpha = 0.16f)) {
-        Text(text, Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = color)
+        Text(
+            text, Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = color,
+            maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
     }
+}
+
+/** Name of a destination; a group of connections without a hostname is shown by its real address (IPv4 or IPv6) plus how many others it groups. */
+@Composable
+fun destinationLabel(d: com.nathanhanapps.wayd.analysis.Destination): String {
+    if (!d.unnamed) return d.label
+    val first = d.hosts.firstOrNull() ?: return stringResource(R.string.dest_unnamed, d.addressCount)
+    return if (d.addressCount > 1) stringResource(R.string.dest_unnamed_more, first, d.addressCount - 1) else first
 }
 
 @Composable

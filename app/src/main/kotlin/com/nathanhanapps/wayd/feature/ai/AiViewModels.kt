@@ -36,8 +36,10 @@ class AiAnalysisViewModel @Inject constructor(
     private val evidence: AiEvidenceService,
     private val labels: AppLabels,
     private val models: ModelManager,
+    engine: com.nathanhanapps.wayd.ai.AiEngine,
     savedState: SavedStateHandle,
 ) : ViewModel() {
+    val phase: StateFlow<com.nathanhanapps.wayd.ai.EnginePhase> = engine.phase
     private val pkg: String = savedState["pkg"] ?: ""
     private val windowKey: String = savedState["win"] ?: Windows.TODAY
     private val _state = MutableStateFlow<AiUiState>(AiUiState.Idle)

@@ -236,4 +236,6 @@ That content can include things other people sent you or that were sent about th
     <string name="inspector_no_body">(empty)</string>
     <string name="inspector_binary">(binary, %1$d bytes)</string>
     <string name="inspector_truncated">truncated</string>
+    <string name="ai_phase_first">First run: the model is being prepared and compiled for your phone. This happens once and can take a few minutes; later analyses start much faster.</string>
+    <string name="ai_phase_loading">Loading the model…</string>
 </resources>

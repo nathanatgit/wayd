@@ -41,6 +41,7 @@ import com.nathanhanapps.wayd.feature.analysis.AppDetailViewModel
 import com.nathanhanapps.wayd.feature.analysis.Evidence
 import com.nathanhanapps.wayd.feature.analysis.AppIcon
 import com.nathanhanapps.wayd.feature.analysis.Badge
+import com.nathanhanapps.wayd.feature.analysis.destinationLabel
 import com.nathanhanapps.wayd.feature.analysis.HourlyChart
 import com.nathanhanapps.wayd.feature.analysis.Loadable
 import com.nathanhanapps.wayd.feature.analysis.categoryColor
@@ -121,19 +122,12 @@ private fun Detail(r: AppReport, vm: AppDetailViewModel, context: android.conten
     }
 }
 
-/** A destination without a hostname is shown by its real address (IPv4 or IPv6), plus how many other addresses it groups. */
-@Composable
-private fun unnamedLabel(d: Destination): String {
-    val first = d.hosts.firstOrNull() ?: return stringResource(R.string.dest_unnamed, d.addressCount)
-    return if (d.addressCount > 1) stringResource(R.string.dest_unnamed_more, first, d.addressCount - 1) else first
-}
-
 @Composable
 private fun DestinationRow(d: Destination, context: android.content.Context) {
     var open by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().clickable { open = !open }.padding(vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(if (d.unnamed) unnamedLabel(d) else d.label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(destinationLabel(d), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis)
             categoryLabel(d.category)?.let { Badge(it, categoryColor(d.category)) }
         }
         Text(

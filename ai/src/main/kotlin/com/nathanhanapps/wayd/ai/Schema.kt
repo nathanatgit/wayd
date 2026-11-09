@@ -103,10 +103,40 @@ object SchemaValidator {
         return null
     }
 
+    /** Small models often leave a comma before a closing bracket; that is the only repair done to their JSON. Strings are left alone. */
+    internal fun dropTrailingCommas(json: String): String {
+        val out = StringBuilder(json.length)
+        var inString = false
+        var escaped = false
+        var i = 0
+        while (i < json.length) {
+            val c = json[i]
+            if (inString) {
+                out.append(c)
+                when {
+                    escaped -> escaped = false
+                    c == '\\' -> escaped = true
+                    c == '"' -> inString = false
+                }
+            } else if (c == '"') {
+                inString = true
+                out.append(c)
+            } else if (c == ',') {
+                var j = i + 1
+                while (j < json.length && json[j].isWhitespace()) j++
+                if (j < json.length && (json[j] == ']' || json[j] == '}')) { /* skip the comma */ } else out.append(c)
+            } else {
+                out.append(c)
+            }
+            i++
+        }
+        return out.toString()
+    }
+
     fun validate(raw: String, allowedEvidence: Set<String>): Validation {
         val json = extractJson(raw) ?: return Validation.Invalid(listOf("no JSON object found"))
         val root = try {
-            JSONObject(json)
+            JSONObject(dropTrailingCommas(json))
         } catch (e: JSONException) {
             return Validation.Invalid(listOf("invalid JSON: ${e.message?.take(80)}"))
         }

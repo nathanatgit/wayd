@@ -60,8 +60,8 @@ class PromptBuilderTest {
     @Test fun boundsSizeAndCount() {
         val big = AiRequest("x", (1..100).map { EvidenceItem("f:$it", "y".repeat(5000)) })
         val p = PromptBuilder.build(big)
-        assertEquals(40, p.allowedEvidence.size)
-        assertTrue(p.user.length < 40 * 1000)
+        assertEquals(24, p.allowedEvidence.size)
+        assertTrue(p.user.length < 24 * 1000)
     }
 }
 
@@ -170,7 +170,7 @@ class AiAnalyzerTest {
         var calls = 0
         override suspend fun isReady() = ready
         override suspend fun modelId() = "fake"
-        override suspend fun generate(system: String, user: String): String {
+        override suspend fun generate(system: String, user: String, jsonSchema: String?): String {
             calls++
             return replies.removeFirst()
         }
@@ -214,8 +214,27 @@ class AiAnalyzerTest {
         val engine = object : AiEngine {
             override suspend fun isReady() = true
             override suspend fun modelId() = "x"
-            override suspend fun generate(system: String, user: String): String = error("out of memory")
+            override suspend fun generate(system: String, user: String, jsonSchema: String?): String = error("out of memory")
         }
         assertTrue(AiAnalyzer(engine, Store()).analyse(req) is AiOutcome.Failed)
+    }
+}
+
+class LenientJsonTest {
+    @Test fun dropsTrailingCommasButNotCommasInsideStrings() {
+        val fixed = SchemaValidator.dropTrailingCommas("""{"a":["x",],"b":"keep, ]",}""")
+        assertEquals("""{"a":["x"],"b":"keep, ]"}""", fixed)
+    }
+
+    @Test fun acceptsTheModelsTrailingCommaStyle() {
+        val raw = """{"schema_version":1,"summary":"s","verdict":"unknown","confidence":0.5,
+            "data_types":[{"type":"NETWORK_INFO","evidence_ids":["f:1",],"certainty":"seen",},],"destinations":[],"timeline_notes":[],"user_actions":[],"open_questions":[],}"""
+        assertTrue(SchemaValidator.validate(raw, setOf("f:1")) is Validation.Valid)
+    }
+
+    @Test fun schemaIsValidJsonWithBoundedLists() {
+        val schema = org.json.JSONObject(PromptBuilder.JSON_SCHEMA)
+        assertEquals(6, schema.getJSONObject("properties").getJSONObject("data_types").getInt("maxItems"))
+        assertTrue(schema.getJSONArray("required").length() >= 8)
     }
 }

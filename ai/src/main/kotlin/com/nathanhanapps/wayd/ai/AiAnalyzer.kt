@@ -1,15 +1,24 @@
 package com.nathanhanapps.wayd.ai
 
+/** What the engine is busy with; the UI uses it to explain long waits (the first run compiles the model for this phone). */
+enum class EnginePhase { IDLE, PREPARING_FIRST_RUN, LOADING, GENERATING }
+
 /** A local language model. One inference at a time; implementations must be cancellable. */
 interface AiEngine {
+    val phase: kotlinx.coroutines.flow.StateFlow<EnginePhase> get() = IdlePhase.flow
+
     /** True when a model file is installed and the engine can run. */
     suspend fun isReady(): Boolean
 
     /** Identifier stored with each analysis, e.g. `gemma-4-E2B-it`. */
     suspend fun modelId(): String
 
-    /** Runs one chat turn and returns the raw text. Throws on failure. */
-    suspend fun generate(system: String, user: String): String
+    /** Runs one chat turn and returns the raw text. [jsonSchema], when given, constrains the output to that JSON Schema. Throws on failure. */
+    suspend fun generate(system: String, user: String, jsonSchema: String? = null): String
+}
+
+private object IdlePhase {
+    val flow: kotlinx.coroutines.flow.StateFlow<EnginePhase> = kotlinx.coroutines.flow.MutableStateFlow(EnginePhase.IDLE)
 }
 
 /** Persists finished analyses. The database implementation lives in the app. */
@@ -38,6 +47,8 @@ class AiAnalyzer(
     private val engine: AiEngine,
     private val store: AnalysisStore,
     private val clock: () -> Long = System::currentTimeMillis,
+    /** Debug builds only: receives validator complaints and the start of an invalid reply so prompts can be tuned. Never set in release. */
+    private val debugLog: ((String) -> Unit)? = null,
 ) {
     suspend fun analyse(req: AiRequest, useCache: Boolean = true): AiOutcome {
         if (!engine.isReady()) return AiOutcome.NoModel
@@ -55,7 +66,7 @@ class AiAnalyzer(
 
         val started = clock()
         var reply = try {
-            engine.generate(prompt.system, prompt.user)
+            engine.generate(prompt.system, prompt.user, PromptBuilder.JSON_SCHEMA)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (t: Throwable) {
@@ -63,15 +74,17 @@ class AiAnalyzer(
         }
         var verdict = SchemaValidator.validate(reply, prompt.allowedEvidence)
         if (verdict is Validation.Invalid) {
+            debugLog?.invoke("attempt 1 invalid: ${verdict.errors} | reply(${reply.length}): ${reply.take(2500)}")
             val repair = PromptBuilder.repair(prompt, reply, verdict.errors)
             reply = try {
-                engine.generate(repair.system, repair.user)
+                engine.generate(repair.system, repair.user, PromptBuilder.JSON_SCHEMA)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (t: Throwable) {
                 return AiOutcome.Failed(t.message ?: t.javaClass.simpleName)
             }
             verdict = SchemaValidator.validate(reply, prompt.allowedEvidence)
+            (verdict as? Validation.Invalid)?.let { debugLog?.invoke("attempt 2 invalid: ${it.errors} | reply(${reply.length}): ${reply.take(2500)}") }
         }
         val took = clock() - started
         return when (verdict) {

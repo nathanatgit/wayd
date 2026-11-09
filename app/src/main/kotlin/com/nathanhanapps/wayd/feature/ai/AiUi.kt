@@ -49,7 +49,8 @@ fun AiSection(vm: AiAnalysisViewModel = hiltViewModel()) {
         when (val s = state) {
             AiUiState.Idle -> Button(onClick = { vm.analyse() }) { Text(stringResource(R.string.ai_analyse)) }
             AiUiState.Running -> {
-                Text(stringResource(R.string.ai_running), style = MaterialTheme.typography.bodyMedium)
+                val phase by vm.phase.collectAsStateWithLifecycle()
+                PhaseNotice(phase)
                 LinearProgressIndicator(Modifier.fillMaxWidth())
                 OutlinedButton(onClick = vm::cancel) { Text(stringResource(R.string.ai_cancel)) }
             }
@@ -63,6 +64,21 @@ fun AiSection(vm: AiAnalysisViewModel = hiltViewModel()) {
             }
         }
     }
+}
+
+/** Explains the wait: the first run compiles the model for this phone's GPU and can take minutes; later runs only load it. */
+@Composable
+fun PhaseNotice(phase: com.nathanhanapps.wayd.ai.EnginePhase) {
+    Text(
+        stringResource(
+            when (phase) {
+                com.nathanhanapps.wayd.ai.EnginePhase.PREPARING_FIRST_RUN -> R.string.ai_phase_first
+                com.nathanhanapps.wayd.ai.EnginePhase.LOADING -> R.string.ai_phase_loading
+                else -> R.string.ai_running
+            },
+        ),
+        style = MaterialTheme.typography.bodyMedium,
+    )
 }
 
 /** Renders any analysis outcome: the AI opinion card, or why there is none. */

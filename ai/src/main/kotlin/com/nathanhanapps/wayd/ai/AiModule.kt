@@ -36,5 +36,8 @@ object AiModule {
 
     @Provides
     @Singleton
-    fun analyzer(engine: AiEngine, dao: AiAnalysisDao): AiAnalyzer = AiAnalyzer(engine, RoomAnalysisStore(dao))
+    fun analyzer(@dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context, engine: AiEngine, dao: AiAnalysisDao): AiAnalyzer {
+        val debuggable = context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
+        return AiAnalyzer(engine, RoomAnalysisStore(dao), debugLog = if (debuggable) { m -> android.util.Log.i("WAYD-AI", m) } else null)
+    }
 }

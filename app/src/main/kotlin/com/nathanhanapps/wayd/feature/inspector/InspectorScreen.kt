@@ -65,9 +65,11 @@ class InspectorViewModel @Inject constructor(
     private val messageDao: MessageDao,
     private val analyzer: AiAnalyzer,
     private val evidence: AiEvidenceService,
+    engine: com.nathanhanapps.wayd.ai.AiEngine,
     val labels: AppLabels,
     savedState: SavedStateHandle,
 ) : ViewModel() {
+    val phase: StateFlow<com.nathanhanapps.wayd.ai.EnginePhase> = engine.phase
     val pkg: String = savedState["pkg"] ?: ""
     val windowKey: String = savedState["win"] ?: Windows.TODAY
     private val _messages = MutableStateFlow<List<Message>?>(null)
@@ -138,7 +140,8 @@ fun InspectorScreen(onBack: () -> Unit, vm: InspectorViewModel = hiltViewModel()
                 when (val a = ai) {
                     InspectorViewModel.AiState.Idle -> {}
                     InspectorViewModel.AiState.Running -> {
-                        Text(stringResource(R.string.ai_running), style = MaterialTheme.typography.bodyMedium)
+                        val phase by vm.phase.collectAsStateWithLifecycle()
+                        com.nathanhanapps.wayd.feature.ai.PhaseNotice(phase)
                         LinearProgressIndicator(Modifier.fillMaxWidth())
                     }
                     is InspectorViewModel.AiState.Done -> AiOutcomeView(a.outcome)

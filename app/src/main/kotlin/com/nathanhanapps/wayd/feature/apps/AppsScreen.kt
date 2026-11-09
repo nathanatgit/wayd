@@ -31,6 +31,7 @@ import com.nathanhanapps.wayd.feature.analysis.AppIcon
 import com.nathanhanapps.wayd.feature.analysis.AppLabels
 import com.nathanhanapps.wayd.feature.analysis.AppsViewModel
 import com.nathanhanapps.wayd.feature.analysis.Badge
+import com.nathanhanapps.wayd.feature.analysis.destinationLabel
 import com.nathanhanapps.wayd.feature.analysis.Loadable
 import com.nathanhanapps.wayd.feature.analysis.Windows
 import com.nathanhanapps.wayd.feature.analysis.categoryColor
@@ -95,10 +96,14 @@ private fun AppCard(app: AppReport, labels: AppLabels, context: android.content.
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 app.destinations.take(3).forEach { d ->
                     val cat = categoryLabel(d.category)
-                    Badge(if (cat != null) "${d.label} · $cat" else d.label, categoryColor(d.category))
+                    destinationLabel(d).let { name -> Badge(if (cat != null) "$name · $cat" else name, categoryColor(d.category)) }
                 }
             }
         }

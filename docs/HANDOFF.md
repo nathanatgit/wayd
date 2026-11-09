@@ -72,11 +72,13 @@ Causes found in the relay and fixed in the next build (not yet re-verified by Na
 - scrcpy: after `taskkill scrcpy.exe` the on-device server (`app_process ... scrcpy.Server`) can keep running and leave stale virtual displays that render black; kill them by PID (`adb shell kill <pid>` from `ps -A | grep scrcpy`) and verify `dumpsys SurfaceFlinger --display-id | grep -c scrcpy` is 0 before a new session. Screenshots must use the SurfaceFlinger id of the *live* display.
 - Only one VPN can be active: WAYD replaces other VPN/proxy apps (e.g. Clash on Nat's phone) while recording.
 
-## On-device AI (M6) status — implemented, NOT yet tested on the phone (Nat asked not to test live while away)
+## On-device AI (M6) status — working on Nat's NX733J (2026-11-09)
 
-`:ai` module: `Masker`, versioned `PromptBuilder` (inert `<data>` blocks, delimiter neutralising), `SchemaValidator` (schema v1, evidence-id checks, claim stripping), `AiAnalyzer` (one repair retry, cache in `AiAnalysis`), `ModelManager` (resumable download, SHA-256, free-space check, catalog E2B/E4B with Hugging Face + ModelScope + custom URL), `ModelDownloadService` (dataSync foreground service), `LiteRtEngine` (GPU then CPU). 19 JVM tests incl. prompt-injection fixtures. App: Settings → On-device AI (download/delete/use), App detail → "Analyse with AI" with an "AI opinion" card. Untested: real model loading and inference, download service on the device, UI layout. To test: Settings → On-device AI → Download E2B (about 2.6 GB, Wi-Fi), then open an app with findings → Analyse with AI; check latency (target < 30 s for 10 items), JSON validity rate, memory, and that cancelling works.
+Verified on the phone: ModelScope download of Gemma 4 E2B (2.59 GB, resumable, SHA-256 verified, foreground service), GPU backend after declaring `libOpenCL.so` (`uses-native-library`), CPU fallback when the GPU path fails at the first message, schema-constrained JSON (`ResponseFormat.json`) plus repetition penalty and a 1400-token cap, a valid evidence-citing analysis in about 27 s for about 10 items, first-run notice ("compiling the model for your phone, once"). Hugging Face is unreachable from the phone's network; ModelScope works (about 30 MB/s). Phone has 15 GB RAM, so E4B is recommended there (not yet tried).
 
-Not built yet: tools / "ask about my data" chat, overnight summary (WorkManager), selection-based "Analyse selection" from the connection list, injection tests against the real model.
+Learned: the E2B model without constrained decoding emitted trailing commas and looped for thousands of characters; constrained decoding fixed it. It still sometimes mixes languages in free text (prompt now forbids it) and adds a vague "OTHER" data type; quality tuning and E4B comparison are open. Debug builds log validator complaints and the start of an invalid reply under tag `WAYD-AI` (never in release).
+
+Not built yet: tools / "ask about my data" chat, overnight summary (WorkManager), "Analyse selection" from the connection list, injection tests against the real model.
 
 ## Next step
 
