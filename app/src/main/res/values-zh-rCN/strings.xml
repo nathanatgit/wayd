@@ -81,7 +81,6 @@
     <string name="report_no_alerts">该时间段没有警示。</string>
     <string name="report_background">你没在使用时</string>
     <string name="report_companies">谁收到了你的数据</string>
-    <string name="report_new">今日新增</string>
     <string name="report_coverage">覆盖情况</string>
     <string name="report_coverage_text">%1$d 个连接 · %2$d%% 已识别应用 · %4$d 个公网 TCP 连接中 %3$d%% 有主机名。IPv6、ICMP 和加密 DNS 未完全覆盖。</string>
     <string name="report_countries_na">国家统计需要离线 GeoIP 数据库，目前尚未内置。</string>

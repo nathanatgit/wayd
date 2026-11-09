@@ -81,7 +81,6 @@
     <string name="report_no_alerts">No alerts for this period.</string>
     <string name="report_background">While you weren’t using it</string>
     <string name="report_companies">Who received your data</string>
-    <string name="report_new">New today</string>
     <string name="report_coverage">Coverage</string>
     <string name="report_coverage_text">%1$d connections · %2$d%% attributed to an app · %3$d%% of %4$d public TCP connections have a hostname. IPv6, ICMP and encrypted DNS are not fully visible.</string>
     <string name="report_countries_na">Countries need an offline GeoIP database, which is not bundled yet.</string>

@@ -122,11 +122,6 @@ private fun ReportBody(r: DailyReport, labels: AppLabels, window: String, onOpen
             }
         }
 
-        item { Text(stringResource(R.string.report_new), style = MaterialTheme.typography.titleMedium) }
-        items(r.newToday) { f ->
-            Text(stringResource(R.string.report_company_row, name(f.pkg), findingTitle(f)), style = MaterialTheme.typography.bodySmall, modifier = Modifier.clickable { onOpenApp(f.pkg, window) })
-        }
-
         item { Text(stringResource(R.string.report_countries_na), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline) }
 
         item {
