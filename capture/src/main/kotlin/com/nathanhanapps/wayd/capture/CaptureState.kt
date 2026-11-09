@@ -42,8 +42,13 @@ class CaptureState @Inject constructor() {
 /** UI-facing entry point. VPN consent (`VpnService.prepare`) is handled by the caller before [start]. */
 @Singleton
 class CaptureController @Inject constructor(@ApplicationContext private val context: Context) {
+    /** Debug builds only (see [WaydVpnService.EXTRA_EXCLUDE]); null in normal use. */
+    @Volatile var debugExclude: String? = null
+
     fun start() {
-        ContextCompat.startForegroundService(context, intent(WaydVpnService.ACTION_START))
+        val i = intent(WaydVpnService.ACTION_START)
+        debugExclude?.let { i.putExtra(WaydVpnService.EXTRA_EXCLUDE, it) }
+        ContextCompat.startForegroundService(context, i)
     }
 
     fun stop() {

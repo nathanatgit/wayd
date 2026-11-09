@@ -19,6 +19,7 @@
     <string name="stat_apps">Apps</string>
     <string name="stat_up">Sent</string>
     <string name="stat_down">Received</string>
+    <string name="coverage_line">Coverage: %1$d flows, %2$d%% with app · %3$d public TCP flows with data, %4$d%% with hostname</string>
     <string name="flows_title">Recent connections</string>
     <string name="flows_empty">No connections recorded yet.</string>
     <string name="flow_no_host">no hostname</string>

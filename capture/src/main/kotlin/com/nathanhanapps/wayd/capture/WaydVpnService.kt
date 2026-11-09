@@ -5,8 +5,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.ServiceInfo
+import android.net.IpPrefix
 import android.net.VpnService
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
@@ -42,7 +45,7 @@ class WaydVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> stopCapture()
-            else -> startCapture()
+            else -> startCapture(intent)
         }
         return START_NOT_STICKY
     }
@@ -56,7 +59,7 @@ class WaydVpnService : VpnService() {
         super.onDestroy()
     }
 
-    private fun startCapture() {
+    private fun startCapture(intent: Intent?) {
         if (running) return
         state.reset(CapturePhase.STARTING)
         promote(0, 0)
@@ -69,6 +72,7 @@ class WaydVpnService : VpnService() {
             .addAddress("fd00:111:222::1", 64)
             .addRoute("::", 0)
             .apply { runCatching { addDisallowedApplication(packageName) } }
+            .apply { applyDebugExclusions(this, intent) }
             .establish()
         if (tun == null) {
             fail()
@@ -89,6 +93,21 @@ class WaydVpnService : VpnService() {
         state.reset(CapturePhase.RUNNING)
 
         worker = Thread({ pollLoop(net, h) }, "wayd-capture").also { it.start() }
+    }
+
+    /**
+     * Debug builds only: `--es exclude 192.168.1.5/32,...` keeps those prefixes out of the tunnel. Needed so a
+     * wireless-adb session is not reset by the VPN capturing its established connection. Ignored in release builds.
+     */
+    private fun applyDebugExclusions(b: Builder, intent: Intent?) {
+        val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        if (!debuggable || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        intent?.getStringExtra(EXTRA_EXCLUDE)?.split(',')?.forEach { cidr ->
+            runCatching {
+                val (addr, len) = cidr.trim().split('/')
+                b.excludeRoute(IpPrefix(java.net.InetAddress.getByName(addr), len.toInt()))
+            }
+        }
     }
 
     private inner class BatchSink : CaptureSink {
@@ -202,6 +221,7 @@ class WaydVpnService : VpnService() {
     companion object {
         const val ACTION_START = "com.nathanhanapps.wayd.capture.START"
         const val ACTION_STOP = "com.nathanhanapps.wayd.capture.STOP"
+        const val EXTRA_EXCLUDE = "exclude"
         private const val CHANNEL = "capture"
         private const val NOTIF_ID = 1
         private const val MTU = 1500

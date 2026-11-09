@@ -6,12 +6,12 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <!-- Watching eyes (docs/brand/watching_eyes.svg), converted from its 512-unit viewBox.
-         Group scale 0.173 + translate 9.71 centres it and keeps it inside the 66dp adaptive-icon safe zone. -->
+         Group scale 0.14 + translate 18.16 centres it with generous margin inside the 66dp adaptive-icon safe zone (eyes span ~50dp). -->
     <group
-        android:scaleX="0.173"
-        android:scaleY="0.173"
-        android:translateX="9.71"
-        android:translateY="9.71">
+        android:scaleX="0.14"
+        android:scaleY="0.14"
+        android:translateX="18.16"
+        android:translateY="18.16">
 
         <!-- Eyeballs (left, right) -->
         <path

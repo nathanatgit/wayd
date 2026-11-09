@@ -19,6 +19,7 @@
     <string name="stat_apps">应用</string>
     <string name="stat_up">已发送</string>
     <string name="stat_down">已接收</string>
+    <string name="coverage_line">覆盖率：%1$d 个连接，%2$d%% 已识别应用 · %3$d 个有数据的公网 TCP 连接，%4$d%% 有主机名</string>
     <string name="flows_title">最近的连接</string>
     <string name="flows_empty">尚未记录任何连接。</string>
     <string name="flow_no_host">无主机名</string>

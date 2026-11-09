@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.nathanhanapps.wayd.capture.CaptureController
 import com.nathanhanapps.wayd.capture.CaptureState
 import com.nathanhanapps.wayd.capture.CaptureUi
+import com.nathanhanapps.wayd.core.db.CoverageCounts
 import com.nathanhanapps.wayd.core.db.Flow
 import com.nathanhanapps.wayd.core.db.FlowDao
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -23,6 +24,9 @@ class RecordViewModel @Inject constructor(
 
     val recent: StateFlow<List<Flow>> = flowDao.observeRecent(100)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val coverage: StateFlow<CoverageCounts> = flowDao.observeCoverage()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CoverageCounts(0, 0, 0, 0))
 
     fun start() = controller.start()
 

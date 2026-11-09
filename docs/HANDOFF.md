@@ -29,11 +29,19 @@ Working on device: VpnService + Rust `ipstack` relay (arm64), UID attribution, T
 
 Fixed during testing: missing `ACCESS_NETWORK_STATE` crashed the poll thread (process died, VPN lingered until force-stop). Tracker now survives enrichment failures.
 
+**Measured (cumulative, NX733J, 2026-11-09):** 512 flows, 99% with package (target >=99% OK); hostname coverage 84% over 103 public TCP flows that carried data (target >=90%, not yet met). The Record tab shows this live; LAN probes and zero-byte flows are excluded from the hostname metric because they cannot have a hostname. Relay now captures the client's first bytes while the outbound connect is in flight (SNI of slow/failed connections).
+
 **Not yet met (M1 acceptance):** 1 h soak with browse/video/WeChat; >=99% flows with package; >=90% TCP flows with host (many flows are still "no hostname": IP-only/QUIC/cached DNS); external-router IPv4/IPv6 completeness check. **Known gaps:** ICMP is dropped (ping fails inside the tunnel), DoH/DoT bypasses DNS visibility, QUIC SNI not parsed, arm64 only, `appForeground` is always false until M3, no pkt counters, `nativePoll` allocates a 64 KB scratch buffer per call (optimise).
 
 ## Testing a VPN build without disturbing the phone
 
 Consent dialog persists after the first accept (Nat accepts it once on the main display). Then drive the app on a scrcpy virtual display. scrcpy may drop (`Device disconnected`) the moment the VPN comes up; just start a new scrcpy session afterwards. Always finish with: stop recording, `am force-stop com.nathanhanapps.wayd`, confirm `dumpsys connectivity` shows no WAYD VPN, ping works, `setprop log.tag S`, kill `scrcpy.exe`. Crash details without logcat: `dumpsys dropbox --print data_app_crash`.
+
+## Known testing problems
+
+- Wireless adb drops (`device offline`, scrcpy `Device disconnected`) whenever the WAYD VPN comes up, even with the PC excluded via the debug-only `--es exclude <cidr>` extra on `MainActivity`; root cause not found. If the scrcpy display dies, apps launched on it can fall back to the main display. Do not drive multi-app tests through scripts; cleanup commands can fail while adb is offline, so always re-verify `log.tag`, VPN state and `pidof` afterwards.
+- Nubia AutoLaunch blocks `am start-foreground-service` for the VPN service ("Blocked by AutoLaunch"); start only from the UI.
+- Only one VPN can be active: WAYD replaces other VPN/proxy apps (e.g. Clash on Nat's phone) while recording.
 
 ## Next step
 

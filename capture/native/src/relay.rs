@@ -20,7 +20,7 @@ const TCP_IDLE: Duration = Duration::from_secs(300);
 const UDP_IDLE: Duration = Duration::from_secs(30);
 const DNS_PORT: u16 = 53;
 
-pub async fn tcp(id: u64, client: IpStackTcpStream, sink: EventSink) {
+pub async fn tcp(id: u64, mut client: IpStackTcpStream, sink: EventSink) {
     let src = client.local_addr();
     let dst = client.peer_addr();
     sink.open(id, 6, src, dst);
@@ -28,13 +28,44 @@ pub async fn tcp(id: u64, client: IpStackTcpStream, sink: EventSink) {
     let up = Arc::new(AtomicU64::new(0));
     let down = Arc::new(AtomicU64::new(0));
 
-    if let Some(remote) = connect(dst).await {
-        let (cr, cw) = tokio::io::split(client);
-        let (rr, rw) = remote.into_split();
-        let _ = tokio::join!(
-            pump(id, false, cr, rw, up.clone(), sink.clone()),
-            pump(id, true, rr, cw, down.clone(), sink.clone()),
-        );
+    // Read the client's first bytes while the outbound connect is in flight, so the TLS SNI / HTTP Host
+    // of connections that fail or stall is still recorded. `read` is cancel-safe, so if the connect wins
+    // the race nothing is lost.
+    let mut first = vec![0u8; 16 * 1024];
+    let mut early: Option<usize> = None;
+    let connect_fut = connect(dst);
+    tokio::pin!(connect_fut);
+    let remote = loop {
+        tokio::select! {
+            r = &mut connect_fut => break r,
+            res = client.read(&mut first), if early.is_none() => match res {
+                Ok(n) if n > 0 => early = Some(n),
+                _ => break None, // client closed before sending anything
+            },
+        }
+    };
+
+    let mut captured0 = 0usize;
+    if let Some(n) = early {
+        let take = n.min(TCP_CAPTURE);
+        sink.data(id, false, &first[..take]);
+        captured0 = take;
+    }
+
+    if let Some(mut remote) = remote {
+        let mut ok = true;
+        if let Some(n) = early {
+            ok = remote.write_all(&first[..n]).await.is_ok();
+            up.fetch_add(n as u64, Ordering::Relaxed);
+        }
+        if ok {
+            let (cr, cw) = tokio::io::split(client);
+            let (rr, rw) = remote.into_split();
+            let _ = tokio::join!(
+                pump(id, false, cr, rw, up.clone(), sink.clone(), captured0),
+                pump(id, true, rr, cw, down.clone(), sink.clone(), 0),
+            );
+        }
     }
     sink.close(id, up.load(Ordering::Relaxed), down.load(Ordering::Relaxed));
 }
@@ -46,13 +77,20 @@ async fn connect(dst: SocketAddr) -> Option<tokio::net::TcpStream> {
 }
 
 /// Copies `from` to `to`, counting bytes and reporting the first `TCP_CAPTURE` bytes.
-async fn pump<R, W>(id: u64, down: bool, mut from: R, mut to: W, counter: Arc<AtomicU64>, sink: EventSink)
+async fn pump<R, W>(
+    id: u64,
+    down: bool,
+    mut from: R,
+    mut to: W,
+    counter: Arc<AtomicU64>,
+    sink: EventSink,
+    mut captured: usize,
+)
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
     let mut buf = vec![0u8; 16 * 1024];
-    let mut captured = 0usize;
     loop {
         let n = match timeout(TCP_IDLE, from.read(&mut buf)).await {
             Ok(Ok(n)) if n > 0 => n,

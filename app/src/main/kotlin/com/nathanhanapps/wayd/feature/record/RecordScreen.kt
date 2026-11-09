@@ -39,6 +39,7 @@ import com.nathanhanapps.wayd.core.db.Flow
 fun RecordScreen(vm: RecordViewModel = hiltViewModel()) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     val recent by vm.recent.collectAsStateWithLifecycle()
+    val cov by vm.coverage.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val active = ui.phase == CapturePhase.RUNNING || ui.phase == CapturePhase.STARTING
 
@@ -93,6 +94,18 @@ fun RecordScreen(vm: RecordViewModel = hiltViewModel()) {
             Stat(stringResource(R.string.stat_up), Formatter.formatShortFileSize(context, ui.stats.bytesUp))
             Stat(stringResource(R.string.stat_down), Formatter.formatShortFileSize(context, ui.stats.bytesDown))
         }
+
+        // Coverage gaps are shown, never hidden (AGENTS.md rule 8).
+        Text(
+            stringResource(
+                R.string.coverage_line,
+                cov.total,
+                if (cov.total == 0) 0 else cov.withPkg * 100 / cov.total,
+                cov.tcp,
+                if (cov.tcp == 0) 0 else cov.tcpWithHost * 100 / cov.tcp,
+            ),
+            style = MaterialTheme.typography.labelMedium,
+        )
 
         Text(stringResource(R.string.record_notice), style = MaterialTheme.typography.bodySmall)
 
