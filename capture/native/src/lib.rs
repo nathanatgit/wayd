@@ -8,6 +8,11 @@
 
 pub mod events;
 
+#[cfg(feature = "mitm")]
+pub mod mitm;
+
+#[cfg(unix)]
+mod shared;
 #[cfg(unix)]
 mod engine;
 #[cfg(unix)]

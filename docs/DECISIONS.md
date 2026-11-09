@@ -71,3 +71,12 @@ Permission-use history per app = Shizuku UserService (`privilege` module) exposi
 
 **D-019 · 2026-11-09 · accepted**
 Privileged output must be reduced *inside* the privileged process. `dumpsys appops --history` prints every app in every bucket (about 7 MB), which exceeds the Binder transaction limit (about 1 MB) and the call fails. `HistoryFilter` keeps only bucket headers and the target package; replies are capped at 600 KB. A read failure is its own UI state (`Failed`), never reported as "Shizuku not running".
+
+**D-020 · 2026-11-09 · accepted**
+MITM engine = Rust (`capture/native/src/mitm`, cargo feature `mitm`): rustls 0.23 (ring) + rcgen CA/leaf issuing + httparse-based HTTP/1.1 capture. Built into the `research` flavor only (separate native build, `app/src/research`-style packaging; the standard library has no TLS or MITM code). Design: read the app's ClientHello (SNI) first, connect upstream TLS first, answer the app with a locally issued leaf only if upstream succeeded; any earlier failure falls back to plain passthrough by replaying the recorded bytes; an app that rejects our certificate marks the host as pinned (passthrough next time). Only HTTP/1.1 is offered via ALPN so traffic is parseable; QUIC (UDP 443) of intercepted apps is dropped so they fall back to TCP. Upstream trust = bundled Mozilla roots (`webpki-roots`); hosts whose CA is missing there fall back to passthrough.
+
+**D-021 · 2026-11-09 · accepted**
+Interception policy lives in Kotlin (only Kotlin knows the owning app): for each new flow the relay registers a decision slot, Kotlin answers via `nativeDecide(handle, flowId, intercept)`, the relay waits at most 600 ms; no answer = passthrough. Default is no interception; per-app opt-in, banking/payment/government/password-manager apps and hosts are never interceptable (list in code).
+
+**D-022 · 2026-11-09 · accepted**
+The CA's Android system-store file name is `subject_hash_old` = first 4 bytes (little endian) of MD5 over the DER subject, verified against OpenSSL (`f28c7bdf` for the test CA).

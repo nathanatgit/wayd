@@ -34,22 +34,24 @@ dependencies {
 }
 
 // ---- Native netstack (Rust, see capture/native) -------------------------------------------------
-// Builds libwayd_net.so with cargo-ndk into src/main/jniLibs (git-ignored) before every Android build.
-// Needs: rustup + Android targets, cargo-ndk, and the NDK declared above. Pass -PskipNative to reuse
-// an already-built library.
+// Two variants of libwayd_net.so are built with cargo-ndk:
+//   standard: no TLS interception code at all;  research: built with `--features mitm` (D-006, AGENTS.md rule 7).
+// Each goes to its own folder under build/native/<variant>; the :app module packages the matching one per flavor.
+// Needs: rustup + Android targets, cargo-ndk, and the NDK declared above. Pass -PskipNative to reuse built libraries.
 val nativeAbis = listOf("arm64-v8a")
 val ndkDir = project.extensions.getByType<com.android.build.api.variant.LibraryAndroidComponentsExtension>()
     .sdkComponents.ndkDirectory
 
-val buildNative = tasks.register<Exec>("buildNative") {
+fun registerNative(variant: String, extraArgs: List<String>) = tasks.register<Exec>("buildNative${variant.replaceFirstChar { it.uppercase() }}") {
     group = "build"
-    description = "Builds the Rust netstack with cargo-ndk"
+    description = "Builds the Rust netstack ($variant) with cargo-ndk"
     val nativeDir = layout.projectDirectory.dir("native")
+    val outDir = layout.buildDirectory.dir("native/$variant")
     workingDir = nativeDir.asFile
     inputs.dir(nativeDir.dir("src"))
     inputs.file(nativeDir.file("Cargo.toml"))
     inputs.file(nativeDir.file("Cargo.lock"))
-    outputs.dir(layout.projectDirectory.dir("src/main/jniLibs"))
+    outputs.dir(outDir)
     onlyIf { !project.hasProperty("skipNative") }
 
     val home = System.getProperty("user.home")
@@ -61,6 +63,8 @@ val buildNative = tasks.register<Exec>("buildNative") {
     }
     val sep = File.pathSeparator
     environment("PATH", extraPath.joinToString(sep) + sep + System.getenv("PATH"))
+    // Separate cargo target dirs so switching variants does not rebuild everything.
+    environment("CARGO_TARGET_DIR", nativeDir.dir("target-$variant").asFile.absolutePath)
     doFirst { environment("ANDROID_NDK_HOME", ndkDir.get().asFile.absolutePath) }
     val cargoName = if (OperatingSystem.current().isWindows) "cargo.exe" else "cargo"
     val cargoHome = File("$home/.cargo/bin/$cargoName")
@@ -68,8 +72,9 @@ val buildNative = tasks.register<Exec>("buildNative") {
     val abiArgs = nativeAbis.flatMap { listOf("-t", it) }
     commandLine(
         listOf(cargo, "ndk") + abiArgs +
-            listOf("-P", "29", "-o", layout.projectDirectory.dir("src/main/jniLibs").asFile.absolutePath, "build", "--release"),
+            listOf("-P", "29", "-o", outDir.get().asFile.absolutePath, "build", "--release") + extraArgs,
     )
 }
 
-tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(buildNative) }
+registerNative("standard", emptyList())
+registerNative("research", listOf("--features", "mitm"))

@@ -19,9 +19,11 @@ use jni::EnvUnowned;
 use tokio::runtime::Runtime;
 
 use crate::events::EventSink;
+use crate::shared::Shared;
 use crate::{relay, tun};
 
 struct Engine {
+    shared: Arc<Shared>,
     runtime: Runtime,
     rx: Mutex<Receiver<Vec<u8>>>,
     /// Event that did not fit into the previous poll buffer.
@@ -35,6 +37,8 @@ fn start_engine(tun_fd: i32, mtu: u16) -> std::io::Result<Engine> {
         .thread_name("wayd-net")
         .build()?;
     let (sink, rx) = EventSink::channel();
+    let shared = Shared::new();
+    let shared_for_tasks = shared.clone();
     let _guard = runtime.enter(); // AsyncFd registration needs a runtime context
     let dev = tun::TunDevice::from_borrowed_fd(tun_fd)?;
 
@@ -54,13 +58,14 @@ fn start_engine(tun_fd: i32, mtu: u16) -> std::io::Result<Engine> {
         let ids = Arc::new(AtomicU64::new(1));
         while let Ok(stream) = stack.accept().await {
             let sink = sink.clone();
+            let shared = shared_for_tasks.clone();
             let id = ids.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             match stream {
                 IpStackStream::Tcp(s) => {
-                    tokio::spawn(relay::tcp(id, s, sink));
+                    tokio::spawn(relay::tcp(id, s, sink, shared));
                 }
                 IpStackStream::Udp(s) => {
-                    tokio::spawn(relay::udp(id, s, sink));
+                    tokio::spawn(relay::udp(id, s, sink, shared));
                 }
                 // ICMP and other transports are dropped: nothing to record for M1.
                 _ => {}
@@ -69,7 +74,7 @@ fn start_engine(tun_fd: i32, mtu: u16) -> std::io::Result<Engine> {
     });
 
     drop(_guard);
-    Ok(Engine { runtime, rx: Mutex::new(rx), pending: Mutex::new(None) })
+    Ok(Engine { shared, runtime, rx: Mutex::new(rx), pending: Mutex::new(None) })
 }
 
 /// Fills `out` with as many whole events as fit. Returns bytes written, 0 on timeout, -1 when stopped.
@@ -144,4 +149,112 @@ pub fn native_poll<'l>(
         Ok(n)
     })
     .resolve::<jni::errors::LogErrorAndDefault>()
+}
+
+// ---- MITM controls (research flavor; stubs in the standard build) ----
+
+#[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
+pub fn native_has_mitm<'l>(_env: EnvUnowned<'l>, _this: JObject<'l>) -> jni::sys::jboolean {
+    cfg!(feature = "mitm")
+}
+
+/// Generates a CA. Returns `certPem` + U+001F + `keyPem`, or an empty string on failure / in the standard build.
+#[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
+pub fn native_generate_ca<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, cn: jni::objects::JString<'l>) -> jni::objects::JString<'l> {
+    env.with_env(|env| -> jni::errors::Result<jni::objects::JString<'l>> {
+        #[cfg(feature = "mitm")]
+        {
+            let name = cn.try_to_string(env)?;
+            let out = match crate::mitm::ca::generate_ca(&name) {
+                Ok(ca) => format!("{}\u{1F}{}", ca.cert_pem, ca.key_pem),
+                Err(_) => String::new(),
+            };
+            return jni::objects::JString::from_str(env, &out);
+        }
+        #[cfg(not(feature = "mitm"))]
+        {
+            let _ = cn;
+            jni::objects::JString::from_str(env, "")
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
+}
+
+/// OpenSSL `subject_hash_old` of a certificate PEM (the system-store file name), or "".
+#[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
+pub fn native_subject_hash<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, pem: jni::objects::JString<'l>) -> jni::objects::JString<'l> {
+    env.with_env(|env| -> jni::errors::Result<jni::objects::JString<'l>> {
+        #[cfg(feature = "mitm")]
+        {
+            let p = pem.try_to_string(env)?;
+            return jni::objects::JString::from_str(env, &crate::mitm::ca::subject_hash_old(&p).unwrap_or_default());
+        }
+        #[cfg(not(feature = "mitm"))]
+        {
+            let _ = pem;
+            jni::objects::JString::from_str(env, "")
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
+}
+
+/// Turns interception on for this engine. `excluded` is a comma-separated list of host suffixes never intercepted.
+#[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
+pub fn native_configure_mitm<'l>(
+    mut env: EnvUnowned<'l>,
+    _this: JObject<'l>,
+    handle: jlong,
+    cert: jni::objects::JString<'l>,
+    key: jni::objects::JString<'l>,
+    excluded: jni::objects::JString<'l>,
+) -> jni::sys::jboolean {
+    if handle == 0 {
+        return false;
+    }
+    // SAFETY: the engine outlives control calls; Kotlin stops using the handle before `native_stop`.
+    let engine = unsafe { &*(handle as *const Engine) };
+    env.with_env(|env| -> jni::errors::Result<jni::sys::jboolean> {
+        #[cfg(feature = "mitm")]
+        {
+            let (c, k, x) = (cert.try_to_string(env)?, key.try_to_string(env)?, excluded.try_to_string(env)?);
+            let list = x.split(',').map(|s| s.to_string()).collect();
+            return Ok(match crate::mitm::tls::Mitm::new(&c, &k, list) {
+                Ok(m) => {
+                    engine.shared.set_mitm(Some(Arc::new(m)));
+                    true
+                }
+                Err(_) => false,
+            });
+        }
+        #[cfg(not(feature = "mitm"))]
+        {
+            let _ = (engine, cert, key, excluded, env);
+            Ok(false)
+        }
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
+}
+
+#[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
+pub fn native_disable_mitm<'l>(_env: EnvUnowned<'l>, _this: JObject<'l>, handle: jlong) {
+    if handle == 0 {
+        return;
+    }
+    // SAFETY: see `native_configure_mitm`.
+    let engine = unsafe { &*(handle as *const Engine) };
+    #[cfg(feature = "mitm")]
+    engine.shared.set_mitm(None);
+    #[cfg(not(feature = "mitm"))]
+    let _ = engine;
+}
+
+/// Kotlin's answer to "may this flow be intercepted?".
+#[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
+pub fn native_decide<'l>(_env: EnvUnowned<'l>, _this: JObject<'l>, handle: jlong, flow_id: jlong, intercept: jni::sys::jboolean) {
+    if handle == 0 {
+        return;
+    }
+    // SAFETY: see `native_configure_mitm`.
+    let engine = unsafe { &*(handle as *const Engine) };
+    engine.shared.decide(flow_id as u64, intercept);
 }

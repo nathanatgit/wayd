@@ -38,6 +38,12 @@ android {
         }
     }
 
+    sourceSets {
+        // Each flavor packages its own native library: `research` includes the TLS-interception engine, `standard` does not.
+        getByName("standard").jniLibs.srcDir(rootProject.file("capture/build/native/standard"))
+        getByName("research").jniLibs.srcDir(rootProject.file("capture/build/native/research"))
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -77,4 +83,14 @@ dependencies {
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
+}
+
+// The native libraries are produced by :capture; make sure they exist before they are merged into an APK.
+tasks.configureEach {
+    if (name.startsWith("merge") && name.endsWith("JniLibFolders")) {
+        when {
+            name.contains("Standard") -> dependsOn(":capture:buildNativeStandard")
+            name.contains("Research") -> dependsOn(":capture:buildNativeResearch")
+        }
+    }
 }

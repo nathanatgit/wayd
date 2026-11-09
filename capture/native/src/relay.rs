@@ -15,6 +15,7 @@ use tokio::net::{TcpSocket, UdpSocket};
 use tokio::time::timeout;
 
 use crate::events::EventSink;
+use crate::shared::Shared;
 
 /// Max payload prefix reported per direction for TCP flows (enough for TLS ClientHello / HTTP head).
 const TCP_CAPTURE: usize = 2048;
@@ -26,6 +27,8 @@ pub const TCP_IDLE: Duration = Duration::from_secs(3600);
 pub const UDP_IDLE: Duration = Duration::from_secs(300);
 const DNS_IDLE: Duration = Duration::from_secs(15);
 const DNS_PORT: u16 = 53;
+/// How long a flow waits for Kotlin's intercept decision before falling back to passthrough.
+const DECISION_WAIT: Duration = Duration::from_millis(600);
 
 /// Shared "last byte moved" clock for one flow.
 struct Activity {
@@ -68,9 +71,11 @@ async fn read_idle<R: AsyncRead + Unpin>(from: &mut R, buf: &mut [u8], act: &Act
     }
 }
 
-pub async fn tcp(id: u64, mut client: IpStackTcpStream, sink: EventSink) {
+pub async fn tcp(id: u64, mut client: IpStackTcpStream, sink: EventSink, shared: Arc<Shared>) {
     let src = client.local_addr();
     let dst = client.peer_addr();
+    // Register the decision slot BEFORE announcing the flow so Kotlin's answer cannot arrive first.
+    let decision = if shared.mitm_active() { Some(shared.register(id)) } else { None };
     sink.open(id, 6, src, dst);
 
     let up = Arc::new(AtomicU64::new(0));
@@ -99,6 +104,51 @@ pub async fn tcp(id: u64, mut client: IpStackTcpStream, sink: EventSink) {
         sink.data(id, false, &first[..take]);
         captured0 = take;
     }
+
+    #[cfg(feature = "mitm")]
+    let mut remote = remote;
+    #[cfg(not(feature = "mitm"))]
+    let _ = &decision;
+    #[cfg(feature = "mitm")]
+    if let (Some(m), Some(rx), Some(n)) = (shared.mitm(), decision, early) {
+        if first[..n].len() > 2 && first[0] == 0x16 && first[1] == 0x03 {
+            let allow = matches!(timeout(DECISION_WAIT, rx).await, Ok(Ok(true)));
+            shared.forget(id);
+            if allow {
+                if let Some(r) = remote.take() {
+                    let mut rec = crate::mitm::tls::Recording::new(client, first[..n].to_vec());
+                    match m.intercept(&mut rec, r, id, &sink).await {
+                        crate::mitm::tls::Outcome::Done(u, d) => {
+                            sink.close(id, u, d);
+                        }
+                        crate::mitm::tls::Outcome::ClientRejected => {
+                            sink.close(id, 0, 0);
+                        }
+                        crate::mitm::tls::Outcome::Fallback(replay) => {
+                            // Nothing was sent to the app: continue as a plain relay, replaying what we consumed.
+                            if let Some(mut r2) = connect(dst).await {
+                                if r2.write_all(&replay).await.is_ok() {
+                                    up.fetch_add(replay.len() as u64, Ordering::Relaxed);
+                                    let act = Activity::new();
+                                    act.touch();
+                                    let (cr, cw) = tokio::io::split(rec);
+                                    let (rr, rw) = r2.into_split();
+                                    let _ = tokio::join!(
+                                        pump(id, false, cr, rw, up.clone(), sink.clone(), TCP_CAPTURE, act.clone()),
+                                        pump(id, true, rr, cw, down.clone(), sink.clone(), 0, act.clone()),
+                                    );
+                                }
+                            }
+                            sink.close(id, up.load(Ordering::Relaxed), down.load(Ordering::Relaxed));
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+    }
+    #[cfg(feature = "mitm")]
+    let remote = remote;
 
     if let Some(mut remote) = remote {
         let mut ok = true;
@@ -162,10 +212,20 @@ async fn pump<R, W>(
     let _ = to.shutdown().await;
 }
 
-pub async fn udp(id: u64, client: IpStackUdpStream, sink: EventSink) {
+pub async fn udp(id: u64, client: IpStackUdpStream, sink: EventSink, shared: Arc<Shared>) {
     let src = client.local_addr();
     let dst = client.peer_addr();
+    // QUIC (UDP 443) of an intercepted app is dropped so the app falls back to TCP+TLS, which can be intercepted.
+    let decision = if shared.mitm_active() && dst.port() == 443 { Some(shared.register(id)) } else { None };
     sink.open(id, 17, src, dst);
+    if let Some(rx) = decision {
+        let drop_it = matches!(timeout(DECISION_WAIT, rx).await, Ok(Ok(true)));
+        shared.forget(id);
+        if drop_it {
+            sink.close(id, 0, 0);
+            return;
+        }
+    }
 
     let up = Arc::new(AtomicU64::new(0));
     let down = Arc::new(AtomicU64::new(0));
