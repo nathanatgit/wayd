@@ -35,7 +35,7 @@
     <string name="dz_toast_failed">Could not do that.</string>
     <string name="dz_toast_install_steps">In Settings: Security → Encryption &amp; credentials → Install a certificate → CA certificate → choose wayd-ca.crt from Downloads.</string>
     <string name="dz_picker_empty">No apps are visible to WAYD yet. Your ROM may hide the app list: type a package name, use root, or record some traffic first.</string>
-    <string name="dz_picker_type">Package name</string>
+    <string name="dz_picker_type">Search apps or type a package name</string>
     <string name="dz_picker_add">Add</string>
     <string name="dz_picker_root">Load app list with root</string>
 </resources>

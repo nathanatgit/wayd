@@ -35,7 +35,7 @@
     <string name="dz_toast_failed">操作失败。</string>
     <string name="dz_toast_install_steps">请在 设置 → 安全 → 加密与凭据 → 安装证书 → CA 证书 中，选择“下载”里的 wayd-ca.crt。</string>
     <string name="dz_picker_empty">在干嘛暂时看不到任何应用。你的系统可能隐藏了应用列表：可手动输入包名、使用 root 读取，或先录制一些流量。</string>
-    <string name="dz_picker_type">包名</string>
+    <string name="dz_picker_type">搜索应用或输入包名</string>
     <string name="dz_picker_add">添加</string>
     <string name="dz_picker_root">用 root 读取应用列表</string>
 </resources>

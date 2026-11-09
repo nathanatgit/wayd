@@ -195,7 +195,9 @@ fun DangerZone(vm: DangerZoneViewModel = hiltViewModel()) {
                             value = typed, onValueChange = { typed = it }, singleLine = true, modifier = Modifier.weight(1f),
                             label = { Text(stringResource(R.string.dz_picker_type)) },
                         )
+                        // Adding by name is only needed for packages the list does not show.
                         Button(
+                            enabled = typed.trim().isNotEmpty() && apps.none { it.first == typed.trim() },
                             onClick = {
                                 val p = typed.trim()
                                 if (p.isNotEmpty() && !MitmExclusions.isExcludedPackage(p)) {
@@ -209,8 +211,12 @@ fun DangerZone(vm: DangerZoneViewModel = hiltViewModel()) {
                     OutlinedButton(onClick = { scope.launch { extra = extra + c.rootPackages() } }) {
                         Text(stringResource(R.string.dz_picker_root))
                     }
+                    val q = typed.trim()
+                    val shown = if (q.isEmpty()) apps else apps.filter { (pkg, label) ->
+                        label.contains(q, ignoreCase = true) || pkg.contains(q, ignoreCase = true)
+                    }
                     LazyColumn(Modifier.weight(1f)) {
-                        items(apps, key = { it.first }) { (pkg, label) ->
+                        items(shown, key = { it.first }) { (pkg, label) ->
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text(label, style = MaterialTheme.typography.bodyLarge)
