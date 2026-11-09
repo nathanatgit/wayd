@@ -10,6 +10,8 @@
 .cxx/
 *.jks
 *.keystore
+*.p12
+/keystore.properties
 
 # Built by capture/build.gradle.kts (cargo-ndk)
 capture/src/main/jniLibs/

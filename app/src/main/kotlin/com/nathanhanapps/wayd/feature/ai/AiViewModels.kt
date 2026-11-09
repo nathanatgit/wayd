@@ -52,7 +52,7 @@ class AiAnalysisViewModel @Inject constructor(
         if (job?.isActive == true) return
         _state.value = AiUiState.Running
         job = viewModelScope.launch {
-            val locale = if (Locale.getDefault().language == "zh") "zh-CN" else "en"
+            val locale = evidence.uiLocale()
             val req = evidence.requestFor(pkg, labels.label(pkg), windowKey, locale)
             _state.value = if (req == null) AiUiState.NoEvidence else AiUiState.Done(analyzer.analyse(req, useCache))
         }

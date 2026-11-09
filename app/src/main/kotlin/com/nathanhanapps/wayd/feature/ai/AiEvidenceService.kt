@@ -1,5 +1,7 @@
 package com.nathanhanapps.wayd.feature.ai
 
+import android.content.Context
+import android.os.Build
 import com.nathanhanapps.wayd.ai.AiRequest
 import com.nathanhanapps.wayd.ai.EvidenceItem
 import com.nathanhanapps.wayd.analysis.FindingText
@@ -28,11 +30,24 @@ import javax.inject.Singleton
  */
 @Singleton
 class AiEvidenceService @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context,
     private val analysis: AnalysisService,
     private val flows: FlowDao,
     private val perms: PermEventDao,
     private val messages: MessageDao,
 ) {
+    /**
+     * The language of the app's UI (per-app language if the user chose one, else the system's): `zh-CN` or `en`.
+     * The AI answers in this language, so a Chinese UI never shows English analysis and vice versa.
+     */
+    fun uiLocale(): String {
+        val appLocale = if (Build.VERSION.SDK_INT >= 33) {
+            runCatching { context.getSystemService(android.app.LocaleManager::class.java).applicationLocales }.getOrNull()?.takeIf { !it.isEmpty }?.get(0)
+        } else null
+        val locale = appLocale ?: context.resources.configuration.locales[0]
+        return if (locale.language == "zh") "zh-CN" else "en"
+    }
+
     suspend fun requestFor(pkg: String, label: String, windowKey: String, locale: String): AiRequest? = withContext(Dispatchers.IO) {
         val report = analysis.analyse(windowKey).apps[pkg] ?: return@withContext null
         val (start, end) = Windows.resolve(windowKey)

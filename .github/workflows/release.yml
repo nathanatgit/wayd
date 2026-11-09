@@ -1,0 +1,104 @@
+name: Release
+
+# Pushing a tag like v0.1.1 builds the signed release APK and publishes it as a GitHub release.
+# The tag must match versionName in app/build.gradle.kts (v0.1.1 <-> "0.1.1").
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      NDK_VERSION: "29.0.14206865"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Tag must match versionName
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          GRADLE_VER=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          if [ "$VER" != "$GRADLE_VER" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match versionName $GRADLE_VER in app/build.gradle.kts"
+            exit 1
+          fi
+          echo "VERSION=$VER" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Android SDK components
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "ndk;$NDK_VERSION" "platforms;android-37" "build-tools;37.0.0"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
+
+      - name: Rust tests
+        working-directory: capture/native
+        run: cargo test --features mitm
+
+      - name: Unit tests
+        run: ./gradlew test -PskipNative
+
+      - name: Restore signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.WAYD_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::secret WAYD_KEYSTORE_BASE64 is not set"
+            exit 1
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/wayd-release.p12"
+          echo "WAYD_KEYSTORE_FILE=$RUNNER_TEMP/wayd-release.p12" >> "$GITHUB_ENV"
+
+      - name: Build signed release APK
+        env:
+          WAYD_KEYSTORE_PASSWORD: ${{ secrets.WAYD_KEYSTORE_PASSWORD }}
+          WAYD_KEY_ALIAS: ${{ secrets.WAYD_KEY_ALIAS }}
+          WAYD_KEY_PASSWORD: ${{ secrets.WAYD_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleResearchRelease
+
+      - name: Verify and name the APK
+        run: |
+          APK_IN=app/build/outputs/apk/research/release/app-research-release.apk
+          APK="wayd-v${VERSION}.apk"
+          cp "$APK_IN" "$APK"
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --print-certs "$APK" | tee cert.txt
+          sha256sum "$APK" > "$APK.sha256"
+          cat "$APK.sha256"
+          echo "APK=$APK" >> "$GITHUB_ENV"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CERT=$(grep -m1 "certificate SHA-256 digest" cert.txt | sed 's/.*: //')
+          {
+            echo "WAYD ${VERSION}"
+            echo
+            echo "Install: \`${APK}\` (arm64 phones, Android 10+). Local-only: no data leaves the phone except model downloads you start."
+            echo
+            echo "Signing certificate SHA-256: \`${CERT}\`"
+            echo "APK SHA-256: see \`${APK}.sha256\`."
+            echo
+            echo "This build includes the research features (HTTPS decryption, off by default, behind a consent flow)."
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" --title "WAYD ${VERSION}" --notes-file notes.md --generate-notes

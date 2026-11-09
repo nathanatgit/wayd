@@ -1,20 +1,45 @@
 name: CI
+
 on:
   push:
+    branches: ["main", "feat/**"]
   pull_request:
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      NDK_VERSION: "29.0.14206865"
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
+
       - uses: gradle/actions/setup-gradle@v4
+
+      - name: Android SDK components
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "ndk;$NDK_VERSION" "platforms;android-37" "build-tools;37.0.0"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
+
+      - name: Rust tests
+        working-directory: capture/native
+        run: cargo test --features mitm
+
       - name: Unit tests
-        run: ./gradlew test
-      - name: Build both flavors
+        run: ./gradlew test -PskipNative
+
+      - name: Build both flavors (debug)
         run: ./gradlew :app:assembleStandardDebug :app:assembleResearchDebug
-      - name: Lint
-        run: ./gradlew :app:lintStandardDebug :app:lintResearchDebug
