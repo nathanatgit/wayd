@@ -6,9 +6,11 @@
 - **Publisher:** nathanhanapps
 - **Platform:** Android 10+ (API 29+) — target latest stable SDK
 - **UI:** Jetpack Compose + Material 3 Expressive
-- **Core principle:** *Everything stays on the phone.* WAYD never uploads captured data, reports, or AI analyses anywhere.
+- **Core principle:** On-device inspection and analysis. WAYD inspects traffic and analyzes findings on your Android device. It never automatically uploads captured traffic, inspection logs, reports, or AI analysis. You can explicitly export data to a destination you choose. Apps still communicate with their destinations; user-initiated model/database downloads also use the network. A planned, opt-in routing extension will send traffic selected by routing rules through your configured proxy.
 
-## What it does
+## Product scope (implemented and planned)
+
+See Status below and the handoff for implementation coverage; this list describes the product direction.
 
 1. **Record** — one big button starts a local `VpnService` that routes all app traffic through WAYD and records it (flows, DNS, TLS metadata, cleartext payloads).
 2. **Enrich** — maps traffic to apps (UID), domains, companies, countries and known trackers.
@@ -16,9 +18,10 @@
 4. **Analyse** — a deterministic rule engine produces *findings* with evidence links.
 5. **Explain** — an on-device Gemma 4 model explains selected findings/traffic and returns structured JSON that the UI visualises.
 6. **Inspect APKs** — static analysis of installed apps (manifest, certificate, SDKs, embedded endpoints), linked to observed behaviour.
-7. **Act** — block domains, flag apps, or copy safe adb commands.
+7. **Act (planned M7)** — local app/domain blocking and content control; no proxy or account required.
+8. **Route (planned optional extension)** — Clash/FlClash-style proxy routing, separate from core inspection and blocking. WAYD retains VPN ownership and enforces blocks before routing. See [routing design](docs/14-OPTIONAL-ROUTING.md).
 
-## Privilege levels
+## Privilege levels (target capabilities; see handoff for current coverage)
 
 | Level | How | Unlocks |
 |---|---|---|
@@ -49,4 +52,4 @@
 
 ## Status
 
-Planning. No code yet. Start at milestone M0 in [docs/11-ROADMAP.md](docs/11-ROADMAP.md).
+The handoff records signed release **v0.1.2**, working capture, local analysis, on-device AI, and research HTTPS inspection. Coverage and acceptance gaps remain. **M7 blocking is designed, not implemented; optional proxy routing is planned.** See [current handoff](docs/HANDOFF.md) and [roadmap](docs/11-ROADMAP.md).

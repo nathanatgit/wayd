@@ -1,5 +1,7 @@
 # 11 · Roadmap
 
+Milestones below describe targets, not completed features. See [HANDOFF.md](HANDOFF.md) for current status; M7 blocking and optional routing remain planned.
+
 Each milestone ends with a working, installable build. Don't start a milestone before the previous one's acceptance criteria pass.
 
 ## M0 · Skeleton
@@ -53,3 +55,7 @@ Each milestone ends with a working, installable build. Don't start a milestone b
 
 ## M9 · Polish and release
 - Performance/battery tuning, accessibility pass, onboarding, privacy statement final, distribution packaging.
+
+## Optional routing extension · planned, after core M7 validation
+
+Clash/FlClash-style routing without taking VPN ownership from WAYD. No proxy/account requirement for core inspection and blocking. Acceptance: [14-OPTIONAL-ROUTING.md](14-OPTIONAL-ROUTING.md), especially block precedence, minimal metadata, visible routes, DNS behavior and explicit fallback consent. No implementation or release milestone is claimed.
