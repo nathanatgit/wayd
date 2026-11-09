@@ -38,6 +38,29 @@ interface FlowDao {
     @Query("SELECT COUNT(*) FROM Flow WHERE sessionId = :sessionId")
     suspend fun countForSession(sessionId: Long): Int
 
+    @Query("SELECT * FROM Flow WHERE startAt >= :start AND startAt < :end")
+    suspend fun between(start: Long, end: Long): List<Flow>
+
+    /** Hosts each app contacted before [before]; used to detect first contacts. */
+    @Query("SELECT DISTINCT pkg, host FROM Flow WHERE startAt < :before AND host IS NOT NULL")
+    suspend fun hostsBefore(before: Long): List<PkgHost>
+
+    /** One row per local calendar day that has flows, newest first. */
+    @Query(
+        "SELECT strftime('%Y-%m-%d', startAt / 1000, 'unixepoch', 'localtime') AS day, COUNT(*) AS flows " +
+            "FROM Flow GROUP BY day ORDER BY day DESC LIMIT :limit",
+    )
+    fun observeDays(limit: Int): KFlow<List<DayRow>>
+
+    @Query("SELECT DISTINCT host FROM Flow WHERE host IS NOT NULL AND company IS NULL")
+    suspend fun hostsWithoutCompany(): List<String>
+
+    @Query("UPDATE Flow SET company = :company, category = :category WHERE host = :host AND company IS NULL")
+    suspend fun setEnrichment(host: String, company: String, category: com.nathanhanapps.wayd.core.model.TrackerCategory)
+
+    @Query("SELECT * FROM Flow WHERE id IN (:ids)")
+    suspend fun byIds(ids: List<Long>): List<Flow>
+
     /** Live attribution coverage over all recorded flows (M1 acceptance metrics). */
     @Query(
         "SELECT COUNT(*) AS total, " +
@@ -58,6 +81,23 @@ private const val MEASURABLE =
         "AND dstIp NOT GLOB '172.1[6-9].*' AND dstIp NOT GLOB '172.2[0-9].*' AND dstIp NOT GLOB '172.3[01].*' " +
         "AND dstIp NOT LIKE '127.%' AND dstIp NOT LIKE '169.254.%' AND dstIp NOT LIKE 'fe80:%' " +
         "AND dstIp NOT LIKE 'fd%' AND dstIp NOT LIKE 'fc%' AND dstIp != '::1'"
+
+data class PkgHost(val pkg: String, val host: String)
+
+data class DayRow(val day: String, val flows: Int)
+
+@Dao
+interface FindingDao {
+    @Insert
+    suspend fun insertAll(findings: List<Finding>)
+
+    /** Findings are anchored to their window start (createdAt), so a re-run replaces exactly that window. */
+    @Query("DELETE FROM Finding WHERE createdAt >= :start AND createdAt < :end")
+    suspend fun deleteBetween(start: Long, end: Long)
+
+    @Query("SELECT * FROM Finding WHERE createdAt >= :start AND createdAt < :end")
+    suspend fun between(start: Long, end: Long): List<Finding>
+}
 
 data class CoverageCounts(val total: Int, val withPkg: Int, val tcp: Int, val tcpWithHost: Int)
 

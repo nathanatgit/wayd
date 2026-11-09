@@ -25,6 +25,7 @@ android {
 dependencies {
     api(project(":core:model"))
     implementation(project(":core:db"))
+    implementation(project(":enrich"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

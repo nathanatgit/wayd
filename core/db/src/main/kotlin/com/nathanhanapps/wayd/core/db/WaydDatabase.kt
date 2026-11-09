@@ -17,6 +17,7 @@ abstract class WaydDatabase : RoomDatabase() {
     abstract fun sessionDao(): SessionDao
     abstract fun flowDao(): FlowDao
     abstract fun dnsDao(): DnsDao
+    abstract fun findingDao(): FindingDao
 
     companion object {
         const val NAME = "wayd.db"

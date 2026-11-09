@@ -9,6 +9,7 @@ import com.nathanhanapps.wayd.core.model.CaptureSource
 import com.nathanhanapps.wayd.core.model.HostSource
 import com.nathanhanapps.wayd.core.model.NetType
 import com.nathanhanapps.wayd.core.model.Proto
+import com.nathanhanapps.wayd.enrich.TrackerDb
 import java.net.InetAddress
 import java.net.InetSocketAddress
 
@@ -45,6 +46,7 @@ class FlowTracker(
     private val sink: CaptureSink,
     private val env: CaptureEnv,
     private val dnsMap: DnsIpMap = DnsIpMap(),
+    private val trackers: TrackerDb = TrackerDb(),
 ) {
     private class State(
         val open: NativeEvent.Open,
@@ -141,6 +143,7 @@ class FlowTracker(
             else -> dnsMap.get(dstIp).let { if (it != null) it to HostSource.DNS else null to null }
         }
         val pkg = s.owner?.pkg ?: UNKNOWN_PKG
+        val info = trackers.lookup(host)
         apps += pkg
         totalFlows++
         totalUp += up
@@ -171,8 +174,8 @@ class FlowTracker(
                 ja4 = null,
                 country = null,
                 asn = null,
-                company = null,
-                category = null,
+                company = info?.company,
+                category = info?.category,
                 source = CaptureSource.VPN,
             ),
         )
@@ -196,5 +199,5 @@ class DnsIpMap(private val max: Int = 4096) {
     fun get(ip: String): String? = map[ip]
 
     /** Normalises an address string the same way [InetAddress.getHostAddress] does. */
-    fun get(addr: InetAddress): String? = map[addr.hostAddress]
+    fun get(addr: InetAddress): String? = addr.hostAddress?.let { map[it] }
 }

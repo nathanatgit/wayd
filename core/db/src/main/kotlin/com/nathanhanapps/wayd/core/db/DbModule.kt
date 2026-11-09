@@ -31,6 +31,8 @@ object DbModule {
 
     @Provides fun dnsDao(db: WaydDatabase): DnsDao = db.dnsDao()
 
+    @Provides fun findingDao(db: WaydDatabase): FindingDao = db.findingDao()
+
     @Provides
     @Singleton
     fun dbHealth(db: WaydDatabase): DbHealth = DbHealth(db)
