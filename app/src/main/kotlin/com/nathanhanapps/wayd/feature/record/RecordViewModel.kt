@@ -19,6 +19,7 @@ class RecordViewModel @Inject constructor(
     state: CaptureState,
     flowDao: FlowDao,
     private val controller: CaptureController,
+    private val exporter: com.nathanhanapps.wayd.feature.export.ExportService,
 ) : ViewModel() {
     val ui: StateFlow<CaptureUi> = state.ui
 
@@ -27,6 +28,8 @@ class RecordViewModel @Inject constructor(
 
     val coverage: StateFlow<CoverageCounts> = flowDao.observeCoverage()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CoverageCounts(0, 0, 0, 0))
+
+    suspend fun exportCapture() = exporter.exportLatestCapture()
 
     fun start() = controller.start()
 

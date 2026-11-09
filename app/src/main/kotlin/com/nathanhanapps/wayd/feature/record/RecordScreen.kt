@@ -88,6 +88,8 @@ fun RecordScreen(vm: RecordViewModel = hiltViewModel()) {
             Text(stringResource(if (active) R.string.record_stop else R.string.record_start))
         }
 
+        com.nathanhanapps.wayd.feature.export.ExportButton(stringResource(R.string.export_capture), Modifier.fillMaxWidth()) { vm.exportCapture() }
+
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Stat(stringResource(R.string.stat_flows), ui.stats.flows.toString())
             Stat(stringResource(R.string.stat_apps), ui.stats.apps.toString())

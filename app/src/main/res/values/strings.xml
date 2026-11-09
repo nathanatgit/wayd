@@ -128,4 +128,15 @@
     <string name="ft_clipboard_bg">Read the clipboard %1$d time(s) while in the background</string>
     <string name="ft_screen_capture">Used screen capture %1$d time(s) while not visible</string>
     <string name="ft_loc_then_up">Read the location in the background and sent %1$s in the same time window (%2$d time(s))</string>
+    <string name="export_capture">Export latest capture (JSON)</string>
+    <string name="export_app">Export this app’s raw data (JSON)</string>
+    <string name="export_title">Keep this file private</string>
+    <string name="export_warning">The file is saved unencrypted in Downloads/WAYD and contains the raw records: apps, hosts, addresses, times, DNS lookups, permission use and — if decryption (research build) was on — the content of requests and responses.
+
+That content can include things other people sent you or that were sent about them: their messages, names, photos, locations and account details. They have not agreed to this. Keep the file private, do not upload or share it, and delete it when you no longer need it.</string>
+    <string name="export_confirm">I will keep it private — export</string>
+    <string name="export_cancel">Cancel</string>
+    <string name="export_saved">Saved %1$s to Downloads/WAYD (%2$d connections, %3$d messages). Keep it private.</string>
+    <string name="export_empty">Nothing recorded to export yet.</string>
+    <string name="export_failed">Export failed.</string>
 </resources>

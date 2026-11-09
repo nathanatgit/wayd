@@ -50,6 +50,7 @@ class AppDetailViewModel @Inject constructor(
     private val analysis: AnalysisService,
     val labels: AppLabels,
     private val permissionService: PermissionHistoryService,
+    private val exporter: com.nathanhanapps.wayd.feature.export.ExportService,
     savedState: SavedStateHandle,
 ) : ViewModel() {
     val pkg: String = savedState["pkg"] ?: ""
@@ -69,6 +70,8 @@ class AppDetailViewModel @Inject constructor(
     private fun loadPermissions() {
         viewModelScope.launch { _permissions.value = permissionService.forApp(pkg, windowKey) }
     }
+
+    suspend fun export() = exporter.exportApp(pkg, windowKey)
 
     fun requestShizuku() = permissionService.requestAccess()
 

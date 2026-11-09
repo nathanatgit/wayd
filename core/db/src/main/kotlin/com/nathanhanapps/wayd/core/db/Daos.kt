@@ -25,6 +25,9 @@ interface SessionDao {
 
     @Query("SELECT COUNT(*) FROM Session")
     suspend fun count(): Int
+
+    @Query("SELECT * FROM Session ORDER BY id DESC LIMIT 1")
+    suspend fun latest(): Session?
 }
 
 @Dao
@@ -41,6 +44,12 @@ interface MessageDao {
 
     @Query("SELECT COUNT(*) FROM Message")
     suspend fun count(): Long
+
+    @Query("SELECT m.* FROM Message m JOIN Flow f ON f.id = m.flowId WHERE f.sessionId = :sessionId ORDER BY m.id")
+    suspend fun forSession(sessionId: Long): List<Message>
+
+    @Query("SELECT m.* FROM Message m JOIN Flow f ON f.id = m.flowId WHERE f.pkg = :pkg AND f.startAt >= :start AND f.startAt < :end ORDER BY m.id")
+    suspend fun forApp(pkg: String, start: Long, end: Long): List<Message>
 
     @Query("DELETE FROM Message")
     suspend fun deleteAll()
@@ -80,6 +89,12 @@ interface FlowDao {
 
     @Query("SELECT * FROM Flow WHERE startAt >= :start AND startAt < :end")
     suspend fun between(start: Long, end: Long): List<Flow>
+
+    @Query("SELECT * FROM Flow WHERE sessionId = :sessionId ORDER BY startAt")
+    suspend fun forSession(sessionId: Long): List<Flow>
+
+    @Query("SELECT * FROM Flow WHERE pkg = :pkg AND startAt >= :start AND startAt < :end ORDER BY startAt")
+    suspend fun forApp(pkg: String, start: Long, end: Long): List<Flow>
 
     @Query("SELECT DISTINCT pkg FROM Flow WHERE pkg != '?'")
     suspend fun distinctPackages(): List<String>
@@ -137,6 +152,9 @@ interface PermEventDao {
     @Query("SELECT * FROM PermEvent WHERE ts >= :start AND ts < :end")
     suspend fun between(start: Long, end: Long): List<PermEvent>
 
+    @Query("SELECT * FROM PermEvent WHERE pkg = :pkg AND ts >= :start AND ts < :end ORDER BY ts")
+    suspend fun forApp(pkg: String, start: Long, end: Long): List<PermEvent>
+
     @Query("SELECT * FROM PermEvent WHERE id IN (:ids)")
     suspend fun byIds(ids: List<Long>): List<PermEvent>
 }
@@ -156,6 +174,9 @@ interface FindingDao {
 
     @Query("SELECT * FROM Finding WHERE createdAt >= :start AND createdAt < :end")
     suspend fun between(start: Long, end: Long): List<Finding>
+
+    @Query("SELECT * FROM Finding WHERE pkg = :pkg AND createdAt >= :start AND createdAt < :end")
+    suspend fun forApp(pkg: String, start: Long, end: Long): List<Finding>
 }
 
 data class CoverageCounts(val total: Int, val withPkg: Int, val tcp: Int, val tcpWithHost: Int)
@@ -164,4 +185,10 @@ data class CoverageCounts(val total: Int, val withPkg: Int, val tcp: Int, val tc
 interface DnsDao {
     @Insert
     suspend fun insertAll(records: List<DnsRecord>)
+
+    @Query("SELECT * FROM DnsRecord WHERE sessionId = :sessionId ORDER BY ts")
+    suspend fun forSession(sessionId: Long): List<DnsRecord>
+
+    @Query("SELECT * FROM DnsRecord WHERE uid IN (:uids) AND ts >= :start AND ts < :end ORDER BY ts")
+    suspend fun forUids(uids: List<Int>, start: Long, end: Long): List<DnsRecord>
 }
