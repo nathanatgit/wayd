@@ -130,22 +130,16 @@ class MitmController @Inject constructor(
         refresh((r as? SystemCa.Result.Failed)?.detail)
     }
 
-    enum class UserInstall { OPENED_INSTALLER, OPENED_SETTINGS, FAILED }
+    enum class UserInstall { OPENED_SETTINGS, FAILED }
 
     /**
-     * Saves the certificate to Downloads and sends the user to the installer. Android 11+ does not let apps install CA
+     * Saves the certificate to Downloads and opens the Security settings screen. Android 11+ does not let apps install CA
      * certificates silently, so the last step (Settings → Security → Encryption & credentials → Install a certificate
      * → CA certificate → wayd-ca.crt) is always the user's.
      */
     fun startUserInstall(): UserInstall {
         val pem = ca.certPem() ?: return UserInstall.FAILED
         exportCertificate()
-        val der = pemToDer(pem)
-        val installer = KeyChain.createInstallIntent()
-            .putExtra(KeyChain.EXTRA_CERTIFICATE, der)
-            .putExtra(KeyChain.EXTRA_NAME, "WAYD Local CA")
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (runCatching { context.startActivity(installer) }.isSuccess) return UserInstall.OPENED_INSTALLER
         val settings = Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return if (runCatching { context.startActivity(settings) }.isSuccess) UserInstall.OPENED_SETTINGS else UserInstall.FAILED
     }

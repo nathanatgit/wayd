@@ -98,12 +98,9 @@ fun DangerZone(vm: DangerZoneViewModel = hiltViewModel()) {
                     Text(stringResource(R.string.dz_ca_body), style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = {
-                            val res = c.startUserInstall()
-                            Toast.makeText(
-                                ctx,
-                                ctx.getString(if (res == MitmController.UserInstall.FAILED) R.string.dz_toast_failed else R.string.dz_toast_install_steps),
-                                Toast.LENGTH_LONG,
-                            ).show()
+                            if (c.startUserInstall() == MitmController.UserInstall.FAILED) {
+                                Toast.makeText(ctx, ctx.getString(R.string.dz_toast_failed), Toast.LENGTH_LONG).show()
+                            }
                         }) {
                             Text(stringResource(R.string.dz_install_user))
                         }
