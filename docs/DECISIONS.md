@@ -31,8 +31,18 @@ Two flavors: `standard` (no MITM/root plaintext) and `research` (all).
 **D-007 · 2026-11-09 · proposed**
 LLM runtime: LiteRT-LM with Gemma 4 E2B default, E4B on ≥ 12 GB RAM; llama.cpp fallback. Model hosted on own mirror/ModelScope.
 
-**D-008 · 2026-11-09 · proposed**
-DI: Hilt. *Alt:* Koin (simpler, runtime). Decide at M0.
+**D-008 · 2026-11-09 · accepted (M0)**
+DI: Hilt. *Alt:* Koin (simpler, runtime).
 
 **D-009 · 2026-11-09 · proposed**
 License for WAYD source: decide before M1 (affects whether GPL code from PCAPdroid/NetGuard can be reused).
+
+**D-010 · 2026-11-09 · accepted**
+Toolchain pins for M0: AGP 9.5.1 (built-in Kotlin, no `kotlin-android` plugin), Kotlin 2.4.21, KSP 2.3.13, Hilt 2.60.1, Room 2.8.5, SQLCipher 4.20.0, Compose BOM 2026.09.00, Gradle 9.8.1. `compileSdk` 37 (required by current AndroidX), `targetSdk` 36, `minSdk` 29.
+*Why:* latest stable at 2026-11-09; minSdk 29 for `getConnectionOwnerUid`.
+
+**D-011 · 2026-11-09 · accepted**
+`material3` pinned to **1.5.0-rc01** (no longer alpha), overriding the Compose BOM. Supersedes the "alpha" wording of D-004; wrapping experimental APIs in `core/ui` still applies.
+
+**D-012 · 2026-11-09 · accepted**
+DB key: random 32-byte SQLCipher passphrase, wrapped by an AES-GCM Android Keystore key, stored in `noBackupFilesDir/db.key`.

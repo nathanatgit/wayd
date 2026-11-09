@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">在干嘛</string>
+
+    <string name="tab_record">录制</string>
+    <string name="tab_reports">报告</string>
+    <string name="tab_apps">应用</string>
+    <string name="tab_settings">设置</string>
+
+    <string name="record_title">录制</string>
+    <string name="record_placeholder">流量录制将在后续版本提供，目前不会捕获任何数据。</string>
+    <string name="reports_title">报告</string>
+    <string name="reports_empty">暂无报告。录制一次会话后将生成报告。</string>
+    <string name="apps_title">应用</string>
+    <string name="apps_empty">尚未分析任何应用。</string>
+
+    <string name="settings_title">设置</string>
+    <string name="settings_privilege">权限级别</string>
+    <string name="settings_privilege_none">无（未使用 Shizuku 或 root）</string>
+    <string name="settings_database">数据库</string>
+    <string name="settings_database_encrypted">已加密（SQLCipher %1$s）</string>
+    <string name="settings_database_unencrypted">未加密——这不应该发生</string>
+    <string name="settings_database_checking">检查中…</string>
+    <string name="settings_about">关于</string>
+    <string name="settings_version">版本 %1$s</string>
+    <string name="settings_local_only">在干嘛完全在本机运行，不会向任何地方发送数据。</string>
+</resources>
