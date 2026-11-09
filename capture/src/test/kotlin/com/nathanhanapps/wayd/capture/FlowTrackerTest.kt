@@ -107,6 +107,20 @@ class FlowTrackerTest {
         assertNull(sink.flows.single().host)
     }
 
+    @Test fun failingEnvDoesNotBreakTracking() {
+        val sink = Sink()
+        val broken = object : CaptureEnv {
+            override fun now() = 5L
+            override fun screenOn(): Boolean = throw SecurityException("no permission")
+            override fun netType(): NetType = throw SecurityException("no permission")
+        }
+        val t = FlowTracker(1, { _, _, _ -> null }, sink, broken)
+        t.onEvent(open(1, 6, "5.6.7.8", 443))
+        t.onEvent(NativeEvent.Close(1, 1, 2))
+        assertEquals(NetType.OTHER, sink.flows.single().netType)
+        assertEquals(false, sink.flows.single().screenOn)
+    }
+
     @Test fun finishAllFlushesOpenFlows() {
         val sink = Sink()
         val t = tracker(sink)

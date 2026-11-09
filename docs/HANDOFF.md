@@ -1,6 +1,6 @@
 # Handoff
 
-_Last updated: 2026-11-09 — M0 skeleton built and verified; v0.0.1._
+_Last updated: 2026-11-09 — M0 done; M1 capture MVP first slice working on NX733J._
 
 ## State
 
@@ -23,15 +23,25 @@ Do not create `local.properties` on this machine: lint rejects its path escaping
 
 `adb install`, then `scrcpy -s <dev> --new-display=1080x2400/420 --start-app=<pkg> --no-audio -N --record=<file>`; screenshot with `adb exec-out screencap -d <SurfaceFlinger display id> -p` (id from `dumpsys SurfaceFlinger --display-id`, not the logical id); tap with `input -d <logical id>`. Kill `scrcpy.exe` afterwards.
 
+## M1 status (capture MVP)
+
+Working on device: VpnService + Rust `ipstack` relay (arm64), UID attribution, TLS SNI / HTTP Host / DNS enrichment, batched Room writes, foreground notification, Record tab with live counters and flow list. Verified: 19 flows / 5 apps attributed correctly in a ~1 min run; tunnel teardown restores connectivity.
+
+Fixed during testing: missing `ACCESS_NETWORK_STATE` crashed the poll thread (process died, VPN lingered until force-stop). Tracker now survives enrichment failures.
+
+**Not yet met (M1 acceptance):** 1 h soak with browse/video/WeChat; >=99% flows with package; >=90% TCP flows with host (many flows are still "no hostname": IP-only/QUIC/cached DNS); external-router IPv4/IPv6 completeness check. **Known gaps:** ICMP is dropped (ping fails inside the tunnel), DoH/DoT bypasses DNS visibility, QUIC SNI not parsed, arm64 only, `appForeground` is always false until M3, no pkt counters, `nativePoll` allocates a 64 KB scratch buffer per call (optimise).
+
+## Testing a VPN build without disturbing the phone
+
+Consent dialog persists after the first accept (Nat accepts it once on the main display). Then drive the app on a scrcpy virtual display. scrcpy may drop (`Device disconnected`) the moment the VPN comes up; just start a new scrcpy session afterwards. Always finish with: stop recording, `am force-stop com.nathanhanapps.wayd`, confirm `dumpsys connectivity` shows no WAYD VPN, ping works, `setprop log.tag S`, kill `scrcpy.exe`. Crash details without logcat: `dumpsys dropbox --print data_app_crash`.
+
 ## Next step
 
-**M1 · Capture MVP** (see `docs/11-ROADMAP.md`). Blockers to settle first:
-- D-002 netstack (Go/gomobile toolchain is not installed here) and D-009 license.
-- Testing a VPN cannot be done on a virtual display: `VpnService.prepare()` shows a system dialog and reroutes the phone's traffic. Needs an emulator/spare device or an agreed test window.
+Finish M1 acceptance (soak test, host coverage, IPv6 check), then **M2 · Enrichment + daily report**.
 
 ## Open decisions (see DECISIONS.md)
 
-- D-002 netstack, D-007 LLM runtime, D-009 source license.
+- D-007 LLM runtime.
 
 ## Inputs Nat can provide
 

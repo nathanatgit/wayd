@@ -120,7 +120,12 @@ class WaydVpnService : VpnService() {
             while (running) {
                 val n = net.nativePoll(h, buf, 250)
                 if (n < 0) break
-                if (n > 0) NativeEvents.decode(buf, n).forEach(t::onEvent)
+                if (n > 0) {
+                    for (ev in NativeEvents.decode(buf, n)) {
+                        // One bad flow must not stop recording; nothing about the flow is logged.
+                        runCatching { t.onEvent(ev) }
+                    }
+                }
                 val now = SystemClock.elapsedRealtime()
                 if (now - lastFlush >= FLUSH_MS) {
                     sink.flush()

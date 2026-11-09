@@ -88,7 +88,10 @@ class FlowTracker(
         val owner = runCatching {
             resolver.resolve(e.proto, InetSocketAddress(e.srcIp, e.srcPort), InetSocketAddress(e.dstIp, e.dstPort))
         }.getOrNull()
-        open[e.flowId] = State(e, owner, env.now(), env.screenOn(), env.netType())
+        // Enrichment must never take recording down: fall back to neutral values if the OS refuses.
+        val screenOn = runCatching { env.screenOn() }.getOrDefault(false)
+        val net = runCatching { env.netType() }.getOrDefault(NetType.OTHER)
+        open[e.flowId] = State(e, owner, runCatching { env.now() }.getOrDefault(0L), screenOn, net)
     }
 
     private fun onData(e: NativeEvent.Data) {
