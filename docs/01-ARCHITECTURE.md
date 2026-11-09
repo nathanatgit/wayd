@@ -1,5 +1,7 @@
 # 01 · Architecture
 
+This document includes target architecture and planned components. See [HANDOFF.md](HANDOFF.md) for implemented behavior; optional routing below is a future design.
+
 ## Layers
 
 ```
@@ -94,3 +96,7 @@ Feature screens live in `app/feature/*` until a feature grows large enough to ju
 |---|---|---|
 | `standard` | capture, collectors (ADB), analysis, ai, apkscan | stores / public |
 | `research` | + mitm, rootcap, developer console | GitHub / sideload |
+
+## Planned routing boundary
+
+WAYD retains sole VPN ownership. Applicable local app/host/IP blocks run before upstream routing; only allowed flows reach Direct or the optional proxy extension. Content rules run locally before matching content is forwarded. Imported routing profiles cannot override WAYD blocks. Inspection stores, findings, AI outputs and CA keys are unavailable to the routing extension. Direct fallback requires explicit opt-in. See [14-OPTIONAL-ROUTING.md](14-OPTIONAL-ROUTING.md) for the planned contract and acceptance checks; this is not implemented.

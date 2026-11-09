@@ -19,7 +19,7 @@ WAYD holds the most sensitive data on the phone. Treat WAYD itself as a high-val
 | T4 | Malicious payload exploits WAYD parsers | Parsers in memory-safe code where possible; fuzz parsers (DNS/TLS/HTTP/AXML/DEX) in CI; size limits everywhere |
 | T5 | CA key theft enables interception | Per-install CA, encrypted key, delete on disable, short validity |
 | T6 | Root command injection | Sealed `Command` allowlist, argument validation, no string shells; dev console research-only |
-| T7 | WAYD leaks data itself | No analytics/crash SDKs; network allowlist for WAYD's own sockets (model/DB downloads only); WAYD's own traffic shown in its own report |
+| T7 | WAYD leaks data itself | No automatic uploads of inspection data; no analytics/uploading crash SDKs. Separate app forwarding, explicit exports and user-initiated model/DB downloads from local inspection. Planned routing must follow docs/14. |
 | T8 | Misleading report (false "clean") | Coverage panel; tiers; "unknown" verdicts; never claim completeness |
 | T9 | Root state left broken after crash | RootStateJournal + restore on start; "Restore network" button |
 | T10 | Supply chain (model file, tracker DB) | SHA-256 pinned in app release; signed manifest for updates |
@@ -57,7 +57,7 @@ The captured data is masked (identifiers replaced by type tokens), wrapped in in
 
 | Permission | Why | Risk / mitigation |
 |---|---|---|
-| `INTERNET` | The userspace stack relays the user's own traffic to its real destination. WAYD makes no network calls of its own. | Code review rule: no other `Socket`/`URL` use outside `capture/native` relay. The app excludes itself from the VPN (`addDisallowedApplication`) so relay sockets bypass the tunnel. |
+| `INTERNET` | The userspace stack relays the user's own traffic to its real destination. Separate from user-initiated model downloads. | Review relay and download network use separately; optional routing is still planned. The app excludes itself from the VPN (`addDisallowedApplication`) so relay sockets bypass the tunnel. |
 | `BIND_VPN_SERVICE` (service) | Declared on `WaydVpnService`; only the system can bind. | User must accept the system VPN consent dialog. |
 | `ACCESS_NETWORK_STATE` | Read the underlying network type (Wi-Fi / cellular) and resolve connection owners. | Read-only; no data leaves the device. |
 | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SYSTEM_EXEMPTED`, `POST_NOTIFICATIONS` | Keep recording alive and show a persistent "recording" notification with a Stop action. | Notification permission is optional; recording works without it. |
@@ -66,3 +66,7 @@ The captured data is masked (identifiers replaced by type tokens), wrapped in in
 Native code (`capture/native`) parses no payloads; it reports only bounded prefixes (2 KB TCP per direction, DNS datagrams, first UDP datagram) to Kotlin, where parsers are size-limited and treat input as hostile.
 
 **Debug-only intent extra:** `WaydVpnService` honours `--es exclude <cidr,...>` to keep prefixes out of the tunnel, but only when the APK is debuggable (`FLAG_DEBUGGABLE`) and the service is not exported. Release builds ignore it.
+
+## Planned optional routing threats
+
+The extension is not implemented. Before shipping, enforce WAYD blocks before routing, isolate inspection stores/CA keys, validate untrusted profiles, protect proxy credentials and subscription URLs, disclose proxy/DNS visibility, and prohibit silent direct fallback. Authorize subscription refreshes and health checks explicitly. Existing local-only statements concern inspection data, not ordinary forwarded traffic or explicit exports. See [14-OPTIONAL-ROUTING.md](14-OPTIONAL-ROUTING.md) for acceptance checks.

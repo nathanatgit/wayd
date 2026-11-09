@@ -92,3 +92,7 @@ Caveats: tag `v0.1.1` exists on GitHub but its release failed (wrong SDK package
 ## 9. Inputs Nat can provide
 
 Test device list, brand seed colour (placeholders in use), AppDualZuku `ShellClient` files (M3 reference), which apps matter most for the research builds, ModelScope/own-CDN mirror for the models.
+
+## Documentation update · 2026-11-09
+
+Clarified the on-device privacy promise, explicit exports/downloads, and planned optional Clash/FlClash-style routing (D-028; 14-OPTIONAL-ROUTING.md). WAYD owns VPN/block precedence; routing receives minimum data, shows actual routes, and never silently falls back direct. README no longer says no code exists. Documentation only: no runtime behavior changed; M7 and routing remain planned. Next: validate M7, then resolve routing engine/licensing, isolation and DNS policy before implementation.

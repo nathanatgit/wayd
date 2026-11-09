@@ -18,7 +18,7 @@ Let a user press one button, live normally for a day, and get an honest, underst
 
 ## Principles
 
-1. **Local only.** No captured data, report, or analysis leaves the device. No analytics SDKs in WAYD itself. No crash reporter that uploads payloads.
+1. **On-device inspection and analysis.** WAYD inspects traffic and analyzes findings on your Android device. It never automatically uploads captured traffic, inspection logs, reports, or AI analysis. You can explicitly export data to a destination you choose. Apps still communicate with their destinations; user-initiated model/database downloads also use the network. A planned, opt-in routing extension will send traffic selected by routing rules through your configured proxy. No analytics SDKs or payload-uploading crash reporters.
 2. **Honest coverage.** Always show what WAYD *cannot* see right now.
 3. **Evidence first.** Every claim links to the flows, messages, permission events or APK facts behind it.
 4. **Rules decide, AI explains.** Verdicts and severities come from deterministic rules; Gemma only explains and summarises.
@@ -86,3 +86,7 @@ Let a user press one button, live normally for a day, and get an honest, underst
 - Chinese app stores restrict VpnService apps and require App 备案; plan for GitHub/sideload distribution.
 - Google Play requires a VpnService declaration; network monitoring/firewall is a recognised use case — check current policy.
 - Two build flavors: `standard` (no MITM / no root plaintext) and `research` (all features).
+
+## Optional routing extension (planned)
+
+Core inspection and planned blocking must work without an account, proxy, subscription, or routing extension. Clash/FlClash-style routing is optional and off by default; see [14-OPTIONAL-ROUTING.md](14-OPTIONAL-ROUTING.md). WAYD blocks take precedence over imported routing profiles. Show Direct / Proxied / Blocked outcomes; direct fallback after proxy failure requires explicit opt-in. This is a design requirement, not a shipped feature.

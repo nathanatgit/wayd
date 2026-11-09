@@ -40,7 +40,7 @@ Kotlin owns policy and attribution; the hot path stays native.
 - **Connection history → tap a connection → "Block…"** sheet offering, for that connection: this exact host, the registrable domain with wildcard (`*.baidu.com`), the URL path (if decrypted), the whole app, or "edit pattern…" with a live preview of how many recorded connections it would have matched.
 - **Rules screen**: list with hit counts, enable/disable, test box ("would this URL be blocked?"), import/export as JSON.
 - **Safety**: confirmation for rules that match a lot (`*`, the app's only host), an always-visible "pause all blocking" switch in the recording notification, and automatic suggestion to turn a rule to LOG_ONLY first ("what would break?").
-- Everything is local; rules never leave the device.
+- Rules are stored and evaluated locally; leaving the device requires an explicit user export.
 
 ## Order of work
 
@@ -48,3 +48,7 @@ Kotlin owns policy and attribution; the hot path stays native.
 2. Rust matcher + `nativeSetRules`, host/app-level blocking and logging (standard flavor too: it needs no decryption).
 3. Connection-history actions and rules screen.
 4. Path/content-level rules in the MITM loop (research flavor only).
+
+## Relationship to optional routing (planned)
+
+M7 remains designed, not shipped. WAYD app/host/IP blocks run before Direct/proxy dispatch; imported Clash profiles cannot override them. Content rules execute locally before forwarding matched content (TLS setup may already have occurred). Routing is optional and cannot be required for core blocking. See [14-OPTIONAL-ROUTING.md](14-OPTIONAL-ROUTING.md).

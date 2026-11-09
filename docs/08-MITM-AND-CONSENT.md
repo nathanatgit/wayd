@@ -35,7 +35,7 @@ Revoke at any time: "Disable and remove CA" button always visible in Danger zone
 
 1. What WAYD collects (traffic metadata, cleartext/decrypted content for chosen apps, permission usage, APK facts).
 2. Where it is stored (this device only, encrypted; excluded from backup).
-3. What WAYD sends off-device: **nothing**, except model/database downloads the user initiates (list hosts).
+3. Distinguish local inspection copies from forwarded app traffic. No automatic uploads of captures, reports or AI analysis; explicit exports and user-initiated model/database downloads use user-chosen destinations. Planned optional proxy routing sends selected app traffic to the configured proxy; explain operator visibility and fallback consent (see 14-OPTIONAL-ROUTING.md).
 4. Retention defaults and how to change them.
 5. How to export and how to wipe.
 6. Third-party data: traffic may contain other people's information (messages); user is responsible for lawful use.
