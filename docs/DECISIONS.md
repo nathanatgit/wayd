@@ -92,3 +92,7 @@ On-device AI = LiteRT-LM (`com.google.ai.edge.litertlm:litertlm-android` 0.19.1,
 
 **D-026 · 2026-11-09 · proposed**
 Blocking / content control (M7) design: see docs/13-BLOCKING.md.
+
+**D-027 · 2026-11-09 · accepted**
+Releases: the shipped build is the `research` flavor as a signed **release** build under the plain application id `com.nathanhanapps.wayd` (no `.research` suffix, no `-research` version suffix); the `standard` flavor stays in the source and in CI. Signing uses Nat's existing key (alias `key1`, PKCS12, from `NebulaThemePorterKey`); it is never committed: locally it comes from a git-ignored `keystore.properties` or `WAYD_KEYSTORE_*` environment variables, in CI from the repository secrets `WAYD_KEYSTORE_BASE64`, `WAYD_KEYSTORE_PASSWORD`, `WAYD_KEY_ALIAS`, `WAYD_KEY_PASSWORD`. Pushing a tag `vX.Y.Z` (must equal `versionName`) runs `.github/workflows/release.yml`: Rust and unit tests, signed `assembleResearchRelease`, `apksigner verify`, then a GitHub release with `wayd-vX.Y.Z.apk` and its SHA-256. `-PappIdSuffix=.x` installs a build next to another for testing. Supersedes the "research is a separate app id" part of D-006.
+

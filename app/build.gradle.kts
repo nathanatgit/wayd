@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -13,22 +15,39 @@ android {
         applicationId = "com.nathanhanapps.wayd"
         minSdk = 29
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.1.0"
+        versionCode = 3
+        versionName = "0.1.1"
         // WAYD's native libraries are built for 64-bit ARM phones only.
         ndk { abiFilters += "arm64-v8a" }
+        (project.findProperty("appIdSuffix") as String?)?.let { applicationIdSuffix = it }
     }
 
     flavorDimensions += "dist"
     productFlavors {
-        // D-006: `standard` has no MITM / root plaintext; `research` adds them (M8).
+        // D-006 / D-027: `standard` has no MITM code; `research` adds it. Releases ship `research` under the plain application id
+        // (no suffix, no "-research" in the version). `-PappIdSuffix=.x` installs a build next to another one for testing.
         create("standard") {
             dimension = "dist"
         }
         create("research") {
             dimension = "dist"
-            applicationIdSuffix = ".research"
-            versionNameSuffix = "-research"
+        }
+    }
+
+    // Release signing: from keystore.properties (git-ignored, local) or WAYD_* environment variables (CI secrets).
+    val signing = Properties().apply {
+        rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+    }
+    fun signingValue(key: String, env: String): String? = signing.getProperty(key) ?: System.getenv(env)
+    val releaseStoreFile = signingValue("storeFile", "WAYD_KEYSTORE_FILE")
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = signingValue("storePassword", "WAYD_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "WAYD_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "WAYD_KEY_PASSWORD")
+            }
         }
     }
 
@@ -37,6 +56,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release") // unsigned when no key is configured
         }
     }
 

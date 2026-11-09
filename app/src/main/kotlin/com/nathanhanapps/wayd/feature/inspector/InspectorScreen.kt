@@ -101,7 +101,7 @@ class InspectorViewModel @Inject constructor(
         if (ids.isEmpty() || _ai.value == AiState.Running) return
         _ai.value = AiState.Running
         viewModelScope.launch {
-            val locale = if (Locale.getDefault().language == "zh") "zh-CN" else "en"
+            val locale = evidence.uiLocale()
             val req = evidence.requestForMessages(pkg, labels.label(pkg), windowKey, locale, ids)
             _ai.value = if (req == null) AiState.Done(AiOutcome.Failed("nothing selected")) else AiState.Done(analyzer.analyse(req))
         }

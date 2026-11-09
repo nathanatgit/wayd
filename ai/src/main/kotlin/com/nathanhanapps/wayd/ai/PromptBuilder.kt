@@ -96,6 +96,8 @@ object PromptBuilder {
                 req.ruleFindings.take(15).forEach { appendLine("- ${neutralise(it, 200)}") }
             }
             req.question?.takeIf { it.isNotBlank() }?.let { appendLine("User question: ${neutralise(it, MAX_QUESTION)}") }
+            // Said again at the very end, where small models pay the most attention.
+            appendLine("Answer language for all free text: ${languageName(req.locale)}.")
         }
         return Prompt(system, user, evidence.map { it.id }.toSet())
     }
