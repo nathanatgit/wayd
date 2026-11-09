@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ai_dl_channel">模型下载</string>
+    <string name="ai_dl_title">正在下载 %1$s</string>
+    <string name="ai_dl_progress">%1$d%%</string>
+    <string name="ai_dl_verifying">正在校验…</string>
+    <string name="ai_dl_cancel">取消</string>
+</resources>

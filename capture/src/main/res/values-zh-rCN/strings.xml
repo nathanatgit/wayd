@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capture_channel_name">录制</string>
+    <string name="capture_notif_title">在干嘛正在录制流量</string>
+    <string name="capture_notif_text">%1$d 个连接 · %2$d 个应用</string>
+    <string name="capture_notif_stop">停止</string>
+</resources>

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dz_title">Danger zone · research build</string>
+    <string name="dz_expand">Show</string>
+    <string name="dz_collapse">Hide</string>
+    <string name="dz_intro">Decrypting HTTPS lets WAYD read what the apps you choose send and receive. Off by default. Everything stays on this phone.</string>
+    <string name="dz_decrypt">Decrypt HTTPS content</string>
+    <string name="dz_apply_hint">Changes apply the next time you start recording. Apps that do not trust the certificate keep working and are shown as metadata only.</string>
+    <string name="dz_ca_failed">Could not create the certificate. Nothing was changed.</string>
+    <string name="dz_pick_apps">Choose apps (%1$d selected)</string>
+    <string name="dz_ca_title">Certificate</string>
+    <string name="dz_ca_body">Most apps only trust a user-installed certificate if they opt in (browsers usually do). Install it as a user certificate, or save the file and install it from Settings → Security.</string>
+    <string name="dz_install_user">Save and open Security settings</string>
+    <string name="dz_export">Save certificate file</string>
+    <string name="dz_system_ca">Also trust it system-wide (root)</string>
+    <string name="dz_system_ca_note">Optional and off by default. Needs root. Lasts until reboot and can be switched off here at any time. Restart the chosen apps afterwards.</string>
+    <string name="dz_delete_content">Delete captured content</string>
+    <string name="dz_remove">Disable and remove CA</string>
+    <string name="dz_remove_body">Turns decryption off, undoes the system-wide trust, deletes the certificate key and the app list, and records that you withdrew consent. Captured content is kept until you delete it. Also remove the user certificate in Settings → Security if you installed it.</string>
+    <string name="dz_cancel">Cancel</string>
+    <string name="dz_done">Done</string>
+    <string name="dz_continue">Continue</string>
+    <string name="dz_agree">Agree and continue</string>
+    <string name="dz_understand">I understand</string>
+    <string name="dz_picker_title">Apps to decrypt</string>
+    <string name="dz_picker_note">Banking, payment, government, password-manager and system apps are not listed and can never be added.</string>
+    <string name="dz_warn_title">Decrypting HTTPS is risky</string>
+    <string name="dz_warn_body">WAYD will act as a middleman for the apps you choose so it can read their encrypted traffic. This may expose passwords, messages, payment details and other sensitive content — to WAYD on this phone only.\n\n• Most apps refuse user-installed certificates; those apps will be shown as “metadata only”.\n• Some apps may stop working while this is on.\n• Anyone who obtains WAYD’s certificate key could intercept your traffic. WAYD stores it encrypted and deletes it when you turn this off.\n• Never enable this on a phone you don’t own or for people who haven’t agreed.</string>
+    <string name="dz_stmt_title">Privacy statement</string>
+    <string name="dz_stmt_body">1. What WAYD collects\nTraffic metadata (apps, hosts, sizes, times), cleartext and — for the apps you choose — decrypted request and response content, app permission-use history, and facts about installed apps.\n\n2. Where it is stored\nOnly on this device, in an encrypted database, excluded from backups. The certificate key is encrypted with a key held by the Android Keystore.\n\n3. What WAYD sends off the device\nNothing. The only network use is what you start yourself, such as downloading a model or a database.\n\n4. Retention\nDecrypted content stays until you delete it (Danger zone → Delete captured content) or turn the feature off and wipe data.\n\n5. Export and wipe\nExported files are not encrypted and may contain other people’s information: keep them private. You can delete captured content at any time. “Disable and remove CA” removes the certificate key, the app list and any system-wide trust.\n\n6. Other people’s information\nDecrypted traffic can contain information about other people (for example messages). You are responsible for using this lawfully and only on devices and accounts you are entitled to inspect.\n\n7. Version\nStatement version 1.</string>
+    <string name="dz_sys_warn_title">Trust the certificate system-wide?</string>
+    <string name="dz_sys_warn_body">This uses root to make Android’s system trust store include WAYD’s certificate. Apps that ignore user certificates will then accept it, which lets WAYD read their traffic.\n\nWhile it is on, anyone with WAYD’s certificate key could impersonate any website to this phone, and some apps may misbehave. Nothing is installed permanently: the change is undone by a reboot or by switching this off.\n\nOnly continue on a phone you own.</string>
+    <string name="dz_sys_warn_ok">Trust system-wide</string>
+    <string name="dz_cert_saved">Certificate file saved. To install it: Settings → Security → Encryption &amp; credentials → Install a certificate → CA certificate, then pick the file you just saved.</string>
+    <string name="dz_toast_failed">Could not do that.</string>
+    <string name="dz_toast_install_steps">In Settings: Security → Encryption &amp; credentials → Install a certificate → CA certificate → choose wayd-ca.crt from Downloads.</string>
+    <string name="dz_picker_empty">No apps are visible to WAYD yet. Your ROM may hide the app list: type a package name, use root, or record some traffic first.</string>
+    <string name="dz_picker_type">Search apps or type a package name</string>
+    <string name="dz_picker_add">Add</string>
+    <string name="dz_picker_root">Load app list with root</string>
+    <string name="dz_sort_name">Name</string>
+    <string name="dz_sort_date">Date installed</string>
+</resources>

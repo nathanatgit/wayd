@@ -53,6 +53,10 @@ interface Rule {
 | R-CROSS-BORDER | Destination country ≠ device region and category ≠ CDN | INFO |
 | R-BYPASS | Root: traffic seen outside the VPN | HIGH |
 | R-TRACKER-SDK | APK contains tracker SDK and its endpoints were contacted | LOW–MEDIUM |
+| R-TRACKER-CONTACT | *(added M2)* App sends data to ADS (LOW) / ANALYTICS or CRASH (INFO) domains | LOW / INFO |
+| R-CLEARTEXT-HTTP | *(added M2)* Data sent over unencrypted HTTP to a public host (OS checks and LAN excluded) | LOW |
+
+**Implemented in M2 (flow data only):** R-BG-UPLOAD (screen-off only; foreground time unknown until M3), R-UP-RATIO, R-BEACON, R-NEW-DOMAIN, R-DIRECT-IP, R-OWN-DOH, R-TRACKER-CONTACT, R-CLEARTEXT-HTTP. Waiting for other inputs: R-ID-* / R-APPLIST (messages, M4), R-LOC-THEN-UP / R-BOOT-REPORT / R-SCREEN-CAPTURE / R-CLIPBOARD-BG / R-NO-SIM-CARRIER (permission events, M3), R-TRACKER-SDK (APK scan, M5), R-CROSS-BORDER (GeoIP data), R-BYPASS (root, M8).
 
 Every rule ships with unit tests built from fixture sessions.
 
@@ -61,6 +65,10 @@ Every rule ships with unit tests built from fixture sessions.
 `score = Σ severity_weight(finding) × certainty_weight(tier)`, capped at 100.
 Weights: HIGH 30, MEDIUM 12, LOW 4, INFO 0; PLAINTEXT 1.0, DECRYPTED 1.0, METADATA/inferred 0.6.
 Show the score with its breakdown; never show a score without reasons.
+
+## App-oriented analysis (primary view)
+
+The main analysis view is **per app** (`AppReportBuilder`): what the app did in a window. Destinations are grouped by company *and* purpose (so an ad endpoint is not hidden in a CDN row); connections without a hostname form one bucket; LAN traffic is counted separately. Plain-language insights are structured (`Insight`) and rendered from string resources in en/zh. The daily report is a thin overview that links into apps.
 
 ## Daily report (DailyReportBuilder)
 

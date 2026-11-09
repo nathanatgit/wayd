@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capture_channel_name">Recording</string>
+    <string name="capture_notif_title">WAYD is recording traffic</string>
+    <string name="capture_notif_text">%1$d connections · %2$d apps</string>
+    <string name="capture_notif_stop">Stop</string>
+</resources>

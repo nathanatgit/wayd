@@ -44,3 +44,25 @@ WAYD holds the most sensitive data on the phone. Treat WAYD itself as a high-val
 | Shizuku permission | ADB/root features |
 
 No location, contacts, SMS or storage permissions. WAYD reads device identifiers only to match them in traffic, and only at the privilege level available.
+
+## Permissions added with on-device AI (2026-11-09)
+
+| Permission | Why | Risk / mitigation |
+|---|---|---|
+| `FOREGROUND_SERVICE_DATA_SYNC` (+ `INTERNET`, already declared) | Keep a 2-4 GB model download alive while the app is in the background. | The download starts only when the user taps Download, goes only to the host the user chose, is SHA-256 verified and can be cancelled. No other AI-related network use. |
+
+The captured data is masked (identifiers replaced by type tokens), wrapped in inert `<data>` blocks and size-bounded before it reaches the model; model output is schema- and evidence-validated and can never change rules, blocks, consents or privileges.
+
+## Permissions added in M1 (2026-11-09)
+
+| Permission | Why | Risk / mitigation |
+|---|---|---|
+| `INTERNET` | The userspace stack relays the user's own traffic to its real destination. WAYD makes no network calls of its own. | Code review rule: no other `Socket`/`URL` use outside `capture/native` relay. The app excludes itself from the VPN (`addDisallowedApplication`) so relay sockets bypass the tunnel. |
+| `BIND_VPN_SERVICE` (service) | Declared on `WaydVpnService`; only the system can bind. | User must accept the system VPN consent dialog. |
+| `ACCESS_NETWORK_STATE` | Read the underlying network type (Wi-Fi / cellular) and resolve connection owners. | Read-only; no data leaves the device. |
+| `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SYSTEM_EXEMPTED`, `POST_NOTIFICATIONS` | Keep recording alive and show a persistent "recording" notification with a Stop action. | Notification permission is optional; recording works without it. |
+| `QUERY_ALL_PACKAGES` | Map connection UIDs to package names for every installed app. | Sideload/`research` distribution only; a store build needs a policy declaration. Package names never leave the device. |
+
+Native code (`capture/native`) parses no payloads; it reports only bounded prefixes (2 KB TCP per direction, DNS datagrams, first UDP datagram) to Kotlin, where parsers are size-limited and treat input as hostile.
+
+**Debug-only intent extra:** `WaydVpnService` honours `--es exclude <cidr,...>` to keep prefixes out of the tunnel, but only when the APK is debuggable (`FLAG_DEBUGGABLE`) and the service is not exported. Release builds ignore it.

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ai_dl_channel">Model downloads</string>
+    <string name="ai_dl_title">Downloading %1$s</string>
+    <string name="ai_dl_progress">%1$d%%</string>
+    <string name="ai_dl_verifying">Verifying…</string>
+    <string name="ai_dl_cancel">Cancel</string>
+</resources>
