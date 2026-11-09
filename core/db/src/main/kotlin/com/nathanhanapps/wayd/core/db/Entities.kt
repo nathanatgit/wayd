@@ -1,5 +1,6 @@
 package com.nathanhanapps.wayd.core.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -89,7 +90,12 @@ data class DnsRecord(
     val viaDoh: Boolean,
 )
 
-@Entity
+/**
+ * One permission/op use record. For the AppOps source this is one history *bucket* (about 15 minutes for recent data):
+ * [ts] is the bucket start, [bucketEnd] its end and [count] how many accesses happened in it.
+ * [source] = "appops:" plus the process state (top, fgsvc, fg, bg, cch, pers); [background] is derived from the state.
+ */
+@Entity(indices = [Index("pkg"), Index("ts")])
 data class PermEvent(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val pkg: String,
@@ -98,6 +104,8 @@ data class PermEvent(
     val durationMs: Long?,
     val background: Boolean,
     val source: String,
+    @ColumnInfo(defaultValue = "1") val count: Int = 1,
+    @ColumnInfo(defaultValue = "0") val bucketEnd: Long = 0,
 )
 
 @Entity

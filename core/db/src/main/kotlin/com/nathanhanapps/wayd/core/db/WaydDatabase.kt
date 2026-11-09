@@ -1,5 +1,6 @@
 package com.nathanhanapps.wayd.core.db
 
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.RoomDatabase
 
@@ -9,8 +10,9 @@ import androidx.room.RoomDatabase
         AlarmInfo::class, AppInfo::class, ApkFact::class, Finding::class, AiAnalysis::class,
         BlockRule::class, ConsentRecord::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
 abstract class WaydDatabase : RoomDatabase() {
     abstract fun consentDao(): ConsentDao
@@ -18,6 +20,7 @@ abstract class WaydDatabase : RoomDatabase() {
     abstract fun flowDao(): FlowDao
     abstract fun dnsDao(): DnsDao
     abstract fun findingDao(): FindingDao
+    abstract fun permEventDao(): PermEventDao
 
     companion object {
         const val NAME = "wayd.db"

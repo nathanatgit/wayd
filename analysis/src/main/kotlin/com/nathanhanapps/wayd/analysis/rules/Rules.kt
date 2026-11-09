@@ -1,5 +1,6 @@
 package com.nathanhanapps.wayd.analysis.rules
 
+import com.nathanhanapps.wayd.analysis.FindingText
 import com.nathanhanapps.wayd.analysis.Rule
 import com.nathanhanapps.wayd.analysis.RuleContext
 import com.nathanhanapps.wayd.analysis.bytes
@@ -30,7 +31,7 @@ class BackgroundUpload(private val thresholdBytes: Long = 1L shl 20) : Rule {
             if (up < thresholdBytes) null
             else finding(
                 ctx, this, pkg, Severity.MEDIUM,
-                "Uploaded ${bytes(up)} while the screen was off",
+                FindingText.of("Uploaded ${bytes(up)} while the screen was off", bytes(up)),
                 fl.sortedByDescending { it.bytesUp }.take(10).map { it.id },
             )
         }
@@ -49,7 +50,7 @@ class UploadRatio(private val minUp: Long = 1L shl 20, private val ratio: Double
             if (up < minUp || up < ratio * down) null
             else finding(
                 ctx, this, pkg, Severity.MEDIUM,
-                "Sent ${bytes(up)} but received only ${bytes(down)}",
+                FindingText.of("Sent ${bytes(up)} but received only ${bytes(down)}", bytes(up), bytes(down)),
                 fl.sortedByDescending { it.bytesUp }.take(10).map { it.id },
             )
         }
@@ -73,7 +74,7 @@ class Beacon(private val minCount: Int = 6, private val maxCv: Double = 0.2, pri
             if (cv < maxCv) {
                 out += finding(
                     ctx, this, key.first, Severity.LOW,
-                    "Contacts ${key.second} every ~${(mean / 1000).toLong()} s (${fl.size} times)",
+                    FindingText.of("Contacts ${key.second} every ~${(mean / 1000).toLong()} s (${fl.size} times)", key.second, (mean / 1000).toLong(), fl.size),
                     sorted.take(10).map { it.id },
                 )
             }
@@ -95,7 +96,7 @@ class NewDomain : Rule {
             if (firstByHost.isEmpty()) null
             else finding(
                 ctx, this, pkg, Severity.INFO,
-                "${firstByHost.size} new domain(s) contacted for the first time",
+                FindingText.of("${firstByHost.size} new domain(s) contacted for the first time", firstByHost.size),
                 firstByHost.take(20).map { it.id },
             )
         }
@@ -113,7 +114,7 @@ class DirectIp : Rule {
                 val dsts = fl.map { it.dstIp }.distinct().size
                 finding(
                     ctx, this, pkg, Severity.LOW,
-                    "${fl.size} connection(s) to $dsts address(es) with no hostname",
+                    FindingText.of("${fl.size} connection(s) to $dsts address(es) with no hostname", fl.size, dsts),
                     fl.sortedByDescending { it.bytesUp + it.bytesDown }.take(10).map { it.id },
                 )
             }
@@ -129,7 +130,7 @@ class OwnDoh : Rule {
         ctx.attributed.filter { DohHosts.isDoh(it.host) }.groupBy { it.pkg }.map { (pkg, fl) ->
             finding(
                 ctx, this, pkg, Severity.INFO,
-                "Uses its own DNS-over-HTTPS (${fl.map { it.host }.distinct().joinToString()})",
+                FindingText.of("Uses its own DNS-over-HTTPS (${fl.map { it.host }.distinct().joinToString()})", fl.map { it.host }.distinct().joinToString()),
                 fl.take(10).map { it.id },
             )
         }
@@ -156,7 +157,7 @@ class TrackerContact : Rule {
             }
             out += finding(
                 ctx, this, pkg, sev,
-                "Sent ${bytes(rows.sumOf { it.first.bytesUp })} to $company ($label)",
+                FindingText.of("Sent ${bytes(rows.sumOf { it.first.bytesUp })} to $company ($label)", bytes(rows.sumOf { it.first.bytesUp }), company, cat.name),
                 rows.map { it.first }.sortedByDescending { it.bytesUp }.take(10).map { it.id },
             )
         }
@@ -181,7 +182,7 @@ class CleartextHttp : Rule {
         }.groupBy { it.pkg }.map { (pkg, fl) ->
             finding(
                 ctx, this, pkg, Severity.LOW,
-                "Sent ${bytes(fl.sumOf { it.bytesUp })} over unencrypted HTTP to ${fl.mapNotNull { it.host }.distinct().take(3).joinToString()}",
+                FindingText.of("Sent ${bytes(fl.sumOf { it.bytesUp })} over unencrypted HTTP to ${fl.mapNotNull { it.host }.distinct().take(3).joinToString()}", bytes(fl.sumOf { it.bytesUp }), fl.mapNotNull { it.host }.distinct().take(3).joinToString()),
                 fl.take(10).map { it.id },
             )
         }

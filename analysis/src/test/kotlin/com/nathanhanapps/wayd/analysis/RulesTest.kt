@@ -226,3 +226,84 @@ class AppReportTest {
         assertTrue(r.insights.none { it.kind == InsightKind.TOP_DESTINATION })
     }
 }
+
+private var nextPermId = 1L
+
+internal fun perm(
+    pkg: String = "com.example.app",
+    op: String,
+    background: Boolean,
+    count: Int = 1,
+    ts: Long = 1_000_000,
+    bucketMs: Long = 15 * 60_000L,
+) = com.nathanhanapps.wayd.core.db.PermEvent(
+    id = nextPermId++, pkg = pkg, op = op, ts = ts, durationMs = null, background = background,
+    source = "appops:" + if (background) "bg" else "top", count = count, bucketEnd = ts + bucketMs,
+)
+
+internal fun ctxWithPerms(flows: List<com.nathanhanapps.wayd.core.db.Flow>, perms: List<com.nathanhanapps.wayd.core.db.PermEvent>) =
+    RuleContext(flows, 0, 86_400_000, emptyMap(), TrackerDb(), now = 5, permEvents = perms)
+
+class PermissionRulesTest {
+    @Test fun clipboardBackground_onlyBackgroundReads() {
+        val f = com.nathanhanapps.wayd.analysis.rules.ClipboardBackground().evaluate(
+            ctxWithPerms(emptyList(), listOf(perm(op = "READ_CLIPBOARD", background = true, count = 3), perm(op = "READ_CLIPBOARD", background = false, count = 50), perm(pkg = "b", op = "READ_CLIPBOARD", background = false))),
+        )
+        assertEquals(1, f.size)
+        assertEquals(Severity.MEDIUM, f.single().severity)
+        assertTrue(f.single().title.contains("3 time"))
+        assertTrue(f.single().evidenceJson.startsWith("[\"p:"))
+    }
+
+    @Test fun screenCapture_backgroundIsHigh_visibleIsIgnored() {
+        val rule = com.nathanhanapps.wayd.analysis.rules.ScreenCaptureBackground()
+        assertTrue(rule.evaluate(ctxWithPerms(emptyList(), listOf(perm(op = "PROJECT_MEDIA", background = false)))).isEmpty())
+        val f = rule.evaluate(ctxWithPerms(emptyList(), listOf(perm(op = "PROJECT_MEDIA", background = true, count = 2))))
+        assertEquals(Severity.HIGH, f.single().severity)
+    }
+
+    @Test fun locationThenUpload_needsBackgroundLocationAndUploadInSameBucket() {
+        val rule = com.nathanhanapps.wayd.analysis.rules.LocationThenUpload()
+        val loc = perm(op = "FINE_LOCATION", background = true, count = 4, ts = 1_000_000)
+        val inside = flow(up = 20_000, startAt = 1_000_000 + 5 * 60_000L)
+        val outside = flow(up = 500_000, startAt = 1_000_000 + 40 * 60_000L)
+        val f = rule.evaluate(ctxWithPerms(listOf(inside, outside), listOf(loc)))
+        assertEquals(1, f.size)
+        val json = f.single().evidenceJson
+        assertTrue(json.contains("p:${loc.id}") && json.contains("f:${inside.id}") && !json.contains("f:${outside.id}"))
+        // visible location use, a small upload, an upload to the LAN, and a coarse bucket must not fire
+        assertTrue(rule.evaluate(ctxWithPerms(listOf(inside), listOf(perm(op = "FINE_LOCATION", background = false, ts = 1_000_000)))).isEmpty())
+        assertTrue(rule.evaluate(ctxWithPerms(listOf(flow(up = 100, startAt = 1_100_000)), listOf(loc))).isEmpty())
+        assertTrue(rule.evaluate(ctxWithPerms(listOf(flow(up = 50_000, dstIp = "192.168.1.9", startAt = 1_100_000)), listOf(loc))).isEmpty())
+        val coarse = perm(op = "FINE_LOCATION", background = true, ts = 1_000_000, bucketMs = 4 * 3_600_000L)
+        assertTrue(rule.evaluate(ctxWithPerms(listOf(inside), listOf(coarse))).isEmpty())
+    }
+
+    @Test fun engineIncludesPermissionRulesAndScoresThem() {
+        val engine = RuleEngine()
+        assertTrue(engine.rules.map { it.id }.containsAll(listOf("R-CLIPBOARD-BG", "R-SCREEN-CAPTURE", "R-LOC-THEN-UP")))
+        val findings = engine.run(ctxWithPerms(emptyList(), listOf(perm(op = "PROJECT_MEDIA", background = true))))
+        assertEquals(18, RiskScorer.score(findings, engine).total) // HIGH 30 x METADATA 0.6
+    }
+}
+
+class FindingTextTest {
+    @Test fun roundTripsFallbackAndArguments() {
+        val t = FindingText.of("Sent 5 KB to Tencent (advertising)", "5 KB", "Tencent", "ADS")
+        val p = FindingText.parse(t)
+        assertEquals("Sent 5 KB to Tencent (advertising)", p.fallback)
+        assertEquals(listOf("5 KB", "Tencent", "ADS"), p.args)
+        assertEquals(emptyList<String>(), FindingText.parse("plain title").args)
+    }
+
+    @Test fun everyRuleProducesLocalisableTitles() {
+        // All default rules must emit titles whose first segment is the English fallback and whose args are present.
+        val c = ctxWithPerms(
+            listOf(flow(host = "gdt.qq.com", up = 5_000_000, down = 10, screenOn = false)),
+            listOf(perm(op = "READ_CLIPBOARD", background = true)),
+        )
+        val findings = RuleEngine().run(c)
+        assertTrue(findings.isNotEmpty())
+        findings.forEach { f -> assertTrue(f.ruleId + " " + f.title, FindingText.parse(f.title).args.isNotEmpty()) }
+    }
+}

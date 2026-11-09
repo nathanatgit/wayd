@@ -115,4 +115,17 @@
     <string name="permcat_screen_capture">Screen capture</string>
     <string name="permcat_overlay">Draw over other apps</string>
     <string name="perm_failed">Shizuku is ready, but reading this app’s permission history failed. Try again.</string>
+    <string name="ft_bg_upload">Uploaded %1$s while the screen was off</string>
+    <string name="ft_up_ratio">Sent %1$s but received only %2$s</string>
+    <string name="ft_beacon">Contacts %1$s every ~%2$s s (%3$s times)</string>
+    <string name="ft_new_domain">%1$d new domain(s) contacted for the first time</string>
+    <string name="ft_direct_ip">%1$d connection(s) to %2$d address(es) with no hostname</string>
+    <string name="ft_own_doh">Uses its own DNS-over-HTTPS (%1$s)</string>
+    <string name="ft_tracker_ads">Sent %1$s to %2$s (advertising)</string>
+    <string name="ft_tracker_analytics">Sent %1$s to %2$s (analytics)</string>
+    <string name="ft_tracker_crash">Sent %1$s to %2$s (crash reporting)</string>
+    <string name="ft_cleartext">Sent %1$s over unencrypted HTTP to %2$s</string>
+    <string name="ft_clipboard_bg">Read the clipboard %1$d time(s) while in the background</string>
+    <string name="ft_screen_capture">Used screen capture %1$d time(s) while not visible</string>
+    <string name="ft_loc_then_up">Read the location in the background and sent %1$s in the same time window (%2$d time(s))</string>
 </resources>

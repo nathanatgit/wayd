@@ -20,6 +20,9 @@ enum class PermissionCategory(val ops: Set<String>) {
     companion object {
         private val byOp: Map<String, PermissionCategory> = entries.flatMap { c -> c.ops.map { it to c } }.toMap()
         fun of(op: String): PermissionCategory? = byOp[op]
+
+        /** Every op worth recording; the privileged side drops all others to stay under the Binder size limit. */
+        val watchedOps: Set<String> = byOp.keys
     }
 }
 

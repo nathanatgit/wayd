@@ -38,23 +38,26 @@ object AppOpsHistoryParser {
     private val REJECT = Regex("""reject=(\d+)""")
     private val DURATION = Regex("""duration=\+?([0-9dhmsµ ]+?)(?:,|$)""")
 
-    fun parse(text: String, pkg: String, now: Long): List<OpBucket> {
-        val out = ArrayList<OpBucket>()
+    fun parse(text: String, pkg: String, now: Long): List<OpBucket> = parseAll(text, now) { it == pkg }[pkg].orEmpty()
+
+    /** Parses every package present in [text] (optionally only those accepted by [accept]), keyed by package name. */
+    fun parseAll(text: String, now: Long, accept: (String) -> Boolean = { true }): Map<String, List<OpBucket>> {
+        val out = LinkedHashMap<String, MutableList<OpBucket>>()
         var start = 0L
         var end = 0L
-        var inTarget = false
+        var pkg: String? = null
         var op: String? = null
         for (line in text.lineSequence()) {
             BEGIN.matchEntire(line)?.let {
                 start = now - relativeMs(it.groupValues[1])
-                inTarget = false
+                pkg = null
                 op = null
                 return@let
             }
             END.matchEntire(line)?.let { end = now - relativeMs(it.groupValues[1]); return@let }
-            if (UID.matches(line)) { inTarget = false; op = null; continue }
-            PACKAGE.matchEntire(line)?.let { inTarget = it.groupValues[1] == pkg; op = null; return@let }
-            if (!inTarget) continue
+            if (UID.matches(line)) { pkg = null; op = null; continue }
+            PACKAGE.matchEntire(line)?.let { pkg = it.groupValues[1].takeIf(accept); op = null; return@let }
+            val currentPkg = pkg ?: continue
             OP.matchEntire(line)?.let { op = it.groupValues[1]; return@let }
             val currentOp = op ?: continue
             STATE.matchEntire(line)?.let { m ->
@@ -63,7 +66,7 @@ object AppOpsHistoryParser {
                 val reject = REJECT.find(rest)?.groupValues?.get(1)?.toIntOrNull() ?: 0
                 val dur = DURATION.find(rest)?.groupValues?.get(1)?.let { relativeMs(it) } ?: 0L
                 if (access > 0 || reject > 0) {
-                    out += OpBucket(currentOp, start, end, state(m.groupValues[1]), access, reject, dur)
+                    out.getOrPut(currentPkg) { ArrayList() } += OpBucket(currentOp, start, end, state(m.groupValues[1]), access, reject, dur)
                 }
             }
         }

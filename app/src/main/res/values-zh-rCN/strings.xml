@@ -115,4 +115,17 @@
     <string name="permcat_screen_capture">屏幕录制</string>
     <string name="permcat_overlay">悬浮于其他应用之上</string>
     <string name="perm_failed">Shizuku 已就绪，但读取该应用的权限历史失败。请重试。</string>
+    <string name="ft_bg_upload">熄屏时上传了 %1$s</string>
+    <string name="ft_up_ratio">发送了 %1$s，但只接收了 %2$s</string>
+    <string name="ft_beacon">每隔约 %2$s 秒连接一次 %1$s（共 %3$s 次）</string>
+    <string name="ft_new_domain">首次连接了 %1$d 个新域名</string>
+    <string name="ft_direct_ip">%1$d 个连接发往 %2$d 个没有主机名的地址</string>
+    <string name="ft_own_doh">使用自带的 DNS-over-HTTPS（%1$s）</string>
+    <string name="ft_tracker_ads">向 %2$s 发送了 %1$s（广告）</string>
+    <string name="ft_tracker_analytics">向 %2$s 发送了 %1$s（统计分析）</string>
+    <string name="ft_tracker_crash">向 %2$s 发送了 %1$s（崩溃上报）</string>
+    <string name="ft_cleartext">通过未加密的 HTTP 向 %2$s 发送了 %1$s</string>
+    <string name="ft_clipboard_bg">在后台读取了 %1$d 次剪贴板</string>
+    <string name="ft_screen_capture">在不可见时使用了 %1$d 次屏幕录制</string>
+    <string name="ft_loc_then_up">在后台读取位置，并在同一时间段内发送了 %1$s（%2$d 次）</string>
 </resources>

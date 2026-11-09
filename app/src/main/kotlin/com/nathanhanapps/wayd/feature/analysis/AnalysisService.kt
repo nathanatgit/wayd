@@ -14,6 +14,8 @@ import com.nathanhanapps.wayd.analysis.RuleEngine
 import com.nathanhanapps.wayd.core.db.FindingDao
 import com.nathanhanapps.wayd.core.db.Flow
 import com.nathanhanapps.wayd.core.db.FlowDao
+import com.nathanhanapps.wayd.core.db.PermEvent
+import com.nathanhanapps.wayd.core.db.PermEventDao
 import com.nathanhanapps.wayd.enrich.TrackerDb
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +43,8 @@ object Windows {
     }
 }
 
+class Evidence(val flows: List<Flow>, val permissions: List<PermEvent>)
+
 class AnalysisResult(val report: DailyReport, val apps: Map<String, AppReport>)
 
 /** Runs enrichment backfill, rules and report builders for a window and stores the findings. */
@@ -48,6 +52,8 @@ class AnalysisResult(val report: DailyReport, val apps: Map<String, AppReport>)
 class AnalysisService @Inject constructor(
     private val flows: FlowDao,
     private val findings: FindingDao,
+    private val permEvents: PermEventDao,
+    private val permissions: PermissionHistoryService,
 ) {
     private val engine = RuleEngine()
     private val tracker = TrackerDb()
@@ -59,8 +65,10 @@ class AnalysisService @Inject constructor(
             tracker.lookup(h)?.let { flows.setEnrichment(h, it.company, it.category) }
         }
         val inWindow = flows.between(start, end)
+        // Pull permission history for the apps that were active (best effort; needs Shizuku), then read what is stored.
+        runCatching { permissions.sync(inWindow.map { it.pkg }.distinct(), start, end) }
         val known = flows.hostsBefore(start).groupBy({ it.pkg }, { it.host }).mapValues { it.value.toSet() }
-        val ctx = RuleContext(inWindow, start, end, known, tracker, System.currentTimeMillis())
+        val ctx = RuleContext(inWindow, start, end, known, tracker, System.currentTimeMillis(), permEvents.between(start, end))
         val found = engine.run(ctx)
         findings.deleteBetween(start, end)
         findings.insertAll(found)
@@ -72,11 +80,19 @@ class AnalysisService @Inject constructor(
 
     suspend fun flowsByIds(ids: List<Long>): List<Flow> = withContext(Dispatchers.IO) { if (ids.isEmpty()) emptyList() else flows.byIds(ids) }
 
-    /** Parses `["f:12","f:40"]` into flow ids. */
-    fun evidenceIds(json: String): List<Long> = EVIDENCE.findAll(json).map { it.groupValues[1].toLong() }.toList()
+    /** Parses `["f:12","p:3"]` into flow ids. */
+    fun evidenceIds(json: String): List<Long> = EVIDENCE.findAll(json).filter { it.groupValues[1] == "f" }.map { it.groupValues[2].toLong() }.toList()
+
+    fun permissionEvidenceIds(json: String): List<Long> = EVIDENCE.findAll(json).filter { it.groupValues[1] == "p" }.map { it.groupValues[2].toLong() }.toList()
+
+    suspend fun evidence(json: String): Evidence = withContext(Dispatchers.IO) {
+        val f = evidenceIds(json)
+        val p = permissionEvidenceIds(json)
+        Evidence(if (f.isEmpty()) emptyList() else flows.byIds(f), if (p.isEmpty()) emptyList() else permEvents.byIds(p))
+    }
 
     private companion object {
-        val EVIDENCE = Regex("f:(\\d+)")
+        val EVIDENCE = Regex("([fp]):(\\d+)")
     }
 }
 

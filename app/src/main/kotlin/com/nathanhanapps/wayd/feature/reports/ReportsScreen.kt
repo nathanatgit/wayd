@@ -35,6 +35,7 @@ import com.nathanhanapps.wayd.feature.analysis.ReportDetailViewModel
 import com.nathanhanapps.wayd.feature.analysis.ReportsViewModel
 import com.nathanhanapps.wayd.feature.analysis.categoryColor
 import com.nathanhanapps.wayd.feature.analysis.categoryLabel
+import com.nathanhanapps.wayd.feature.analysis.findingTitle
 import com.nathanhanapps.wayd.feature.analysis.fmtBytes
 import com.nathanhanapps.wayd.feature.analysis.severityColor
 import com.nathanhanapps.wayd.feature.analysis.severityLabel
@@ -94,7 +95,7 @@ private fun ReportBody(r: DailyReport, labels: AppLabels, window: String, onOpen
                         Badge(severityLabel(f.severity), severityColor(f.severity))
                         Text(name(f.pkg), style = MaterialTheme.typography.labelLarge)
                     }
-                    Text(f.title, style = MaterialTheme.typography.bodyMedium)
+                    Text(findingTitle(f), style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
@@ -123,7 +124,7 @@ private fun ReportBody(r: DailyReport, labels: AppLabels, window: String, onOpen
 
         item { Text(stringResource(R.string.report_new), style = MaterialTheme.typography.titleMedium) }
         items(r.newToday) { f ->
-            Text(stringResource(R.string.report_company_row, name(f.pkg), f.title), style = MaterialTheme.typography.bodySmall, modifier = Modifier.clickable { onOpenApp(f.pkg, window) })
+            Text(stringResource(R.string.report_company_row, name(f.pkg), findingTitle(f)), style = MaterialTheme.typography.bodySmall, modifier = Modifier.clickable { onOpenApp(f.pkg, window) })
         }
 
         item { Text(stringResource(R.string.report_countries_na), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline) }

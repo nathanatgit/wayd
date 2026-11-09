@@ -82,6 +82,22 @@ private const val MEASURABLE =
         "AND dstIp NOT LIKE '127.%' AND dstIp NOT LIKE '169.254.%' AND dstIp NOT LIKE 'fe80:%' " +
         "AND dstIp NOT LIKE 'fd%' AND dstIp NOT LIKE 'fc%' AND dstIp != '::1'"
 
+@Dao
+interface PermEventDao {
+    @Insert
+    suspend fun insertAll(events: List<PermEvent>)
+
+    /** AppOps-sourced events that started in the window; used to replace a window on re-sync. */
+    @Query("DELETE FROM PermEvent WHERE ts >= :start AND ts < :end AND source LIKE 'appops:%'")
+    suspend fun deleteAppOpsBetween(start: Long, end: Long)
+
+    @Query("SELECT * FROM PermEvent WHERE ts >= :start AND ts < :end")
+    suspend fun between(start: Long, end: Long): List<PermEvent>
+
+    @Query("SELECT * FROM PermEvent WHERE id IN (:ids)")
+    suspend fun byIds(ids: List<Long>): List<PermEvent>
+}
+
 data class PkgHost(val pkg: String, val host: String)
 
 data class DayRow(val day: String, val flows: Int)

@@ -33,6 +33,8 @@ object DbModule {
 
     @Provides fun findingDao(db: WaydDatabase): FindingDao = db.findingDao()
 
+    @Provides fun permEventDao(db: WaydDatabase): PermEventDao = db.permEventDao()
+
     @Provides
     @Singleton
     fun dbHealth(db: WaydDatabase): DbHealth = DbHealth(db)

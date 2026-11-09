@@ -37,12 +37,14 @@ import com.nathanhanapps.wayd.analysis.Destination
 import com.nathanhanapps.wayd.core.db.Finding
 import com.nathanhanapps.wayd.core.db.Flow
 import com.nathanhanapps.wayd.feature.analysis.AppDetailViewModel
+import com.nathanhanapps.wayd.feature.analysis.Evidence
 import com.nathanhanapps.wayd.feature.analysis.AppIcon
 import com.nathanhanapps.wayd.feature.analysis.Badge
 import com.nathanhanapps.wayd.feature.analysis.HourlyChart
 import com.nathanhanapps.wayd.feature.analysis.Loadable
 import com.nathanhanapps.wayd.feature.analysis.categoryColor
 import com.nathanhanapps.wayd.feature.analysis.categoryLabel
+import com.nathanhanapps.wayd.feature.analysis.findingTitle
 import com.nathanhanapps.wayd.feature.analysis.fmtBytes
 import com.nathanhanapps.wayd.feature.analysis.insightText
 import com.nathanhanapps.wayd.feature.analysis.severityColor
@@ -135,12 +137,18 @@ private fun FindingRow(f: Finding, vm: AppDetailViewModel, context: android.cont
                 Badge(severityLabel(f.severity), severityColor(f.severity))
                 Text(f.ruleId, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
             }
-            Text(f.title, style = MaterialTheme.typography.bodyMedium)
+            Text(findingTitle(f), style = MaterialTheme.typography.bodyMedium)
             if (open) {
-                val evidence by produceState<List<Flow>>(emptyList(), f.evidenceJson) { value = vm.evidence(f.evidenceJson) }
+                val evidence by produceState(Evidence(emptyList(), emptyList()), f.evidenceJson) { value = vm.evidence(f.evidenceJson) }
                 Text(stringResource(R.string.evidence_title), style = MaterialTheme.typography.labelMedium)
                 val fmt = DateFormat.getTimeInstance(DateFormat.MEDIUM)
-                evidence.forEach { e ->
+                evidence.permissions.forEach { p ->
+                    Text(
+                        "${fmt.format(Date(p.ts))}  ${p.op} ×${p.count}  (${p.source.removePrefix("appops:")})",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                evidence.flows.forEach { e ->
                     Text(
                         "${fmt.format(Date(e.startAt))}  ${e.host ?: e.dstIp}:${e.dstPort}  ${e.proto.name}  ↑${fmtBytes(context, e.bytesUp)} ↓${fmtBytes(context, e.bytesDown)}",
                         style = MaterialTheme.typography.labelSmall,

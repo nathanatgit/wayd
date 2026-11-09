@@ -112,3 +112,25 @@ Current AppOps Service state:
         assertEquals(10, loc.hourly[1])
     }
 }
+
+class ParseAllTest {
+    @Test fun parsesSeveralPackagesInOnePass() {
+        val text = """
+            begin = 2026-11-09 18:59:30.594  (-14m18s795ms)
+            end = 2026-11-09 19:13:49.389  (0)
+            Uid u0a1:
+              Package com.a.app:
+                READ_CLIPBOARD:
+                  [cch-s] = access=3
+            Uid u0a2:
+              Package com.b.app:
+                CAMERA:
+                  [fg-s] = access=2
+        """.trimIndent()
+        val all = AppOpsHistoryParser.parseAll(text, now = 1_000_000_000L)
+        assertEquals(setOf("com.a.app", "com.b.app"), all.keys)
+        assertEquals(ProcState.CACHED, all.getValue("com.a.app").single().state)
+        assertEquals(setOf("com.a.app"), AppOpsHistoryParser.parseAll(text, 1_000_000_000L) { it == "com.a.app" }.keys)
+        assertTrue(PermissionCategory.watchedOps.contains("READ_CLIPBOARD"))
+    }
+}

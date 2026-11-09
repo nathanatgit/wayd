@@ -85,6 +85,10 @@ class ShizukuClient(private val context: Context) {
     /** `dumpsys appops --history --package <pkg>` output, or null if privileged access is unavailable or fails. */
     suspend fun appOpsHistory(pkg: String): String? = call { it.appOpsHistory(pkg) }
 
+    /** One history run for several apps, reduced to [ops]; null if privileged access is unavailable or the call fails. */
+    suspend fun appOpsHistoryFor(pkgs: Collection<String>, ops: Collection<String>): String? =
+        call { it.appOpsHistoryFor(pkgs.joinToString(","), ops.joinToString(",")) }
+
     /** `cmd appops get <pkg>` output, or null. */
     suspend fun appOpsGet(pkg: String): String? = call { it.appOpsGet(pkg) }
 

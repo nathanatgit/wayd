@@ -3,9 +3,12 @@ package com.nathanhanapps.wayd.analysis
 import com.nathanhanapps.wayd.analysis.rules.BackgroundUpload
 import com.nathanhanapps.wayd.analysis.rules.Beacon
 import com.nathanhanapps.wayd.analysis.rules.CleartextHttp
+import com.nathanhanapps.wayd.analysis.rules.ClipboardBackground
 import com.nathanhanapps.wayd.analysis.rules.DirectIp
+import com.nathanhanapps.wayd.analysis.rules.LocationThenUpload
 import com.nathanhanapps.wayd.analysis.rules.NewDomain
 import com.nathanhanapps.wayd.analysis.rules.OwnDoh
+import com.nathanhanapps.wayd.analysis.rules.ScreenCaptureBackground
 import com.nathanhanapps.wayd.analysis.rules.TrackerContact
 import com.nathanhanapps.wayd.analysis.rules.UploadRatio
 import com.nathanhanapps.wayd.core.db.Finding
@@ -24,6 +27,7 @@ class RuleEngine(val rules: List<Rule> = defaultRules()) {
     companion object {
         fun defaultRules(): List<Rule> = listOf(
             BackgroundUpload(), UploadRatio(), Beacon(), NewDomain(), DirectIp(), OwnDoh(), TrackerContact(), CleartextHttp(),
+            ClipboardBackground(), ScreenCaptureBackground(), LocationThenUpload(),
         )
     }
 }

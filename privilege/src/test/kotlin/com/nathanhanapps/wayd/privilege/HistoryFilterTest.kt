@@ -65,3 +65,45 @@ Current AppOps Service state:
         assertEquals(50, out.lines().count { it.contains("access=2") })
     }
 }
+
+class MultiHistoryFilterTest {
+    private val dump = """
+        begin = 2026-11-09 18:59:30.594  (-14m18s795ms)
+        end = 2026-11-09 19:13:49.389  (0)
+        Uid u0a517:
+          Package com.a.app:
+            Attribution null:
+              FINE_LOCATION:
+                [top-s] = access=46
+              WAKE_LOCK:
+                [top-s] = access=500
+              READ_CLIPBOARD:
+                [cch-s] = access=3
+        Uid u0a518:
+          Package com.b.app:
+            Attribution null:
+              CAMERA:
+                [fg-s] = access=2
+        Uid u0a519:
+          Package com.c.app:
+            Attribution null:
+              CAMERA:
+                [fg-s] = access=99
+""".trimIndent()
+
+    @Test fun keepsRequestedPackagesAndOpsOnly() {
+        val f = HistoryFilter(setOf("com.a.app", "com.b.app"), setOf("FINE_LOCATION", "READ_CLIPBOARD", "CAMERA"))
+        val kept = dump.lines().filter { f.accept(it) }.joinToString("\n")
+        assertTrue(kept.contains("access=46"))
+        assertTrue(kept.contains("access=3"))
+        assertTrue(kept.contains("access=2"))
+        assertTrue(!kept.contains("WAKE_LOCK") && !kept.contains("access=500")) // op not watched
+        assertTrue(!kept.contains("com.c.app") && !kept.contains("access=99")) // app not requested
+        assertTrue(!kept.contains("Attribution"))
+    }
+
+    @Test fun opAndPackageNamesAreValidated() {
+        assertTrue(OpNames.isValid("FINE_LOCATION"))
+        listOf("", "fine_location", "FINE LOCATION", "A;B", "FINE_LOCATION\n", "1ABC").forEach { assertTrue(it, !OpNames.isValid(it)) }
+    }
+}

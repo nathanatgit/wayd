@@ -77,7 +77,7 @@ class AppDetailViewModel @Inject constructor(
         loadPermissions()
     }
 
-    suspend fun evidence(json: String): List<Flow> = analysis.flowsByIds(analysis.evidenceIds(json))
+    suspend fun evidence(json: String): Evidence = analysis.evidence(json)
 
     suspend fun flows(ids: List<Long>): List<Flow> = analysis.flowsByIds(ids)
 }

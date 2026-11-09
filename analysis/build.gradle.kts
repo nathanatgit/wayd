@@ -20,5 +20,6 @@ dependencies {
     api(project(":core:model"))
     api(project(":core:db"))
     api(project(":enrich"))
+    api(project(":collectors"))
     testImplementation(libs.junit)
 }

@@ -11,6 +11,12 @@ interface IPrivilegedService {
     /** `dumpsys appops --history --package <pkg>`; returns "" if [pkg] is not a valid package name. */
     String appOpsHistory(String pkg) = 1;
 
+    /**
+     * One `dumpsys appops --history` run for many apps: [pkgsCsv] is a comma-separated list of valid package names
+     * (max 64), [opsCsv] the op names to keep. Returns "" on invalid input. Output is filtered here (Binder limit).
+     */
+    String appOpsHistoryFor(String pkgsCsv, String opsCsv) = 3;
+
     /** `cmd appops get <pkg>`: current modes plus last access / reject times and durations. */
     String appOpsGet(String pkg) = 2;
 }

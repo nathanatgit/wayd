@@ -2,6 +2,7 @@ package com.nathanhanapps.wayd.analysis
 
 import com.nathanhanapps.wayd.core.db.Finding
 import com.nathanhanapps.wayd.core.db.Flow
+import com.nathanhanapps.wayd.core.db.PermEvent
 import com.nathanhanapps.wayd.core.model.Severity
 import com.nathanhanapps.wayd.core.model.Tier
 import com.nathanhanapps.wayd.enrich.TrackerDb
@@ -20,6 +21,8 @@ class RuleContext(
     val tracker: TrackerDb,
     /** Stored on the findings; injected so tests are deterministic. */
     val now: Long,
+    /** Permission-use records (AppOps history buckets) that started inside the window. */
+    val permEvents: List<PermEvent> = emptyList(),
 ) {
     val attributed: List<Flow> by lazy { flows.filter { it.pkg != UNKNOWN_PKG } }
 }
@@ -36,7 +39,8 @@ interface Rule {
 }
 
 /** Helpers shared by rules. */
-internal fun evidenceJson(ids: Collection<Long>): String = ids.joinToString(prefix = "[", postfix = "]") { "\"f:$it\"" }
+internal fun evidenceJson(flowIds: Collection<Long>, permIds: Collection<Long> = emptyList()): String =
+    (permIds.map { "p:$it" } + flowIds.map { "f:$it" }).joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
 
 internal fun finding(
     ctx: RuleContext,
@@ -46,6 +50,7 @@ internal fun finding(
     title: String,
     evidence: Collection<Long>,
     dataTypes: String = "",
+    perm: Collection<Long> = emptyList(),
 ) = Finding(
     sessionId = null,
     pkg = pkg,
@@ -53,7 +58,7 @@ internal fun finding(
     severity = severity,
     title = title,
     dataTypes = dataTypes,
-    evidenceJson = evidenceJson(evidence),
+    evidenceJson = evidenceJson(evidence, perm),
     createdAt = ctx.windowStart, // anchors the finding to its day so a re-run can replace it
     userState = com.nathanhanapps.wayd.core.model.UserState.NEW,
 )
