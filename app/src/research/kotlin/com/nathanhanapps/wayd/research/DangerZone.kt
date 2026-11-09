@@ -1,6 +1,7 @@
 package com.nathanhanapps.wayd.research
 
-import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -66,6 +67,19 @@ fun DangerZone(vm: DangerZoneViewModel = hiltViewModel()) {
     var confirmRemove by rememberSaveable { mutableStateOf(false) }
     var picker by rememberSaveable { mutableStateOf(false) }
     var failed by rememberSaveable { mutableStateOf(false) }
+    var certStatus by rememberSaveable { mutableStateOf<Int?>(null) }
+    var openSettingsAfter by rememberSaveable { mutableStateOf(false) }
+    val certPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/x-x509-ca-cert")) { uri ->
+        if (uri == null) {
+            certStatus = null
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            val ok = c.writeCertificate(uri)
+            certStatus = if (ok) R.string.dz_cert_saved else R.string.dz_toast_failed
+            if (ok && openSettingsAfter) c.openSecuritySettings()
+        }
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -97,18 +111,14 @@ fun DangerZone(vm: DangerZoneViewModel = hiltViewModel()) {
                     Text(stringResource(R.string.dz_ca_title), style = MaterialTheme.typography.titleSmall)
                     Text(stringResource(R.string.dz_ca_body), style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = {
-                            if (c.startUserInstall() == MitmController.UserInstall.FAILED) {
-                                Toast.makeText(ctx, ctx.getString(R.string.dz_toast_failed), Toast.LENGTH_LONG).show()
-                            }
-                        }) {
+                        OutlinedButton(onClick = { openSettingsAfter = true; certPicker.launch(c.certificateFileName()) }) {
                             Text(stringResource(R.string.dz_install_user))
                         }
-                        OutlinedButton(onClick = {
-                            val ok = c.exportCertificate()
-                            Toast.makeText(ctx, ctx.getString(if (ok) R.string.dz_toast_saved else R.string.dz_toast_failed), Toast.LENGTH_LONG).show()
-                        }) { Text(stringResource(R.string.dz_export)) }
+                        OutlinedButton(onClick = { openSettingsAfter = false; certPicker.launch(c.certificateFileName()) }) {
+                            Text(stringResource(R.string.dz_export))
+                        }
                     }
+                    certStatus?.let { Text(stringResource(it), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) }
                     SwitchRow(stringResource(R.string.dz_system_ca), st.systemCa, enabled = !st.busy) { on ->
                         if (on) confirmSystem = true else scope.launch { c.removeSystemCa() }
                     }

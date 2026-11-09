@@ -9,9 +9,9 @@
     <string name="dz_ca_failed">Could not create the certificate. Nothing was changed.</string>
     <string name="dz_pick_apps">Choose apps (%1$d selected)</string>
     <string name="dz_ca_title">Certificate</string>
-    <string name="dz_ca_body">Most apps only trust a user-installed certificate if they opt in (browsers usually do). Install it as a user certificate, or save a copy to Downloads and install it from Settings → Security.</string>
-    <string name="dz_install_user">Install as user certificate</string>
-    <string name="dz_export">Save to Downloads</string>
+    <string name="dz_ca_body">Most apps only trust a user-installed certificate if they opt in (browsers usually do). Install it as a user certificate, or save the file and install it from Settings → Security.</string>
+    <string name="dz_install_user">Save and open Security settings</string>
+    <string name="dz_export">Save certificate file</string>
     <string name="dz_system_ca">Also trust it system-wide (root)</string>
     <string name="dz_system_ca_note">Optional and off by default. Needs root. Lasts until reboot and can be switched off here at any time. Restart the chosen apps afterwards.</string>
     <string name="dz_delete_content">Delete captured content</string>
@@ -31,7 +31,7 @@
     <string name="dz_sys_warn_title">Trust the certificate system-wide?</string>
     <string name="dz_sys_warn_body">This uses root to make Android’s system trust store include WAYD’s certificate. Apps that ignore user certificates will then accept it, which lets WAYD read their traffic.\n\nWhile it is on, anyone with WAYD’s certificate key could impersonate any website to this phone, and some apps may misbehave. Nothing is installed permanently: the change is undone by a reboot or by switching this off.\n\nOnly continue on a phone you own.</string>
     <string name="dz_sys_warn_ok">Trust system-wide</string>
-    <string name="dz_toast_saved">Saved wayd-ca.crt to Downloads.</string>
+    <string name="dz_cert_saved">Certificate file saved. To install it: Settings → Security → Encryption &amp; credentials → Install a certificate → CA certificate, then pick the file you just saved.</string>
     <string name="dz_toast_failed">Could not do that.</string>
     <string name="dz_toast_install_steps">In Settings: Security → Encryption &amp; credentials → Install a certificate → CA certificate → choose wayd-ca.crt from Downloads.</string>
     <string name="dz_picker_empty">No apps are visible to WAYD yet. Your ROM may hide the app list: type a package name, use root, or record some traffic first.</string>

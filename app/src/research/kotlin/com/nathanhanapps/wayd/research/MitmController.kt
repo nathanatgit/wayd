@@ -1,10 +1,7 @@
 package com.nathanhanapps.wayd.research
 
-import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
-import android.provider.MediaStore
-import android.security.KeyChain
 import com.nathanhanapps.wayd.capture.InterceptGate
 import com.nathanhanapps.wayd.capture.InterceptHook
 import com.nathanhanapps.wayd.capture.InterceptProvider
@@ -130,42 +127,24 @@ class MitmController @Inject constructor(
         refresh((r as? SystemCa.Result.Failed)?.detail)
     }
 
-    enum class UserInstall { OPENED_SETTINGS, FAILED }
+    /** Opens Android's Security settings, where the user installs the saved certificate file. */
+    fun openSecuritySettings(): Boolean =
+        runCatching {
+            context.startActivity(Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.isSuccess
 
-    /**
-     * Saves the certificate to Downloads and opens the Security settings screen. Android 11+ does not let apps install CA
-     * certificates silently, so the last step (Settings → Security → Encryption & credentials → Install a certificate
-     * → CA certificate → wayd-ca.crt) is always the user's.
-     */
-    fun startUserInstall(): UserInstall {
-        val pem = ca.certPem() ?: return UserInstall.FAILED
-        exportCertificate()
-        val settings = Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return if (runCatching { context.startActivity(settings) }.isSuccess) UserInstall.OPENED_SETTINGS else UserInstall.FAILED
+    fun certificateFileName() = CERT_FILE
+
+    /** Writes the CA certificate (DER, as Android's installer expects) into a document the user picked. */
+    suspend fun writeCertificate(target: android.net.Uri): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        runCatching {
+            val pem = ca.certPem() ?: return@runCatching false
+            val der = android.util.Base64.decode(
+                pem.lines().filter { !it.startsWith("-----") }.joinToString(""), android.util.Base64.DEFAULT,
+            )
+            context.contentResolver.openOutputStream(target, "wt")?.use { it.write(der) } != null
+        }.getOrDefault(false)
     }
-
-    private fun pemToDer(pem: String): ByteArray =
-        android.util.Base64.decode(pem.lines().filter { !it.startsWith("-----") }.joinToString(""), android.util.Base64.DEFAULT)
-
-    /** Saves (or overwrites) `wayd-ca.crt` in Downloads, DER encoded as Android's installer expects. */
-    fun exportCertificate(): Boolean = runCatching {
-        val pem = ca.certPem() ?: return false
-        val der = pemToDer(pem)
-        val resolver = context.contentResolver
-        val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
-        val existing = resolver.query(
-            collection, arrayOf(MediaStore.Downloads._ID), "${MediaStore.Downloads.DISPLAY_NAME} = ?", arrayOf(CERT_FILE), null,
-        )?.use { c -> if (c.moveToFirst()) android.content.ContentUris.withAppendedId(collection, c.getLong(0)) else null }
-        val uri = existing ?: resolver.insert(
-            collection,
-            ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, CERT_FILE)
-                put(MediaStore.Downloads.MIME_TYPE, "application/x-x509-ca-cert")
-            },
-        ) ?: return false
-        resolver.openOutputStream(uri, "wt")?.use { it.write(der) } ?: return false
-        true
-    }.getOrDefault(false)
 
     /**
      * Apps the user can choose from. The ROM may hide the app list from ordinary apps, so this combines the package manager,

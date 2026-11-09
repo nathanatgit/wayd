@@ -9,9 +9,9 @@
     <string name="dz_ca_failed">无法创建证书，未做任何更改。</string>
     <string name="dz_pick_apps">选择应用（已选 %1$d 个）</string>
     <string name="dz_ca_title">证书</string>
-    <string name="dz_ca_body">大多数应用只有在主动选择信任时才接受用户安装的证书（浏览器通常会）。可安装为用户证书，或保存一份到“下载”后在 设置 → 安全 中安装。</string>
-    <string name="dz_install_user">安装为用户证书</string>
-    <string name="dz_export">保存到“下载”</string>
+    <string name="dz_ca_body">大多数应用只有在主动选择信任时才接受用户安装的证书（浏览器通常会）。可安装为用户证书，或保存文件后在 设置 → 安全 中安装。</string>
+    <string name="dz_install_user">保存并打开安全设置</string>
+    <string name="dz_export">保存证书文件</string>
     <string name="dz_system_ca">同时设为系统级信任（需要 root）</string>
     <string name="dz_system_ca_note">可选，默认关闭。需要 root，重启后失效，可随时在此关闭。开启后请重启所选应用。</string>
     <string name="dz_delete_content">删除已捕获的内容</string>
@@ -31,7 +31,7 @@
     <string name="dz_sys_warn_title">设为系统级信任？</string>
     <string name="dz_sys_warn_body">这将使用 root，让 Android 系统信任库包含在干嘛的证书。不接受用户证书的应用也会信任它，在干嘛因此可以读取它们的流量。\n\n开启期间，任何拿到在干嘛证书私钥的人都可以向本机冒充任意网站，部分应用也可能出现异常。不会永久安装任何东西：重启或在此关闭即可撤销。\n\n请仅在你自己的手机上继续。</string>
     <string name="dz_sys_warn_ok">设为系统级信任</string>
-    <string name="dz_toast_saved">已将 wayd-ca.crt 保存到“下载”。</string>
+    <string name="dz_cert_saved">证书文件已保存。安装方法：设置 → 安全 → 加密与凭据 → 安装证书 → CA 证书，然后选择刚保存的文件。</string>
     <string name="dz_toast_failed">操作失败。</string>
     <string name="dz_toast_install_steps">请在 设置 → 安全 → 加密与凭据 → 安装证书 → CA 证书 中，选择“下载”里的 wayd-ca.crt。</string>
     <string name="dz_picker_empty">在干嘛暂时看不到任何应用。你的系统可能隐藏了应用列表：可手动输入包名、使用 root 读取，或先录制一些流量。</string>
