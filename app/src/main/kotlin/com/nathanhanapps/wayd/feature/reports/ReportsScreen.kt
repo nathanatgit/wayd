@@ -1,62 +1,83 @@
 package com.nathanhanapps.wayd.feature.reports
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nathanhanapps.wayd.R
-import com.nathanhanapps.wayd.analysis.DailyReport
-import com.nathanhanapps.wayd.analysis.UNKNOWN_PKG
-import com.nathanhanapps.wayd.feature.analysis.AppLabels
-import com.nathanhanapps.wayd.feature.analysis.Badge
 import com.nathanhanapps.wayd.feature.analysis.Loadable
 import com.nathanhanapps.wayd.feature.analysis.ReportDetailViewModel
 import com.nathanhanapps.wayd.feature.analysis.ReportsViewModel
-import com.nathanhanapps.wayd.feature.analysis.categoryColor
-import com.nathanhanapps.wayd.feature.analysis.categoryLabel
-import com.nathanhanapps.wayd.feature.analysis.findingTitle
-import com.nathanhanapps.wayd.feature.analysis.fmtBytes
-import com.nathanhanapps.wayd.feature.analysis.severityColor
-import com.nathanhanapps.wayd.feature.analysis.severityLabel
+import com.nathanhanapps.wayd.feature.analysis.Windows
+import com.nathanhanapps.wayd.feature.extensions.rememberClashInstalled
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
-/** Reports tab: the days that have recorded activity. Each day is a thin overview that links into apps. */
+/** Insights tab: pick a window (today, yesterday, 7 days or any recorded day) and read its report in place. */
 @Composable
-fun ReportsScreen(onOpenDay: (String) -> Unit, vm: ReportsViewModel = hiltViewModel()) {
+fun ReportsScreen(
+    onOpenApp: (pkg: String, window: String) -> Unit,
+    onOpenCompany: (company: String, window: String) -> Unit,
+    vm: ReportsViewModel = hiltViewModel(),
+) {
+    val window by vm.window.collectAsStateWithLifecycle()
     val days by vm.days.collectAsStateWithLifecycle()
-    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(stringResource(R.string.tab_insights), style = MaterialTheme.typography.headlineMedium)
-        if (days.isEmpty()) {
-            Text(stringResource(R.string.apps_empty_window), style = MaterialTheme.typography.bodyLarge)
-        } else {
-            Text(stringResource(R.string.reports_days), style = MaterialTheme.typography.titleMedium)
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(days, key = { it.day }) { d ->
-                    Card(Modifier.fillMaxWidth().clickable { onOpenDay(d.day) }) {
-                        Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(d.day, style = MaterialTheme.typography.titleMedium)
-                            Text(stringResource(R.string.report_flows, d.flows), style = MaterialTheme.typography.bodyMedium)
-                        }
+    val state by vm.report.collectAsStateWithLifecycle()
+    val countries = rememberClashInstalled()
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refresh() }
+    val today = remember { LocalDate.now() }
+    val fmt = remember { DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM) }
+    val older = days.map { it.day }.filter { it != today.toString() && it != today.minusDays(1).toString() }
+
+    Column(Modifier.fillMaxSize().padding(top = 12.dp)) {
+        Text(stringResource(R.string.tab_insights), Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.headlineMedium)
+        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item { FilterChip(window == Windows.TODAY, { vm.select(Windows.TODAY) }, { Text(stringResource(R.string.window_today)) }) }
+            item { FilterChip(window == Windows.YESTERDAY, { vm.select(Windows.YESTERDAY) }, { Text(stringResource(R.string.window_yesterday)) }) }
+            item { FilterChip(window == Windows.WEEK, { vm.select(Windows.WEEK) }, { Text(stringResource(R.string.window_week)) }) }
+            items(older, key = { it }) { day ->
+                val label = runCatching { LocalDate.parse(day).format(fmt) }.getOrDefault(day)
+                FilterChip(window == day, { vm.select(day) }, { Text(label) })
+            }
+        }
+        when (val s = state) {
+            Loadable.Loading -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+            is Loadable.Ready -> {
+                val r = s.value
+                if (r.appTraffic.isEmpty() && r.alerts.isEmpty() && r.others.isEmpty()) {
+                    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Text(stringResource(R.string.apps_empty_window), style = MaterialTheme.typography.bodyLarge)
+                    }
+                } else {
+                    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        insightsBody(r, vm.labels, window, onOpenApp, onOpenCompany, countries)
                     }
                 }
             }
@@ -64,77 +85,26 @@ fun ReportsScreen(onOpenDay: (String) -> Unit, vm: ReportsViewModel = hiltViewMo
     }
 }
 
+/** A single window's report as its own page (kept for deep links such as `report/2026-11-09`). */
 @Composable
 fun ReportDetailScreen(
     onBack: () -> Unit,
     onOpenApp: (pkg: String, window: String) -> Unit,
     onOpenCompany: (company: String, window: String) -> Unit,
-    vm: ReportDetailViewModel = hiltViewModel()) {
+    vm: ReportDetailViewModel = hiltViewModel(),
+) {
     val state by vm.report.collectAsStateWithLifecycle()
-    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    val countries = rememberClashInstalled()
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back)) }
             Text(vm.windowKey, style = MaterialTheme.typography.titleLarge)
         }
         when (val s = state) {
-            Loadable.Loading -> Text("…")
-            is Loadable.Ready -> ReportBody(s.value, vm.labels, vm.windowKey, onOpenApp, onOpenCompany)
+            Loadable.Loading -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+            is Loadable.Ready -> LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                insightsBody(s.value, vm.labels, vm.windowKey, onOpenApp, onOpenCompany, countries)
+            }
         }
     }
 }
-
-@Composable
-private fun ReportBody(
-    r: DailyReport,
-    labels: AppLabels,
-    window: String,
-    onOpenApp: (String, String) -> Unit,
-    onOpenCompany: (String, String) -> Unit,
-) {
-    val context = LocalContext.current
-    fun name(pkg: String) = labels.label(pkg)
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { ReportDashboard(r, labels, window, onOpenApp, showCountries = com.nathanhanapps.wayd.feature.extensions.rememberClashInstalled()) }
-
-        item { Text(stringResource(R.string.report_alerts), style = MaterialTheme.typography.titleMedium) }
-        if (r.alerts.isEmpty()) item { Text(stringResource(R.string.report_no_alerts), style = MaterialTheme.typography.bodyMedium) }
-        items(r.alerts) { f ->
-            Card(Modifier.fillMaxWidth().clickable { onOpenApp(f.pkg, window) }) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Badge(severityLabel(f.severity), severityColor(f.severity))
-                        Text(name(f.pkg), style = MaterialTheme.typography.labelLarge)
-                    }
-                    Text(findingTitle(f), style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-        }
-
-        item { Text(stringResource(R.string.report_background), style = MaterialTheme.typography.titleMedium) }
-        items(r.background) { a ->
-            Row(Modifier.fillMaxWidth().clickable { onOpenApp(a.pkg, window) }.padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(name(a.pkg), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                Text(fmtBytes(context, a.screenOffUp + a.screenOffDown), style = MaterialTheme.typography.bodyMedium)
-            }
-        }
-
-        item { Text(stringResource(R.string.report_companies), style = MaterialTheme.typography.titleMedium) }
-        items(r.companies.take(15)) { c ->
-            Column(Modifier.fillMaxWidth().clickable { onOpenCompany(c.company, window) }.padding(vertical = 4.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(c.company, style = MaterialTheme.typography.bodyLarge)
-                    categoryLabel(c.category)?.let { Badge(it, categoryColor(c.category)) }
-                }
-                Text(
-                    c.apps.take(4).map { stringResource(R.string.report_company_row, name(it.first), fmtBytes(context, it.second)) }.joinToString(),
-                    style = MaterialTheme.typography.labelSmall,
-                )
-            }
-        }
-
-        item { Text(stringResource(R.string.report_countries_na), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline) }
-    }
-}
-
-@Suppress("unused")
-private val keep = UNKNOWN_PKG

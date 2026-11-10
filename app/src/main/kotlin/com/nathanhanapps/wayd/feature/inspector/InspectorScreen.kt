@@ -65,6 +65,7 @@ class InspectorViewModel @Inject constructor(
     private val messageDao: MessageDao,
     private val analyzer: AiAnalyzer,
     private val evidence: AiEvidenceService,
+    private val gate: com.nathanhanapps.wayd.feature.ai.ExternalAiGate,
     engine: com.nathanhanapps.wayd.ai.AiEngine,
     val labels: AppLabels,
     savedState: SavedStateHandle,
@@ -103,7 +104,10 @@ class InspectorViewModel @Inject constructor(
         viewModelScope.launch {
             val locale = evidence.uiLocale()
             val req = evidence.requestForMessages(pkg, labels.label(pkg), windowKey, locale, ids)
-            _ai.value = if (req == null) AiState.Done(AiOutcome.Failed("nothing selected")) else AiState.Done(analyzer.analyse(req))
+            _ai.value = if (req == null) AiState.Done(AiOutcome.Failed("nothing selected")) else when (val o = analyzer.analyse(req, true, gate::ask)) {
+                AiOutcome.Declined -> AiState.Idle // the user chose not to send; nothing happened
+                else -> AiState.Done(o)
+            }
         }
     }
 

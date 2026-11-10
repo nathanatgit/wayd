@@ -1,12 +1,18 @@
 package com.nathanhanapps.wayd.feature.settings
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -17,83 +23,85 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nathanhanapps.wayd.BuildConfig
 import com.nathanhanapps.wayd.R
+import com.nathanhanapps.wayd.feature.common.GroupDivider
+import com.nathanhanapps.wayd.feature.common.InfoRow
+import com.nathanhanapps.wayd.feature.common.InsetGroup
+import com.nathanhanapps.wayd.feature.common.NavRow
+import com.nathanhanapps.wayd.feature.common.SubPage
 import com.nathanhanapps.wayd.privilege.ShizukuState
+import com.nathanhanapps.wayd.research.ResearchFeatures
 
+/** Settings: a short list of destinations. Each topic has its own page instead of one long scroll. */
 @Composable
-fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(onOpenAi: () -> Unit, onOpenAccess: () -> Unit, onOpenResearch: () -> Unit, vm: SettingsViewModel = hiltViewModel()) {
     val db by vm.db.collectAsStateWithLifecycle()
-    Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(20.dp),
-    ) {
+    val root by vm.root.collectAsStateWithLifecycle()
+    val shizuku by vm.shizuku.collectAsStateWithLifecycle()
+    val ai by vm.ai.collectAsStateWithLifecycle()
+    val aiValue = vm.aiSummary(ai, stringResource(R.string.settings_ai_none), stringResource(R.string.settings_ai_device), stringResource(R.string.settings_ai_external))
+    val access = when {
+        root == RootState.AVAILABLE -> stringResource(R.string.settings_privilege_root)
+        shizuku == ShizukuState.READY -> stringResource(R.string.settings_val_shizuku)
+        else -> stringResource(R.string.settings_val_none)
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineMedium)
-
-        val root by vm.root.collectAsStateWithLifecycle()
-        val shizuku by vm.shizuku.collectAsStateWithLifecycle()
-        val checking by vm.checking.collectAsStateWithLifecycle()
-        Column {
-            Text(stringResource(R.string.settings_privilege), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-            Text(
-                stringResource(
-                    when {
-                        root == RootState.AVAILABLE -> R.string.settings_privilege_root
-                        shizuku == ShizukuState.READY -> R.string.settings_privilege_shizuku
-                        else -> R.string.settings_privilege_none
-                    },
-                ),
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            Text(
-                stringResource(
-                    when (root) {
-                        RootState.AVAILABLE -> R.string.settings_root_available
-                        RootState.UNAVAILABLE -> R.string.settings_root_unavailable
-                        RootState.UNKNOWN -> R.string.settings_root_unknown
-                    },
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Text(
-                stringResource(
-                    when (shizuku) {
-                        ShizukuState.NOT_INSTALLED -> R.string.settings_shizuku_not_installed
-                        ShizukuState.NOT_RUNNING -> R.string.settings_shizuku_not_running
-                        ShizukuState.NEEDS_PERMISSION -> R.string.settings_shizuku_needs_permission
-                        ShizukuState.READY -> R.string.settings_shizuku_ready
-                    },
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            OutlinedButton(onClick = vm::checkRoot, enabled = !checking) {
-                Text(stringResource(if (checking) R.string.settings_root_checking else R.string.settings_root_check))
+        InsetGroup {
+            NavRow(Icons.Filled.Star, stringResource(R.string.settings_ai), aiValue, onClick = onOpenAi)
+            GroupDivider()
+            NavRow(Icons.Filled.Lock, stringResource(R.string.settings_privilege), access, onClick = onOpenAccess)
+            if (ResearchFeatures.AVAILABLE) {
+                GroupDivider()
+                NavRow(Icons.Filled.Warning, stringResource(R.string.settings_research), onClick = onOpenResearch)
             }
         }
-
-        Section(
-            stringResource(R.string.settings_database),
-            when (val s = db) {
-                DbStatus.Checking -> stringResource(R.string.settings_database_checking)
-                is DbStatus.Encrypted -> stringResource(R.string.settings_database_encrypted, s.cipherVersion)
-                DbStatus.Unencrypted -> stringResource(R.string.settings_database_unencrypted)
-            },
-        )
-
-        com.nathanhanapps.wayd.feature.ai.AiSettingsSection()
-
-        com.nathanhanapps.wayd.research.ResearchFeatures.Settings()
-
-        Section(
-            stringResource(R.string.settings_about),
-            stringResource(R.string.settings_version, BuildConfig.VERSION_NAME) +
-                "\n" + stringResource(R.string.settings_local_only),
-        )
+        InsetGroup {
+            InfoRow(
+                Icons.Filled.Info, stringResource(R.string.settings_database),
+                when (val s = db) {
+                    DbStatus.Checking -> stringResource(R.string.settings_database_checking)
+                    is DbStatus.Encrypted -> stringResource(R.string.settings_database_encrypted, s.cipherVersion)
+                    DbStatus.Unencrypted -> stringResource(R.string.settings_database_unencrypted)
+                },
+            )
+            GroupDivider()
+            InfoRow(Icons.Filled.Info, stringResource(R.string.settings_about), BuildConfig.VERSION_NAME)
+        }
+        Text(stringResource(R.string.settings_local_only), Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
+/** Settings → Privileges: what WAYD can reach beyond a normal app (root, Shizuku). */
 @Composable
-private fun Section(title: String, body: String) {
-    Column {
-        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-        Text(body, style = MaterialTheme.typography.bodyLarge)
+fun AccessSettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = hiltViewModel()) {
+    val root by vm.root.collectAsStateWithLifecycle()
+    val shizuku by vm.shizuku.collectAsStateWithLifecycle()
+    val checking by vm.checking.collectAsStateWithLifecycle()
+    SubPage(stringResource(R.string.settings_privilege), onBack) {
+        InsetGroup {
+            InfoRow(
+                Icons.Filled.Lock, stringResource(R.string.settings_privilege_root),
+                stringResource(when (root) { RootState.AVAILABLE -> R.string.val_available; RootState.UNAVAILABLE -> R.string.val_unavailable; RootState.UNKNOWN -> R.string.val_unchecked }),
+            )
+            GroupDivider()
+            InfoRow(
+                Icons.Filled.Lock, "Shizuku",
+                stringResource(when (shizuku) {
+                    ShizukuState.NOT_INSTALLED -> R.string.val_sz_not_installed
+                    ShizukuState.NOT_RUNNING -> R.string.val_sz_not_running
+                    ShizukuState.NEEDS_PERMISSION -> R.string.val_sz_needs_permission
+                    ShizukuState.READY -> R.string.val_sz_ready
+                }),
+            )
+        }
+        FilledTonalButton(onClick = vm::checkRoot, enabled = !checking) {
+            Text(stringResource(if (checking) R.string.settings_root_checking else R.string.settings_root_check))
+        }
     }
+}
+
+/** Settings → HTTPS decryption (research build). Its own confirmation steps are unchanged. */
+@Composable
+fun ResearchSettingsScreen(onBack: () -> Unit) {
+    SubPage(stringResource(R.string.settings_research), onBack) { ResearchFeatures.Settings() }
 }

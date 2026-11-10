@@ -37,7 +37,17 @@ class CaptureState @Inject constructor() {
     private val _ui = MutableStateFlow(CaptureUi())
     val ui: StateFlow<CaptureUi> = _ui.asStateFlow()
 
+    /**
+     * The per-connection table only feeds the extension's Connections page. Nothing is tracked or copied while no screen
+     * collects [connections], so the background VPN path keeps aggregate counters only.
+     */
+    private val tracking: Boolean get() = _connections.subscriptionCount.value > 0
+
     @Synchronized internal fun observe(event: NativeEvent) {
+        if (!tracking) {
+            if (live.isNotEmpty()) live.clear()
+            return
+        }
         when (event) {
             is NativeEvent.Open -> if (live.size < 256) live[event.flowId] = LiveRoutingConnection(event.flowId, event.dstIp.hostAddress.orEmpty(), event.dstPort)
             is NativeEvent.Progress -> live[event.flowId]?.let { live[event.flowId] = if (event.down) it.copy(bytesDown = event.total) else it.copy(bytesUp = event.total) }
@@ -45,12 +55,16 @@ class CaptureState @Inject constructor() {
             else -> Unit
         }
     }
-    @Synchronized internal fun publishConnections() { _connections.value = live.values.toList() }
+    @Synchronized internal fun publishConnections() {
+        val next = if (tracking) live.values.toList() else emptyList()
+        if (next != _connections.value) _connections.value = next
+    }
     @Synchronized internal fun clearConnections() { live.clear(); _connections.value = emptyList() }
     internal fun set(phase: CapturePhase) = _ui.update { it.copy(phase = phase) }
 
-    internal fun set(stats: CaptureStats) = _ui.update { it.copy(stats = stats) }
-    internal fun setRoutes(stats: RouteStats) = _ui.update { it.copy(routes = stats) }
+    // Skip no-op updates so idle traffic does not wake collectors every flush.
+    internal fun set(stats: CaptureStats) { if (_ui.value.stats != stats) _ui.update { it.copy(stats = stats) } }
+    internal fun setRoutes(stats: RouteStats) { if (_ui.value.routes != stats) _ui.update { it.copy(routes = stats) } }
 
     internal fun reset(phase: CapturePhase) {
         clearConnections()

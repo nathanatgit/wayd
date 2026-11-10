@@ -225,6 +225,7 @@ class WaydVpnService : VpnService() {
         var lastFlush = SystemClock.elapsedRealtime()
         var routeStats = RouteStats()
         var lastNotify = 0L
+        val power = getSystemService(android.os.PowerManager::class.java)
         try {
             while (running) {
                 val n = net.nativePoll(h, buf, 250)
@@ -244,8 +245,10 @@ class WaydVpnService : VpnService() {
                     state.setRoutes(routeStats)
                     state.publishConnections()
                     lastFlush = now
-                    if (now - lastNotify >= NOTIFY_MS) {
-                        promote(t.stats().flows, t.stats().apps)
+                    // Nobody reads the notification with the screen off; skip the binder call until it is on again.
+                    if (now - lastNotify >= NOTIFY_MS && power.isInteractive) {
+                        val s = t.stats()
+                        notify(s.flows, s.apps)
                         lastNotify = now
                     }
                 }
@@ -256,7 +259,7 @@ class WaydVpnService : VpnService() {
                 sink.flush()
                 state.set(t.stats())
                 state.setRoutes(routeStats)
-                    state.publishConnections()
+                state.publishConnections()
             } finally {
                 runBlocking { blocking.stopEngine() }
                 if (running) {
@@ -293,27 +296,15 @@ class WaydVpnService : VpnService() {
         stopSelf()
     }
 
-    /** (Re)posts the foreground notification. Falls back gracefully if the OS refuses the service type. */
+    @Volatile private var shown: Triple<Int, Int, Boolean>? = null
+
+    /** Posts the foreground notification at start. Falls back gracefully if the OS refuses the service type. */
     private fun promote(flowCount: Int, appCount: Int) {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL, getString(R.string.capture_channel_name), NotificationManager.IMPORTANCE_LOW),
         )
-        val open = packageManager.getLaunchIntentForPackage(packageName)?.let {
-            PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE)
-        }
-        val stop = PendingIntent.getService(
-            this, 1, Intent(this, WaydVpnService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE,
-        )
-        val n: Notification = NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(getString(if (recording.window.enabled) R.string.capture_notif_title else R.string.capture_notif_processing))
-            .setContentText(getString(R.string.capture_notif_text, flowCount, appCount))
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setContentIntent(open)
-            .addAction(0, getString(R.string.capture_notif_stop), stop)
-            .build()
+        val n = buildNotification(flowCount, appCount)
         runCatching {
             if (android.os.Build.VERSION.SDK_INT >= 34) {
                 startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
@@ -323,6 +314,34 @@ class WaydVpnService : VpnService() {
         }.onFailure {
             runCatching { nm.notify(NOTIF_ID, n) }
         }
+        shown = Triple(flowCount, appCount, recording.window.enabled)
+    }
+
+    /** Refreshes the notification text only when something it shows has changed. */
+    private fun notify(flowCount: Int, appCount: Int) {
+        val next = Triple(flowCount, appCount, recording.window.enabled)
+        if (next == shown) return
+        shown = next
+        runCatching { getSystemService(NotificationManager::class.java).notify(NOTIF_ID, buildNotification(flowCount, appCount)) }
+    }
+
+    private fun buildNotification(flowCount: Int, appCount: Int): Notification {
+        val open = packageManager.getLaunchIntentForPackage(packageName)?.let {
+            PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE)
+        }
+        val stop = PendingIntent.getService(
+            this, 1, Intent(this, WaydVpnService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE,
+        )
+        return NotificationCompat.Builder(this, CHANNEL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(getString(if (recording.window.enabled) R.string.capture_notif_title else R.string.capture_notif_processing))
+            .setContentText(getString(R.string.capture_notif_text, flowCount, appCount))
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setContentIntent(open)
+            .addAction(0, getString(R.string.capture_notif_stop), stop)
+            .build()
     }
 
     companion object {
@@ -334,6 +353,6 @@ class WaydVpnService : VpnService() {
         private const val MTU = 1500
         private const val POLL_BUF = 512 * 1024
         private const val FLUSH_MS = 500L
-        private const val NOTIFY_MS = 2_000L
+        private const val NOTIFY_MS = 5_000L
     }
 }

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+      Plain HTTP is permitted at the platform level only so an AI server on the user's own network (for example Ollama on a PC)
+      can be used. ExternalAiUrl refuses http:// for every host that is not loopback, private-range, .local or a single-label
+      name, and every other WAYD download (models, routing resources) requires https:// in code. See D-046.
+    -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

@@ -13,6 +13,9 @@ interface AiEngine {
     /** Identifier stored with each analysis, e.g. `gemma-4-E2B-it`. */
     suspend fun modelId(): String
 
+    /** Non-null when answering sends the prompt off this phone: the host it goes to. The analyzer asks the user first. */
+    suspend fun externalDestination(): String? = null
+
     /** Runs one chat turn and returns the raw text. [jsonSchema], when given, constrains the output to that JSON Schema. Throws on failure. */
     suspend fun generate(system: String, user: String, jsonSchema: String? = null): String
 }
@@ -37,7 +40,16 @@ sealed interface AiOutcome {
     data object NoModel : AiOutcome
 
     data class Failed(val message: String) : AiOutcome
+
+    /** The user declined to send the data to the external provider; nothing left the phone. */
+    data object Declined : AiOutcome
 }
+
+/**
+ * Exactly what would leave the phone for an external provider: the full masked prompt, shown to the user before anything is sent.
+ * One analysis makes one request, plus a second one only if the first answer fails validation.
+ */
+data class ExternalSend(val destination: String, val model: String, val system: String, val user: String, val items: Int, val hasDecrypted: Boolean)
 
 /**
  * Runs an analysis: prompt, model, validation, one repair retry, storage. Nothing the model says reaches the UI without passing
@@ -50,11 +62,16 @@ class AiAnalyzer(
     /** Debug builds only: receives validator complaints and the start of an invalid reply so prompts can be tuned. Never set in release. */
     private val debugLog: ((String) -> Unit)? = null,
 ) {
-    suspend fun analyse(req: AiRequest, useCache: Boolean = true): AiOutcome {
+    /**
+     * [approve] is asked once, right before data would leave the phone for an external provider (never for the on-device model,
+     * and never when a stored answer is reused). Returning false ends the analysis with [AiOutcome.Declined].
+     */
+    suspend fun analyse(req: AiRequest, useCache: Boolean = true, approve: suspend (ExternalSend) -> Boolean = { false }): AiOutcome {
         if (!engine.isReady()) return AiOutcome.NoModel
         val prompt = PromptBuilder.build(req)
-        val key = refsKey(req)
         val model = runCatching { engine.modelId() }.getOrDefault("unknown")
+        // Answers are kept per model: a stored Gemma answer is not presented as the external model's.
+        val key = refsKey(req) + "|m=" + model
 
         if (useCache) {
             store.cached(key, PromptBuilder.VERSION)?.let { json ->
@@ -62,6 +79,11 @@ class AiAnalyzer(
                     return AiOutcome.Success(it.result, it.stripped, model, 0, fromCache = true)
                 }
             }
+        }
+
+        engine.externalDestination()?.let { destination ->
+            val send = ExternalSend(destination, model.removePrefix("ext:"), prompt.system, prompt.user, prompt.allowedEvidence.size, prompt.allowedEvidence.any { it.startsWith("m:") })
+            if (!approve(send)) return AiOutcome.Declined
         }
 
         val started = clock()
