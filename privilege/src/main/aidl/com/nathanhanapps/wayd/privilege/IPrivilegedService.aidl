@@ -19,4 +19,7 @@ interface IPrivilegedService {
 
     /** `cmd appops get <pkg>`: current modes plus last access / reject times and durations. */
     String appOpsGet(String pkg) = 2;
+
+    /** Read-only current-user package inventory, with a fixed command and bounded reply. */
+    String listPackages() = 4;
 }

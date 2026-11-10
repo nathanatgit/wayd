@@ -59,6 +59,9 @@ data class Flow(
     val company: String?,
     val category: TrackerCategory?,
     val source: CaptureSource,
+    val policyOutcome: String? = null,
+    val policyRevision: Long? = null,
+    val blockRuleId: Long? = null,
 )
 
 @Entity(indices = [Index("flowId")])
@@ -186,6 +189,9 @@ data class BlockRule(
     val host: String?,
     val enabled: Boolean,
     val createdAt: Long,
+    @ColumnInfo(defaultValue = "'HOST'") val matchKind: String = "HOST",
+    @ColumnInfo(defaultValue = "''") val signingSha256: String = "",
+    @ColumnInfo(defaultValue = "0") val userId: Int = 0,
 )
 
 @Entity

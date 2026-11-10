@@ -1,5 +1,11 @@
 # 10 · Security and threat model
 
+## Local APK scanner (M5)
+
+APK scanning is user-started WorkManager work. It reads installed base/split APKs through PackageManager paths, never executes their code, never extracts ZIP paths to disk, and never reads privileged APK directories. Already-granted Shizuku access may run the fixed read-only current-user package inventory call in `Command.ListPackages`; no generic command execution or automatic permission prompt is added. Binary XML/DEX readers bound sizes, counts and offsets; malformed/unsupported input remains a coverage limitation. Facts and certificate metadata stay in the existing SQLCipher store. Possible endpoints retain hosts only, without embedded credentials, paths or query values. No package names, parser exceptions or APK data are logged. Signer subjects and static signatures are untrusted evidence, not verified identity or behavioral proof.
+
+WorkManager's merged `WAKE_LOCK` and `RECEIVE_BOOT_COMPLETED` permissions support OS scheduling and resumption of user-enqueued local scans; no automatic periodic scan or network destination is added. Its scheduler services use the library's system binding protections. Existing `QUERY_ALL_PACKAGES` permission is reused; a ROM may still restrict visibility.
+
 WAYD holds the most sensitive data on the phone. Treat WAYD itself as a high-value target.
 
 ## Assets
@@ -70,3 +76,9 @@ Native code (`capture/native`) parses no payloads; it reports only bounded prefi
 ## Planned optional routing threats
 
 The extension is not implemented. Before shipping, enforce WAYD blocks before routing, isolate inspection stores/CA keys, validate untrusted profiles, protect proxy credentials and subscription URLs, disclose proxy/DNS visibility, and prohibit silent direct fallback. Authorize subscription refreshes and health checks explicitly. Existing local-only statements concern inspection data, not ordinary forwarded traffic or explicit exports. See [14-OPTIONAL-ROUTING.md](14-OPTIONAL-ROUTING.md) for acceptance checks.
+
+## M7 core controls · 2026-11-10
+
+No new permissions or network destinations. Rules require explicit per-app confirmation and a versioned ConsentRecord, bind to current Android user, package and installed signer fingerprints, and reject shared-UID/unknown identities. Legacy unbound rules stay inactive. Temporary controls live only in engine-session memory; permanent controls run only while WAYD VPN runs. Package changes revalidate bindings; removal and a global rules list provide reversal. Missing names/owners are disclosed coverage gaps, not successful policy decisions. Snapshot validation/activation is bounded and atomic; a required gate failure closes its flow. Old native ABI versions fail startup.
+
+Release logs must not contain target names, package identifiers or payloads. No response rewriting or imported grants exist in this slice. Future routing receives only permitted streams after WAYD policy; inspect [13-BLOCKING.md](13-BLOCKING.md) for pending acceptance cases. Capture manifest lint exceptions are scoped to the existing UID-attribution package permission and active-VPN foreground exemption; no exact-alarm permission is required for that VPN eligibility ([Android types](https://developer.android.com/develop/background-work/services/fgs/service-types#system-exempted)).

@@ -18,7 +18,7 @@ use crate::events::EventSink;
 use crate::shared::Shared;
 
 /// Max payload prefix reported per direction for TCP flows (enough for TLS ClientHello / HTTP head).
-const TCP_CAPTURE: usize = 2048;
+const TCP_CAPTURE: usize = 16 * 1024;
 /// Short on purpose: the client already saw the handshake complete, so a slow failure stalls the app.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(6);
 /// Apps keep pooled / push connections idle for a long time (the userspace stack allows 2 h).
@@ -72,21 +72,72 @@ async fn read_idle<R: AsyncRead + Unpin>(from: &mut R, buf: &mut [u8], act: &Act
     }
 }
 
-pub async fn tcp(id: u64, mut client: IpStackTcpStream, sink: EventSink, shared: Arc<Shared>) {
+pub async fn tcp(id: u64, client: IpStackTcpStream, sink: EventSink, shared: Arc<Shared>) {
     let src = client.local_addr();
     let dst = client.peer_addr();
+    tcp_flow(id, client, src, dst, sink, shared).await;
+}
+
+async fn tcp_flow<S: AsyncRead + AsyncWrite + Unpin + Send>(id: u64, client: S, src: SocketAddr, dst: SocketAddr, sink: EventSink, shared: Arc<Shared>) {
+    let control = shared.blocking.open(id, dst.ip());
+    tokio::select! {
+        biased;
+        d = control.cancelled() => {
+            sink.policy(id, d);
+            sink.close(id, control.up.load(Ordering::Relaxed), control.down.load(Ordering::Relaxed));
+        }
+        _ = tcp_inner(id, client, src, dst, sink.clone(), shared.clone(), control.clone()) => {}
+    }
+    shared.blocking.close(id);
+    shared.forget(id);
+}
+
+async fn tcp_inner<S: AsyncRead + AsyncWrite + Unpin + Send>(id: u64, mut client: S, src: SocketAddr, dst: SocketAddr, sink: EventSink, shared: Arc<Shared>, control: Arc<crate::blocking::FlowControl>) {
     // Register the decision slot BEFORE announcing the flow so Kotlin's answer cannot arrive first.
     let decision = if shared.mitm_active() { Some(shared.register(id)) } else { None };
     sink.open(id, 6, src, dst);
 
-    let up = Arc::new(AtomicU64::new(0));
-    let down = Arc::new(AtomicU64::new(0));
+    let up = control.up.clone();
+    let down = control.down.clone();
+
+    if shared.blocking.active() && timeout(Duration::from_secs(1), control.owner_ready()).await.is_err() {
+        sink.policy(id, shared.blocking.outcome(id, true));
+        sink.close(id, 0, 0);
+        return;
+    }
+    let mut pre = Vec::new();
+    if shared.blocking.needs_host(id) {
+        // Reuse Kotlin's bounded, stream-aware SNI/HTTP parser. DATA arrives before any upstream dial.
+        let _ = timeout(Duration::from_millis(600), async {
+            let mut buf = [0u8; 4096];
+            while pre.len() < TCP_CAPTURE {
+                tokio::select! {
+                    biased;
+                    _ = control.host_ready() => break,
+                    n = client.read(&mut buf[..4096.min(TCP_CAPTURE - pre.len())]) => {
+                        let n = match n { Ok(n) if n > 0 => n, _ => break };
+                        sink.data(id, false, &buf[..n]);
+                        pre.extend_from_slice(&buf[..n]);
+                    }
+                }
+            }
+            if pre.len() == TCP_CAPTURE { let _ = timeout(Duration::from_millis(100), control.host_ready()).await; }
+        }).await;
+    }
+    let outcome = shared.blocking.outcome(id, false);
+    sink.policy(id, outcome);
+    if outcome.kind == 1 {
+        sink.close(id, 0, 0);
+        return;
+    }
 
     // Read the client's first bytes while the outbound connect is in flight, so the TLS SNI / HTTP Host
     // of connections that fail or stall is still recorded. `read` is cancel-safe, so if the connect wins
     // the race nothing is lost.
-    let mut first = vec![0u8; 16 * 1024];
-    let mut early: Option<usize> = None;
+    let pre_captured = pre.len();
+    let mut first = vec![0u8; TCP_CAPTURE];
+    first[..pre.len()].copy_from_slice(&pre);
+    let mut early: Option<usize> = if pre.is_empty() { None } else { Some(pre.len()) };
     let connect_fut = connect(dst);
     tokio::pin!(connect_fut);
     let remote = loop {
@@ -102,7 +153,7 @@ pub async fn tcp(id: u64, mut client: IpStackTcpStream, sink: EventSink, shared:
     let mut captured0 = 0usize;
     if let Some(n) = early {
         let take = n.min(TCP_CAPTURE);
-        sink.data(id, false, &first[..take]);
+        if pre_captured == 0 { sink.data(id, false, &first[..take]); }
         captured0 = take;
     }
 
@@ -118,7 +169,7 @@ pub async fn tcp(id: u64, mut client: IpStackTcpStream, sink: EventSink, shared:
             if allow {
                 if let Some(r) = remote.take() {
                     let mut rec = crate::mitm::tls::Recording::new(client, first[..n].to_vec());
-                    match m.intercept(&mut rec, r, id, &sink).await {
+                    match m.intercept_counted(&mut rec, r, id, &sink, Some(&control)).await {
                         crate::mitm::tls::Outcome::Done(u, d) => {
                             sink.close(id, u, d);
                         }
@@ -221,9 +272,27 @@ async fn pump<R, W>(
 pub async fn udp(id: u64, client: IpStackUdpStream, sink: EventSink, shared: Arc<Shared>) {
     let src = client.local_addr();
     let dst = client.peer_addr();
+    let control = shared.blocking.open(id, client.peer_addr().ip());
+    tokio::select! {
+        biased;
+        d = control.cancelled() => {
+            sink.policy(id, d);
+            sink.close(id, control.up.load(Ordering::Relaxed), control.down.load(Ordering::Relaxed));
+        }
+        _ = udp_inner(id, client, src, dst, sink.clone(), shared.clone(), control.clone()) => {}
+    }
+    shared.blocking.close(id);
+    shared.forget(id);
+}
+
+async fn udp_inner<S: AsyncRead + AsyncWrite + Unpin>(id: u64, client: S, src: SocketAddr, dst: SocketAddr, sink: EventSink, shared: Arc<Shared>, control: Arc<crate::blocking::FlowControl>) {
     // QUIC (UDP 443) of an intercepted app is dropped so the app falls back to TCP+TLS, which can be intercepted.
     let decision = if shared.mitm_active() && dst.port() == 443 { Some(shared.register(id)) } else { None };
     sink.open(id, 17, src, dst);
+    let error = shared.blocking.active() && timeout(Duration::from_secs(1), control.owner_ready()).await.is_err();
+    let outcome = shared.blocking.outcome(id, error);
+    sink.policy(id, outcome);
+    if outcome.kind == 1 || error { sink.close(id, 0, 0); return; }
     if let Some(rx) = decision {
         let drop_it = matches!(timeout(DECISION_WAIT, rx).await, Ok(Ok(true)));
         shared.forget(id);
@@ -233,8 +302,8 @@ pub async fn udp(id: u64, client: IpStackUdpStream, sink: EventSink, shared: Arc
         }
     }
 
-    let up = Arc::new(AtomicU64::new(0));
-    let down = Arc::new(AtomicU64::new(0));
+    let up = control.up.clone();
+    let down = control.down.clone();
     let is_dns = dst.port() == DNS_PORT;
     let limit = if is_dns { DNS_IDLE } else { UDP_IDLE };
 
@@ -300,4 +369,137 @@ pub async fn udp(id: u64, client: IpStackUdpStream, sink: EventSink, shared: Arc
         }
     }
     sink.close(id, up.load(Ordering::Relaxed), down.load(Ordering::Relaxed));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn installing_a_rule_closes_an_existing_flow_and_preserves_counts() {
+        let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let shared = Shared::new();
+        assert!(shared.blocking.install("WAYD1\t1"));
+        let (mut app, client) = tokio::io::duplex(1024);
+        let (sink, events) = EventSink::channel();
+        let task = tokio::spawn(tcp_flow(1, client, "127.0.0.1:40000".parse().unwrap(), server.local_addr().unwrap(), sink, shared.clone()));
+        let (mut remote, _) = timeout(Duration::from_secs(1), server.accept()).await.unwrap().unwrap();
+        shared.blocking.info(1, "0:org.example.app", false);
+        app.write_all(b"hello").await.unwrap();
+        let mut payload = [0u8; 5]; remote.read_exact(&mut payload).await.unwrap();
+        assert!(shared.blocking.install("WAYD1\t2\n42\t0:org.example.app\tAPP\t*"));
+        timeout(Duration::from_secs(1), task).await.unwrap().unwrap();
+        assert_eq!(app.read(&mut payload).await.unwrap(), 0);
+        assert_eq!(remote.read(&mut payload).await.unwrap(), 0);
+        let all: Vec<_> = events.try_iter().collect();
+        let closed = all.iter().find(|e| e[4] == crate::events::CLOSE).unwrap();
+        assert_eq!(u64::from_be_bytes(closed[13..21].try_into().unwrap()), 5);
+        assert!(all.iter().any(|e| e[4] == 7 && e[13] == 1));
+    }
+
+    #[tokio::test]
+    async fn udp_app_and_ip_blocks_send_no_datagrams() {
+        for (kind, target) in [("APP", "*"), ("IP", "127.0.0.1")] {
+            let server = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+            let shared = Shared::new();
+            assert!(shared.blocking.install(&format!("WAYD1\t1\n1\t0:org.example.app\t{kind}\t{target}")));
+            let c = shared.blocking.open(1, server.local_addr().unwrap().ip());
+            shared.blocking.info(1, "0:org.example.app", false);
+            let (mut app, client) = tokio::io::duplex(1024);
+            app.write_all(b"must not leave").await.unwrap();
+            let (sink, events) = EventSink::channel();
+            timeout(Duration::from_secs(1), udp_inner(1, client, "127.0.0.1:40000".parse().unwrap(), server.local_addr().unwrap(), sink, shared, c)).await.unwrap();
+            assert!(timeout(Duration::from_millis(30), server.recv(&mut [0u8; 64])).await.is_err());
+            assert_eq!(events.try_iter().find(|e| e[4] == 7).unwrap()[13], 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn app_ip_and_host_blocks_never_dial_the_local_server() {
+        for (kind, target) in [("APP", "*"), ("IP", "127.0.0.1"), ("HOST", "blocked.example")] {
+            let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let shared = Shared::new();
+            assert!(shared.blocking.install(&format!("WAYD1\t1\n1\t0:org.example.app\t{kind}\t{target}")));
+            let c = shared.blocking.open(1, server.local_addr().unwrap().ip());
+            shared.blocking.info(1, "0:org.example.app", false);
+            shared.blocking.info(1, "blocked.example", true);
+            let (_app, client) = tokio::io::duplex(1024);
+            let (sink, events) = EventSink::channel();
+            timeout(Duration::from_secs(1), tcp_inner(1, client, "127.0.0.1:40000".parse().unwrap(), server.local_addr().unwrap(), sink, shared, c)).await.unwrap();
+            assert!(timeout(Duration::from_millis(30), server.accept()).await.is_err());
+            let policy = events.try_iter().find(|e| e[4] == 7).unwrap();
+            assert_eq!(policy[13], 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn fragmented_host_prefix_waits_for_parser_before_dial() {
+        let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let shared = Shared::new();
+        assert!(shared.blocking.install("WAYD1\t1\n1\t0:org.example.app\tHOST\tblocked.example"));
+        let c = shared.blocking.open(1, server.local_addr().unwrap().ip());
+        shared.blocking.info(1, "0:org.example.app", false);
+        let (mut app, client) = tokio::io::duplex(1024);
+        let (sink, events) = EventSink::channel();
+        let task = tokio::spawn(tcp_inner(1, client, "127.0.0.1:40000".parse().unwrap(), server.local_addr().unwrap(), sink, shared.clone(), c));
+        app.write_all(b"GET / HTTP/1.1\r\nHo").await.unwrap();
+        assert!(timeout(Duration::from_millis(30), server.accept()).await.is_err());
+        app.write_all(b"st: blocked.example\r\n\r\n").await.unwrap();
+        let mut prefix = Vec::new();
+        timeout(Duration::from_secs(1), async {
+            loop {
+                for ev in events.try_iter() { if ev[4] == 2 { prefix.extend_from_slice(&ev[16..]); } }
+                if prefix.ends_with(b"\r\n\r\n") { break; }
+                tokio::time::sleep(Duration::from_millis(2)).await;
+            }
+        }).await.unwrap();
+        shared.blocking.info(1, "blocked.example", true);
+        timeout(Duration::from_secs(1), task).await.unwrap().unwrap();
+        assert!(timeout(Duration::from_millis(30), server.accept()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn allowed_flow_keeps_all_bytes_and_missing_names_are_visible() {
+        let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let shared = Shared::new();
+        assert!(shared.blocking.install("WAYD1\t1\n1\t0:org.example.other\tAPP\t*"));
+        let c = shared.blocking.open(1, server.local_addr().unwrap().ip());
+        shared.blocking.info(1, "0:org.example.app", false);
+        let (mut app, client) = tokio::io::duplex(4096);
+        let (sink, _events) = EventSink::channel();
+        let task = tokio::spawn(tcp_inner(1, client, "127.0.0.1:40000".parse().unwrap(), server.local_addr().unwrap(), sink, shared, c));
+        let payload = b"GET / HTTP/1.1\r\nHost: allowed.example\r\n\r\n";
+        app.write_all(payload).await.unwrap(); app.shutdown().await.unwrap();
+        let (mut remote, _) = timeout(Duration::from_secs(1), server.accept()).await.unwrap().unwrap();
+        let mut received = Vec::new(); remote.read_to_end(&mut received).await.unwrap();
+        assert_eq!(received, payload);
+        remote.shutdown().await.unwrap(); drop(remote);
+        timeout(Duration::from_secs(1), task).await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn tcp_prefix_spans_reads_is_bounded_and_does_not_truncate_forwarding() {
+        let payload = vec![42u8; TCP_CAPTURE + 4096];
+        let (mut input, reader) = tokio::io::duplex(payload.len());
+        let (writer, mut output) = tokio::io::duplex(payload.len());
+        let (sink, events) = EventSink::channel();
+        let count = Arc::new(AtomicU64::new(0));
+        input.write_all(&payload).await.unwrap();
+        input.shutdown().await.unwrap();
+        // An early read already reported the first 100 bytes; the pump must continue that prefix.
+        sink.data(1, false, &payload[..100]);
+        let mut reader = reader;
+        let mut early = [0u8; 100];
+        reader.read_exact(&mut early).await.unwrap();
+        pump(1, false, reader, writer, count.clone(), sink, 100, Activity::new()).await;
+        let mut forwarded = Vec::new();
+        output.read_to_end(&mut forwarded).await.unwrap();
+        assert_eq!(forwarded, payload[100..]);
+        assert_eq!(count.load(Ordering::Relaxed), (payload.len() - 100) as u64);
+        let captured: Vec<u8> = events.try_iter()
+            .filter(|event| event[4] == crate::events::DATA)
+            .flat_map(|event| event[16..].to_vec())
+            .collect();
+        assert_eq!(captured, payload[..TCP_CAPTURE]);
+    }
 }

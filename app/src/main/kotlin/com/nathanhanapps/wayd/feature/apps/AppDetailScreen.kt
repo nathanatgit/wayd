@@ -57,7 +57,7 @@ import java.util.Date
 
 /** What one app did in the chosen window: summary sentences, activity by hour, who it talks to, findings. */
 @Composable
-fun AppDetailScreen(onBack: () -> Unit, onOpenMessages: (pkg: String, window: String) -> Unit, vm: AppDetailViewModel = hiltViewModel()) {
+fun AppDetailScreen(onBack: () -> Unit, onOpenMessages: (pkg: String, window: String) -> Unit, onOpenScanner: (String) -> Unit, vm: AppDetailViewModel = hiltViewModel()) {
     val state by vm.report.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val name = if (vm.pkg == UNKNOWN_PKG) stringResource(R.string.app_unknown) else vm.labels.label(vm.pkg)
@@ -71,6 +71,7 @@ fun AppDetailScreen(onBack: () -> Unit, onOpenMessages: (pkg: String, window: St
                 Text(vm.pkg, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
+        androidx.compose.material3.TextButton(onClick = { onOpenScanner(vm.pkg) }) { Text(stringResource(R.string.apk_title)) }
         com.nathanhanapps.wayd.feature.export.ExportButton(stringResource(R.string.export_app), vm::exportName, Modifier.fillMaxWidth()) { vm.export(it) }
         when (val s = state) {
             Loadable.Loading -> Text("…")
@@ -110,6 +111,7 @@ private fun Detail(r: AppReport, vm: AppDetailViewModel, context: android.conten
         items(r.findings) { f -> FindingRow(f, vm, context) }
 
         item { PermissionSection(vm) }
+        item { AppBlockingSection() }
 
         item {
             val count by vm.decryptedCount.collectAsStateWithLifecycle()

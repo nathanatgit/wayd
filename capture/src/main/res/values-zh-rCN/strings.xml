@@ -4,4 +4,5 @@
     <string name="capture_notif_title">在干嘛正在录制流量</string>
     <string name="capture_notif_text">%1$d 个连接 · %2$d 个应用</string>
     <string name="capture_notif_stop">停止</string>
+    <string name="capture_notif_processing">在干嘛正在处理流量</string>
 </resources>

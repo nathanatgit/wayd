@@ -40,7 +40,7 @@ class ShizukuClient(private val context: Context) {
             .processNameSuffix("privileged")
             .daemon(false)
             .debuggable(false)
-            .version(1)
+            .version(2)
     }
 
     private val connection = object : ServiceConnection {
@@ -91,6 +91,9 @@ class ShizukuClient(private val context: Context) {
 
     /** `cmd appops get <pkg>` output, or null. */
     suspend fun appOpsGet(pkg: String): String? = call { it.appOpsGet(pkg) }
+
+    /** Never prompts for access; only reuses the user's existing Shizuku grant. */
+    suspend fun installedPackages(): Set<String> = PackageInventory.parse(call { it.listPackages() }.orEmpty())
 
     private suspend fun call(block: (IPrivilegedService) -> String): String? {
         refresh()

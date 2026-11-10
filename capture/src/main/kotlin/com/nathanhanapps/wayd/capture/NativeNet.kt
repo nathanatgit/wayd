@@ -2,8 +2,14 @@ package com.nathanhanapps.wayd.capture
 
 /** JNI bridge to the Rust netstack (capture/native). One instance per recording session. */
 class NativeNet {
+    external fun nativePolicyVersion(): Int
+
     /** Starts the stack on [tunFd] (duplicated natively). Returns a handle, or 0 on failure. */
-    external fun nativeStart(tunFd: Int, mtu: Int): Long
+    external fun nativeStart(tunFd: Int, mtu: Int, policy: String): Long
+
+    external fun nativeSetPolicy(handle: Long, policy: String): Boolean
+
+    external fun nativeFlowInfo(handle: Long, flowId: Long, value: String, host: Boolean)
 
     /** Stops the stack. Call exactly once, after polling has stopped. */
     external fun nativeStop(handle: Long)

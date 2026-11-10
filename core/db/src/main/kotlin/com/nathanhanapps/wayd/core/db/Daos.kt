@@ -81,6 +81,9 @@ interface InterceptAppDao {
 
 @Dao
 interface FlowDao {
+    @Query("SELECT * FROM Flow WHERE pkg = :pkg AND startAt >= :start AND startAt < :end ORDER BY startAt DESC, id DESC LIMIT 200")
+    fun observeAppHistory(pkg: String, start: Long, end: Long): KFlow<List<Flow>>
+
     @Insert
     suspend fun insertAll(flows: List<Flow>)
 

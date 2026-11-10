@@ -103,6 +103,14 @@ impl EventSink {
         b.extend_from_slice(&down.to_be_bytes());
         self.send(CLOSE, id, &b);
     }
+
+    /// POLICY (7): kind (1 blocked, 2 gate failure, 3 unknown owner, 4 unknown host, 5 passed), revision, rule id.
+    pub fn policy(&self, id: u64, d: crate::blocking::Decision) {
+        let mut b = vec![d.kind];
+        b.extend_from_slice(&d.revision.to_be_bytes());
+        b.extend_from_slice(&d.rule.to_be_bytes());
+        self.send(7, id, &b);
+    }
 }
 
 fn addr16(ip: IpAddr) -> [u8; 16] {

@@ -17,7 +17,7 @@ data class CaptureUi(
     val stats: CaptureStats = CaptureStats(0, 0, 0, 0),
 )
 
-/** Process-wide recording state, written by [WaydVpnService] and observed by the UI. */
+/** Process-wide VPN processing state; traffic-history recording is controlled separately. */
 @Singleton
 class CaptureState @Inject constructor() {
     private val _ui = MutableStateFlow(CaptureUi())

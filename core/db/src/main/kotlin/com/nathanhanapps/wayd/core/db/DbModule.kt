@@ -41,6 +41,9 @@ object DbModule {
 
     @Provides fun interceptAppDao(db: WaydDatabase): InterceptAppDao = db.interceptAppDao()
 
+    @Provides fun apkScanDao(db: WaydDatabase): ApkScanDao = db.apkScanDao()
+    @Provides fun blockRuleDao(db: WaydDatabase): BlockRuleDao = db.blockRuleDao()
+
     @Provides
     @Singleton
     fun dbHealth(db: WaydDatabase): DbHealth = DbHealth(db)

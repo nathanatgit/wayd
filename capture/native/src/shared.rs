@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::oneshot;
 
 pub struct Shared {
+    pub blocking: crate::blocking::Blocking,
     #[cfg(feature = "mitm")]
     mitm: std::sync::RwLock<Option<Arc<crate::mitm::tls::Mitm>>>,
     decisions: Mutex<HashMap<u64, oneshot::Sender<bool>>>,
@@ -19,6 +20,7 @@ pub struct Shared {
 impl Shared {
     pub fn new() -> Arc<Self> {
         Arc::new(Shared {
+            blocking: crate::blocking::Blocking::new(),
             #[cfg(feature = "mitm")]
             mitm: std::sync::RwLock::new(None),
             decisions: Mutex::new(HashMap::new()),

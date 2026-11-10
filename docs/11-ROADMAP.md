@@ -1,6 +1,6 @@
 # 11 · Roadmap
 
-Milestones below describe targets, not completed features. See [HANDOFF.md](HANDOFF.md) for current status; M7 blocking and optional routing remain planned.
+Milestones below describe targets, not completed features. See [HANDOFF.md](HANDOFF.md) for current status; M7 core blocking is implemented locally with device acceptance pending; content controls and optional routing remain planned.
 
 Each milestone ends with a working, installable build. Don't start a milestone before the previous one's acceptance criteria pass.
 
@@ -39,6 +39,8 @@ Each milestone ends with a working, installable build. Don't start a milestone b
 - Manifest/cert/NSC/DEX/strings, tracker signatures, vdex handling, Declared/Used/Sent view.
 **Accept:** scans all apps on a test phone in < 5 min; carrier/vendor components identified by signer.
 
+2026-11-10: implementation underway; user accepted current capture coverage for proceeding. Bounded static scanning and Declared/Used/Sent UI are implemented; device acceptance and remaining extraction limits are tracked in [07-APK-SCANNER.md](07-APK-SCANNER.md). GeoIP is scheduled **after Clash integration**, per Nat; it is not part of M5.
+
 ## M6 · Gemma 4
 - Model manager (mirror, hash, RAM check), LiteRT-LM engine, prompt builder, tools, schema validator.
 - "Analyse with AI" on selection, AI result screen, overnight summary.
@@ -46,7 +48,12 @@ Each milestone ends with a working, installable build. Don't start a milestone b
 **Accept:** E2B analysis of a 10-item selection < 30 s on target device; 0 unvalidated claims shown; injection fixtures don't change output structure.
 
 ## M7 · Control
+
+Current slice: app/exact-host/exact-IP native gates, consent-bound durable/session rules, history buttons and unified Controls inventory are built. Exact-host blocking/Undo and repaired VPN resource shutdown were verified on Nubia. Home is now a dashboard with independent VPN and traffic-recording controls; Clash is visibly unavailable. Both flavor builds/lint and 35 capture JVM tests pass. Live recording-mode changes with forwarding/blocks remain a device acceptance task. Full M7 acceptance, broader device cases, JSON backup/import and response customization remain open; see [13-BLOCKING.md](13-BLOCKING.md) and [current handoff](HANDOFF.md).
 - Block rules (host/app) at VPN level; adb command helper with critical-package warnings.
+- App-history temporary session blocks and persistent blocks, atomic native policy activation, Undo and live-flow closure; rule management and explicit versioned JSON backup/import. Proposed semantics and coverage: [13-BLOCKING.md](13-BLOCKING.md).
+- Research content-control follow-up: selected request-time fixed local replies, then bounded response edits; never activate script execution or decryption globally. Clash transport adapter follows validated core enforcement.
+**Accept:** local-server fixtures prove app/IP and evaluable host blocks precede upstream dispatch; temporary rules expire and durable rules survive restart; unknown attribution/names remain visible; import cannot grant consent or widen scope silently; both flavors build. Content-control and routing acceptance are separate gates in their module docs, not implied by core block buttons.
 
 ## M8 · Research flavor
 - MITM with consent flow and per-app picker.

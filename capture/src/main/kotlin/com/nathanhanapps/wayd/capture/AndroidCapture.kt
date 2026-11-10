@@ -13,15 +13,13 @@ import java.net.InetSocketAddress
 class AndroidUidResolver(context: Context) : UidResolver {
     private val cm = context.getSystemService(ConnectivityManager::class.java)
     private val pm = context.packageManager
-    private val pkgCache = HashMap<Int, String>()
 
     override fun resolve(proto: Int, src: InetSocketAddress, dst: InetSocketAddress): Owner? {
         val uid = cm.getConnectionOwnerUid(proto, src, dst)
         if (uid == Process.INVALID_UID) return null
-        val pkg = pkgCache.getOrPut(uid) {
-            pm.getPackagesForUid(uid)?.firstOrNull() ?: "uid:$uid"
-        }
-        return Owner(uid, pkg)
+        // Do not retain a UID binding across package replacement/removal or guess one package in a shared UID.
+        val packages = pm.getPackagesForUid(uid)?.toList().orEmpty()
+        return Owner(uid, packages.firstOrNull() ?: "uid:$uid", packages)
     }
 }
 

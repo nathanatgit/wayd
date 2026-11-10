@@ -5,6 +5,9 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import android.content.pm.ApplicationInfo
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
@@ -26,6 +29,11 @@ import com.nathanhanapps.wayd.core.db.SessionDao
 import com.nathanhanapps.wayd.core.model.Privilege
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -40,6 +48,26 @@ class WaydVpnService : VpnService() {
     @Inject lateinit var dns: DnsDao
     @Inject lateinit var messageDao: MessageDao
     @Inject lateinit var interceptHook: InterceptHook
+    @Inject lateinit var blocking: BlockingRules
+    @Inject lateinit var recording: TrafficRecording
+
+    private val policyScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val packageChanges = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            policyScope.launch { runCatching { blocking.refresh() } }
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addDataScheme("package")
+        }
+        androidx.core.content.ContextCompat.registerReceiver(this, packageChanges, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
+    }
 
     private var pfd: ParcelFileDescriptor? = null
     private var native: NativeNet? = null
@@ -62,6 +90,8 @@ class WaydVpnService : VpnService() {
 
     override fun onDestroy() {
         stopCapture()
+        unregisterReceiver(packageChanges)
+        policyScope.cancel()
         super.onDestroy()
     }
 
@@ -91,7 +121,7 @@ class WaydVpnService : VpnService() {
             return
         }
         val net = NativeNet()
-        val h = runCatching { net.nativeStart(tun.fd, MTU) }.getOrDefault(0L)
+        val h = runCatching { runBlocking { blocking.startEngine(net, tun.fd, MTU) } }.getOrDefault(0L)
         if (h == 0L) {
             tun.close()
             fail()
@@ -174,8 +204,13 @@ class WaydVpnService : VpnService() {
         }.getOrDefault(false)
         val t = FlowTracker(
             sessionId, AndroidUidResolver(this), sink, AndroidCaptureEnv(this),
-            gate = if (active) provider?.gate() else null,
+            gate = if (active) provider?.gate()?.let { gate ->
+                InterceptGate { pkg, proto, port -> recording.window.enabled && gate.allow(pkg, proto, port) }
+            } else null,
             reply = { id, allow -> net.nativeDecide(h, id, allow) },
+            policyOwner = blocking::owner,
+            policyHost = blocking::host,
+            recording = { recording.window },
         )
         val buf = ByteArray(POLL_BUF)
         var lastFlush = SystemClock.elapsedRealtime()
@@ -202,9 +237,18 @@ class WaydVpnService : VpnService() {
                 }
             }
         } finally {
-            t.finishAll()
-            sink.flush()
-            state.set(t.stats())
+            try {
+                t.finishAll()
+                sink.flush()
+                state.set(t.stats())
+            } finally {
+                runBlocking { blocking.stopEngine() }
+                if (running) {
+                    running = false
+                    state.set(CapturePhase.ERROR)
+                    stopSelf()
+                }
+            }
         }
     }
 
@@ -213,10 +257,8 @@ class WaydVpnService : VpnService() {
         running = false
         worker?.join(2_000)
         worker = null
-        if (handle != 0L) {
-            native?.nativeStop(handle)
-            handle = 0L
-        }
+        // The polling thread owns destruction, even if its final DB flush outlasts the bounded join.
+        handle = 0L
         native = null
         pfd?.close()
         pfd = null
@@ -249,7 +291,7 @@ class WaydVpnService : VpnService() {
         )
         val n: Notification = NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(getString(R.string.capture_notif_title))
+            .setContentTitle(getString(if (recording.window.enabled) R.string.capture_notif_title else R.string.capture_notif_processing))
             .setContentText(getString(R.string.capture_notif_text, flowCount, appCount))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -257,7 +299,11 @@ class WaydVpnService : VpnService() {
             .addAction(0, getString(R.string.capture_notif_stop), stop)
             .build()
         runCatching {
-            startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
+            if (android.os.Build.VERSION.SDK_INT >= 34) {
+                startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
+            } else {
+                startForeground(NOTIF_ID, n)
+            }
         }.onFailure {
             runCatching { nm.notify(NOTIF_ID, n) }
         }

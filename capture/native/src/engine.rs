@@ -17,6 +17,8 @@ use jni::objects::{JByteArray, JObject};
 use jni::sys::{jint, jlong};
 use jni::EnvUnowned;
 use tokio::runtime::Runtime;
+use tokio::sync::oneshot;
+use tokio::task::{JoinHandle, JoinSet};
 
 use crate::events::EventSink;
 use crate::shared::Shared;
@@ -25,12 +27,14 @@ use crate::{relay, tun};
 struct Engine {
     shared: Arc<Shared>,
     runtime: Runtime,
+    stop: oneshot::Sender<()>,
+    task: JoinHandle<()>,
     rx: Mutex<Receiver<Vec<u8>>>,
     /// Event that did not fit into the previous poll buffer.
     pending: Mutex<Option<Vec<u8>>>,
 }
 
-fn start_engine(tun_fd: i32, mtu: u16) -> std::io::Result<Engine> {
+fn start_engine(tun_fd: i32, mtu: u16, policy: &str) -> std::io::Result<Engine> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2) // small on purpose: battery
         .enable_all()
@@ -38,11 +42,15 @@ fn start_engine(tun_fd: i32, mtu: u16) -> std::io::Result<Engine> {
         .build()?;
     let (sink, rx) = EventSink::channel();
     let shared = Shared::new();
+    if !shared.blocking.install(policy) {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid policy"));
+    }
     let shared_for_tasks = shared.clone();
     let _guard = runtime.enter(); // AsyncFd registration needs a runtime context
     let dev = tun::TunDevice::from_borrowed_fd(tun_fd)?;
 
-    runtime.spawn(async move {
+    let (stop, mut stopped) = oneshot::channel();
+    let task = runtime.spawn(async move {
         let mut cfg = IpStackConfig::default();
         let _ = cfg.mtu(mtu);
         cfg.packet_information(false);
@@ -56,25 +64,45 @@ fn start_engine(tun_fd: i32, mtu: u16) -> std::io::Result<Engine> {
         cfg.udp_timeout(Duration::from_secs(600));
         let mut stack = IpStack::new(cfg, dev);
         let ids = Arc::new(AtomicU64::new(1));
-        while let Ok(stream) = stack.accept().await {
+        let mut relays = JoinSet::new();
+        loop {
+            let stream = tokio::select! {
+                biased;
+                _ = &mut stopped => break,
+                Some(_) = relays.join_next(), if !relays.is_empty() => continue,
+                stream = stack.accept() => match stream { Ok(stream) => stream, Err(_) => break },
+            };
             let sink = sink.clone();
             let shared = shared_for_tasks.clone();
             let id = ids.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             match stream {
                 IpStackStream::Tcp(s) => {
-                    tokio::spawn(relay::tcp(id, s, sink, shared));
+                    relays.spawn(relay::tcp(id, s, sink, shared));
                 }
                 IpStackStream::Udp(s) => {
-                    tokio::spawn(relay::udp(id, s, sink, shared));
+                    relays.spawn(relay::udp(id, s, sink, shared));
                 }
                 // ICMP and other transports are dropped: nothing to record for M1.
                 _ => {}
             }
         }
+        // IpStackTcpStream::drop synchronously waits for its protocol task. Keep the
+        // runtime alive until every relay destructor finishes, then release the stack/TUN.
+        relays.shutdown().await;
+        drop(stack);
     });
 
     drop(_guard);
-    Ok(Engine { shared, runtime, rx: Mutex::new(rx), pending: Mutex::new(None) })
+    Ok(Engine { shared, runtime, stop, task, rx: Mutex::new(rx), pending: Mutex::new(None) })
+}
+
+fn stop_engine(engine: Engine) {
+    let Engine { runtime, stop, task, .. } = engine;
+    let _ = stop.send(());
+    // Called from Kotlin's polling thread, outside this Tokio runtime. Bound shutdown
+    // even if a dependency fails, without stopping protocol tasks before relay cleanup.
+    runtime.block_on(async { let _ = tokio::time::timeout(Duration::from_secs(2), task).await; });
+    runtime.shutdown_timeout(Duration::from_secs(1));
 }
 
 /// Fills `out` with as many whole events as fit. Returns bytes written, 0 on timeout, -1 when stopped.
@@ -109,11 +137,35 @@ fn poll_engine(e: &Engine, out: &mut [u8], timeout_ms: u64) -> i32 {
 // ---- JNI (class com.nathanhanapps.wayd.capture.NativeNet) ----
 
 #[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
-pub fn native_start<'l>(_env: EnvUnowned<'l>, _this: JObject<'l>, tun_fd: jint, mtu: jint) -> jlong {
-    match start_engine(tun_fd, mtu.clamp(1280, 65535) as u16) {
-        Ok(e) => Box::into_raw(Box::new(e)) as jlong,
-        Err(_) => 0,
-    }
+pub fn native_start<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, tun_fd: jint, mtu: jint, policy: jni::objects::JString<'l>) -> jlong {
+    env.with_env(|env| -> jni::errors::Result<jlong> {
+        let policy = policy.try_to_string(env)?;
+        Ok(match start_engine(tun_fd, mtu.clamp(1280, 65535) as u16, &policy) {
+            Ok(e) => Box::into_raw(Box::new(e)) as jlong,
+            Err(_) => 0,
+        })
+    }).resolve::<jni::errors::LogErrorAndDefault>()
+}
+
+#[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
+pub fn native_set_policy<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, handle: jlong, policy: jni::objects::JString<'l>) -> jni::sys::jboolean {
+    if handle == 0 { return false; }
+    // SAFETY: BlockingRules serializes all bridge calls with engine destruction.
+    let engine = unsafe { &*(handle as *const Engine) };
+    env.with_env(|env| -> jni::errors::Result<bool> {
+        Ok(engine.shared.blocking.install(&policy.try_to_string(env)?))
+    }).resolve::<jni::errors::LogErrorAndDefault>()
+}
+
+#[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
+pub fn native_flow_info<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, handle: jlong, flow: jlong, value: jni::objects::JString<'l>, host: jni::sys::jboolean) {
+    if handle == 0 { return; }
+    // SAFETY: BlockingRules serializes all bridge calls with engine destruction.
+    let engine = unsafe { &*(handle as *const Engine) };
+    let _ = env.with_env(|env| -> jni::errors::Result<()> {
+        engine.shared.blocking.info(flow as u64, &value.try_to_string(env)?, host);
+        Ok(())
+    }).resolve::<jni::errors::LogErrorAndDefault>();
 }
 
 #[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
@@ -121,7 +173,7 @@ pub fn native_stop<'l>(_env: EnvUnowned<'l>, _this: JObject<'l>, handle: jlong) 
     if handle != 0 {
         // SAFETY: handle came from `native_start` and Kotlin calls stop exactly once.
         let e = unsafe { Box::from_raw(handle as *mut Engine) };
-        e.runtime.shutdown_background();
+        stop_engine(*e);
     }
 }
 
@@ -152,6 +204,9 @@ pub fn native_poll<'l>(
 }
 
 // ---- MITM controls (research flavor; stubs in the standard build) ----
+
+#[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
+pub fn native_policy_version<'l>(_env: EnvUnowned<'l>, _this: JObject<'l>) -> jint { 1 }
 
 #[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
 pub fn native_has_mitm<'l>(_env: EnvUnowned<'l>, _this: JObject<'l>) -> jni::sys::jboolean {
@@ -257,4 +312,71 @@ pub fn native_decide<'l>(_env: EnvUnowned<'l>, _this: JObject<'l>, handle: jlong
     // SAFETY: see `native_configure_mitm`.
     let engine = unsafe { &*(handle as *const Engine) };
     engine.shared.decide(flow_id as u64, intercept);
+}
+
+#[cfg(all(test, any(target_os = "linux", target_os = "android")))]
+mod lifecycle_tests {
+    use super::*;
+    use std::os::fd::AsRawFd;
+    use std::os::unix::net::UnixDatagram;
+
+    fn checksum(bytes: &[u8]) -> u16 {
+        let mut sum: u32 = bytes.chunks(2).map(|c| {
+            u16::from_be_bytes([c[0], *c.get(1).unwrap_or(&0)]) as u32
+        }).sum();
+        while sum > 0xffff { sum = (sum & 0xffff) + (sum >> 16); }
+        !(sum as u16)
+    }
+
+    // Synthetic SYNs terminate inside IpStack. The app rule keeps every relay from dialing.
+    fn syn(port: u16) -> Vec<u8> {
+        let mut p = vec![0u8; 40];
+        p[0] = 0x45;
+        p[2..4].copy_from_slice(&40u16.to_be_bytes());
+        p[8] = 64; p[9] = 6;
+        p[12..16].copy_from_slice(&[10, 111, 222, 2]);
+        p[16..20].copy_from_slice(&[192, 0, 2, 1]);
+        p[20..22].copy_from_slice(&port.to_be_bytes());
+        p[22..24].copy_from_slice(&80u16.to_be_bytes());
+        p[27] = 1; p[32] = 0x50; p[33] = 2;
+        p[34..36].copy_from_slice(&4096u16.to_be_bytes());
+        let ip_sum = checksum(&p[..20]);
+        p[10..12].copy_from_slice(&ip_sum.to_be_bytes());
+        let mut pseudo = p[12..20].to_vec();
+        pseudo.extend_from_slice(&[0, 6, 0, 20]);
+        pseudo.extend_from_slice(&p[20..]);
+        p[36..38].copy_from_slice(&checksum(&pseudo).to_be_bytes());
+        p
+    }
+
+    #[test]
+    fn stopping_blocked_tcp_releases_tun_duplicate() {
+        for iteration in 0..12 {
+            let (device, peer) = UnixDatagram::pair().unwrap();
+            let target = std::fs::read_link(format!("/proc/self/fd/{}", device.as_raw_fd())).unwrap();
+            let engine = start_engine(device.as_raw_fd(), 1500,
+                "WAYD1\t1\n1\t0:org.example.probe\tAPP\t*").unwrap();
+            for port in 12000..12032 { peer.send(&syn(port)).unwrap(); }
+            let deadline = std::time::Instant::now() + Duration::from_millis(500);
+            let mut opened = 0;
+            while opened < 32 && std::time::Instant::now() < deadline {
+                opened += engine.rx.lock().unwrap().try_iter().filter(|e| e[4] == crate::events::OPEN).count();
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            assert_eq!(opened, 32, "fixture must create real TCP streams");
+            if iteration % 3 != 0 {
+                for id in 1..=32 { engine.shared.blocking.info(id, "0:org.example.probe", false); }
+                std::thread::sleep(Duration::from_millis(iteration % 3));
+            }
+            stop_engine(engine);
+            std::thread::sleep(Duration::from_millis(300));
+            let copies = std::fs::read_dir("/proc/self/fd").unwrap().flatten()
+                .filter(|e| std::fs::read_link(e.path()).ok().as_ref() == Some(&target)).count();
+            assert_eq!(copies, 1, "native TUN duplicate survived Stop");
+            let workers = std::fs::read_dir("/proc/self/task").unwrap().flatten()
+                .filter(|e| std::fs::read_to_string(e.path().join("comm"))
+                    .is_ok_and(|name| name.trim() == "wayd-net")).count();
+            assert_eq!(workers, 0, "native runtime worker survived Stop");
+        }
+    }
 }

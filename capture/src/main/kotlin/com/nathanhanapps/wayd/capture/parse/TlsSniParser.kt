@@ -1,40 +1,69 @@
 package com.nathanhanapps.wayd.capture.parse
 
+import java.io.ByteArrayOutputStream
+
 data class ClientHello(val sni: String?, val alpn: List<String>, val tlsVersion: String?)
 
-/** Extracts SNI / ALPN from the first TLS record of a connection. Returns null if not a ClientHello. */
+/** Extracts a complete ClientHello across handshake records. Incomplete or malformed input returns null. */
 object TlsSniParser {
     private const val MAX_SNI = 255
+    private const val MAX_PREFIX = 16 * 1024
 
     fun parse(b: ByteArray, off: Int = 0, len: Int = b.size - off): ClientHello? = try {
-        parseUnsafe(b, off, minOf(len, b.size - off))
+        if (off < 0 || off > b.size || len < 0) null else {
+            val end = off + minOf(len, b.size - off, MAX_PREFIX)
+            val handshake = ByteArrayOutputStream()
+            var p = off
+            var complete: ByteArray? = null
+            while (p + 5 <= end && complete == null) {
+                if (b[p].toInt() != 0x16 || b[p + 1].toInt() != 0x03) break
+                val size = u16(b, p + 3)
+                if (size == 0 || p + 5 + size > end) break
+                handshake.write(b, p + 5, size)
+                val bytes = handshake.toByteArray()
+                if (bytes.size >= 4) {
+                    if (bytes[0].toInt() != 1) break
+                    val bodySize = ((bytes[1].toInt() and 0xFF) shl 16) or u16(bytes, 2)
+                    if (bodySize > MAX_PREFIX - 4) break
+                    if (bytes.size >= bodySize + 4) complete = bytes.copyOf(bodySize + 4)
+                }
+                p += 5 + size
+            }
+            complete?.let { parseUnsafe(it, 0, it.size) }
+        }
     } catch (_: IndexOutOfBoundsException) {
         null
     }
 
     private fun parseUnsafe(b: ByteArray, start: Int, len: Int): ClientHello? {
         val end = start + len
-        if (len < 43 || b[start].toInt() != 0x16 || b[start + 1].toInt() != 0x03) return null
-        var p = start + 5
-        if (b[p].toInt() != 0x01) return null // handshake type: ClientHello
-        p += 4 // type + 3-byte length
+        if (len < 42) return null
+        var p = start + 4 // handshake type + 3-byte length
         val legacyVersion = u16(b, p)
         p += 2 + 32 // version + random
         p += 1 + (b[p].toInt() and 0xFF) // session id
-        p += 2 + u16(b, p) // cipher suites
-        p += 1 + (b[p].toInt() and 0xFF) // compression methods
-        if (p + 2 > end) return ClientHello(null, emptyList(), versionName(legacyVersion))
-        val extEnd = minOf(p + 2 + u16(b, p), end)
+        if (p + 2 > end) return null
+        val cipherBytes = u16(b, p)
+        if (cipherBytes == 0 || cipherBytes % 2 != 0) return null
+        p += 2 + cipherBytes
+        if (p >= end) return null
+        val compressionBytes = b[p].toInt() and 0xFF
+        if (compressionBytes == 0) return null
+        p += 1 + compressionBytes
+        if (p > end) return null
+        if (p == end) return ClientHello(null, emptyList(), versionName(legacyVersion))
+        if (p + 2 > end) return null
+        val extEnd = p + 2 + u16(b, p)
+        if (extEnd != end) return null
         p += 2
         var sni: String? = null
         val alpn = ArrayList<String>()
         var maxVersion = legacyVersion
-        var guard = 0
-        while (p + 4 <= extEnd && ++guard < 64) {
+        while (p + 4 <= extEnd) {
             val type = u16(b, p)
             val l = u16(b, p + 2)
             val body = p + 4
-            if (body + l > extEnd) break
+            if (body + l > extEnd) return null
             when (type) {
                 0x0000 -> if (l >= 5 && b[body + 2].toInt() == 0) {
                     val n = u16(b, body + 3)
@@ -52,14 +81,19 @@ object TlsSniParser {
                 }
                 0x002B -> if (l >= 3) { // supported_versions (client list)
                     var q = body + 1
-                    while (q + 2 <= body + l) {
-                        maxVersion = maxOf(maxVersion, u16(b, q))
+                    val versionsEnd = q + (b[body].toInt() and 0xFF)
+                    if (versionsEnd != body + l || (versionsEnd - q) % 2 != 0) return null
+                    while (q + 2 <= versionsEnd) {
+                        val version = u16(b, q)
+                        // GREASE and future values must not hide a known negotiated offer.
+                        if (version in 0x0301..0x0304) maxVersion = maxOf(maxVersion, version)
                         q += 2
                     }
                 }
             }
             p = body + l
         }
+        if (p != extEnd) return null
         return ClientHello(sni, alpn, versionName(maxVersion))
     }
 

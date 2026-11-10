@@ -132,3 +132,9 @@ data class Message(
 ## Backup
 
 `android:allowBackup="false"`, plus `dataExtractionRules` excluding everything.
+
+## M7 schema v4 · 2026-11-10
+
+Room exports v4 and auto-migrates 3→4 with additive columns. BlockRule adds `matchKind TEXT NOT NULL DEFAULT 'HOST'`, `signingSha256 TEXT NOT NULL DEFAULT ''`, `userId INTEGER NOT NULL DEFAULT 0`. Existing scope/package/host fields remain. Unbound legacy rules remain stored but inactive; current installation identity and explicit per-app consent are required before native installation. Exact APP/HOST/IP kinds are the current supported subset. Persistent positive IDs are database IDs; negative session IDs exist only in memory and are never backed up.
+
+Flow adds nullable `policyOutcome TEXT`, `policyRevision INTEGER`, `blockRuleId INTEGER`. Historical rows retain null policy evidence. Outcomes distinguish blocked, passed current policy, unknown owner/host and failed enforcement gate; they do not imply comprehensive coverage or change risk severity. No retained message content is rewritten.
