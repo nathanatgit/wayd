@@ -102,3 +102,14 @@ A native Compose optional extension now provides Dashboard, Profiles, Proxies, C
 Resources are downloaded only on explicit import/update. The UI displays provider hosts and lets the user choose direct download or the first embedded proxy node, with no Direct fallback. GeoIP source is editable. One private validated country.mmdb serves routing and local Flow.country enrichment, even with proxy routing disabled. WAYD app flow details display the code. MMDB routing categories such as CLOUDFLARE are not presented as countries. No remote country lookup, inspection upload or new permissions.
 
 This remains partial FlClash parity: no actual Flutter UI, MRS/GEOSITE/ASN/subrules support, full profile DNS/fake-IP behavior, persistent subscription updates, complete live connection controls/event stream or automatic health scheduling. Explicit probe API exists; UI is not yet complete. Profile DNS/TUN/listener settings are overridden and disclosed because WAYD retains VPN ownership. Device acceptance of picker/download/consent/live VPN is still required. Do not describe this as full FlClash compatibility.
+
+## Access control modes (2026-11-10, D-045)
+
+Importing a profile no longer asks for apps. Access control is a separate extension page, FlClash-style:
+
+- **Whitelist:** only checked apps are routed. Each gets a signer-bound `routing-v1:<user>:<pkg>:<signer>` consent (statement 1); replacing or removing one of them while enabled stops the VPN.
+- **Blacklist:** every single-package app of the current Android user is routed except the checked ones, including apps installed later. One global consent `routing-v1:<user>:*blacklist` (statement 2) is recorded; excluded apps need none. Package changes do not stop the VPN.
+- Both: unknown or shared-UID owners stay Direct, other Android users are never routed, and local WAYD blocks are evaluated before routing. Native selection receives `!exclude:<user>` as the first owner line in blacklist mode (`RouteSelection` in `capture/native/src/blocking.rs`).
+- The app picker uses WAYD's inventory: installed apps, apps seen in recorded traffic first, system apps behind a toggle.
+
+Storage: `no_backup/routing/index.enc` (small JSON index) and `profile-<id>.enc` (one bundle each), AES-256-GCM with a random data key wrapped by the Keystore key `wayd-routing-v2-wrap`. The previous single `routing-v1.enc` (whole 30+ MB file encrypted through the Keystore on every read and write, which made Save take minutes) is migrated once and deleted; migration resets `enabled` to off.

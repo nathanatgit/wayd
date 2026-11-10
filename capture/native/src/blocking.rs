@@ -165,6 +165,35 @@ impl Blocking {
     }
 }
 
+/// Which attributed apps use the profile. `Include`: only the listed owners (whitelist). `Exclude(user)`: every
+/// single-package app of that Android user except the listed owners (blacklist). Unknown or shared-UID owners are
+/// never selected in either mode, so they always stay Direct.
+#[derive(Debug, PartialEq)]
+pub(crate) struct RouteSelection { owners: HashSet<String>, exclude: Option<u32> }
+impl RouteSelection {
+    /// `owners` is newline-separated `user:package`; an optional first line `!exclude:<user>` selects blacklist mode.
+    pub(crate) fn parse(owners: &str) -> std::io::Result<Self> {
+        if owners.len() > 256 * 1024 { return Err(std::io::ErrorKind::InvalidInput.into()); }
+        let mut lines = owners.lines().peekable();
+        let exclude = match lines.peek().and_then(|l| l.strip_prefix("!exclude:")) {
+            Some(user) => { let user = user.parse::<u32>().map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?; lines.next(); Some(user) },
+            None => None,
+        };
+        let owners: HashSet<String> = lines.filter(|l| !l.is_empty()).map(String::from).collect();
+        if owners.len() > 1000 || owners.iter().any(|s| !valid_owner(s)) { return Err(std::io::ErrorKind::InvalidInput.into()); }
+        if exclude.is_none() && owners.is_empty() { return Err(std::io::ErrorKind::InvalidInput.into()); }
+        Ok(Self { owners, exclude })
+    }
+    pub(crate) fn selected(&self, owner: &str) -> bool {
+        if !valid_owner(owner) { return false; }
+        match self.exclude {
+            None => self.owners.contains(owner),
+            Some(user) => owner.split_once(':').is_some_and(|(u, _)| u.parse::<u32>().ok() == Some(user)) && !self.owners.contains(owner),
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,5 +234,31 @@ mod tests {
         assert_eq!(p.outcome(1, false).rule, -1);
         for bad in ["WAYD1\t2\n0\t0:android\tAPP\t*", "WAYD1\t2\n1\t0:android\tALLOW\t*", "WAYD1\t2\n1\t0:android\tHOST\texample.com\n1\t0:android\tAPP\t*"] { assert!(!p.install(bad)); }
         for host in ["", "*.example.com", "evil\r\nhost", "example..com", "192.0.2.1"] { assert!(normalize_host(host).is_none()); }
+    }
+}
+
+#[cfg(test)]
+mod route_selection_tests {
+    use super::RouteSelection;
+
+    #[test]
+    fn whitelist_routes_only_listed_owners() {
+        let s = RouteSelection::parse("0:com.a\n0:com.b").unwrap();
+        assert!(s.selected("0:com.a"));
+        assert!(!s.selected("0:com.c"));
+        assert!(!s.selected(""), "unknown owner stays direct");
+        assert!(RouteSelection::parse("").is_err(), "whitelist needs at least one app");
+    }
+
+    #[test]
+    fn blacklist_routes_everyone_else_in_the_same_user() {
+        let s = RouteSelection::parse("!exclude:0\n0:com.bank").unwrap();
+        assert!(s.selected("0:com.browser"));
+        assert!(!s.selected("0:com.bank"));
+        assert!(!s.selected("10:com.browser"), "other Android users are never routed");
+        assert!(!s.selected(""), "unknown or shared owner stays direct");
+        assert!(RouteSelection::parse("!exclude:0").unwrap().selected("0:com.any"));
+        assert!(RouteSelection::parse("!exclude:x").is_err());
+        assert!(RouteSelection::parse("!exclude:0\nnot an owner!").is_err());
     }
 }

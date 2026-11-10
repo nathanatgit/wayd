@@ -33,19 +33,18 @@ fn api() -> Option<&'static Api> {
     }).as_ref()
 }
 
-pub struct Routing { id: u64, api: &'static Api, owners: HashSet<String>, host: bool }
+pub struct Routing { id: u64, api: &'static Api, selection: crate::blocking::RouteSelection, host: bool }
 impl Routing {
     pub fn new(profile: &[u8], owners: &str) -> io::Result<Arc<Self>> {
-        if profile.is_empty() || profile.len() > 48 * 1024 * 1024 || owners.len() > 256 * 1024 { return Err(io::ErrorKind::InvalidInput.into()); }
-        let owners: HashSet<String> = owners.lines().map(String::from).collect();
-        if owners.is_empty() || owners.len() > 1000 || owners.iter().any(|s| !crate::blocking::valid_owner(s)) { return Err(io::ErrorKind::InvalidInput.into()); }
+        if profile.is_empty() || profile.len() > 48 * 1024 * 1024 { return Err(io::ErrorKind::InvalidInput.into()); }
+        let selection = crate::blocking::RouteSelection::parse(owners)?;
         let api = api().ok_or(io::ErrorKind::Unsupported)?;
         let id = unsafe { (api.create)(profile.as_ptr(), profile.len() as i32) };
         if id == 0 { return Err(io::ErrorKind::InvalidInput.into()); }
         let flags = unsafe { (api.capabilities)(id) };
-        Ok(Arc::new(Self { id, api, owners, host: flags & 2 != 0 }))
+        Ok(Arc::new(Self { id, api, selection, host: flags & 2 != 0 }))
     }
-    pub fn selected(&self, owner: &str) -> bool { self.owners.contains(owner) }
+    pub fn selected(&self, owner: &str) -> bool { self.selection.selected(owner) }
     pub fn needs_host(&self) -> bool { self.host }
     pub async fn dial(self: &Arc<Self>, dst: SocketAddr, owner: String, host: String, udp: bool) -> Result<(OwnedFd, Lease, u8), u8> {
         let id = unsafe { (self.api.reserve)(self.id) };

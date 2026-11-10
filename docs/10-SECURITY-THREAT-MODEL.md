@@ -120,3 +120,12 @@ The shared GeoIP file and source/checksum metadata stay in app-private no-backup
 The opt-in Android-native live routing/decryption test contacts www.google.com/robots.txt through the supplied routing profile, using a freshly resolved public numeric destination. It sends no account, cookies or inspection history. An ephemeral local test CA exists only within the native test process and is never installed into the phone trust store. Private profile fixtures are excluded from source control and removed from the device after testing. This does not authorize automatic production probes or uploading captured content.
 
 Explicit resource mirror: the import review can opt into cdn.jsdelivr.net for public GitHub raw assets. URLs with credentials/query/fragment/custom port/escaped path segments are never rewritten. The displayed host reflects this choice; no automatic mirror retry. Resource cache remains memory-only and bounded; cancellation interrupts native HTTP I/O.
+
+## External AI provider (D-046, 2026-11-11)
+
+Optional, off by default, requested by the user. Analysis text (hosts, IPs, app names, times, permission uses, and decrypted message text if selected) can be sent to a user-configured OpenAI-compatible server.
+
+- **Exposure:** the provider may log or keep what it receives. `Masker` removes obvious identifiers and tokens on a best-effort basis; it is not a guarantee.
+- **Controls:** per-origin acknowledgement stored as `ConsentRecord("ai-external-v1:<origin>")` (changing the server revokes it); an approval dialog shows the exact prompt before every analysis and the analyzer fails closed without an approver; the dialog flags decrypted content; the API key is stored only as Keystore-AES-GCM ciphertext; redirects are never followed (no bearer replay); replies are bounded to 512 KB and still pass `SchemaValidator`, so the server cannot set severity, rules or consents.
+- **Cleartext:** `network_security_config.xml` permits cleartext platform-wide so a LAN server (Ollama) works. `ExternalAiUrl` allows `http://` only for loopback, RFC1918, CGNAT (Tailscale), link-local, `.local`/`.lan` and single-label hosts, without DNS resolution. All other WAYD downloads require `https://` in code.
+- **Not changed:** no new permission (INTERNET already present); WAYD's own sockets bypass its VPN; no analytics or automatic upload.

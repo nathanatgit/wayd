@@ -32,7 +32,11 @@ class RoomAnalysisStore(private val dao: AiAnalysisDao) : AnalysisStore {
 object AiModule {
     @Provides
     @Singleton
-    fun engine(impl: LiteRtEngine): AiEngine = impl
+    fun engine(impl: ProviderEngine): AiEngine = impl
+
+    @Provides
+    @Singleton
+    fun externalClient(): OpenAiCompatibleClient = OpenAiCompatibleClient()
 
     @Provides
     @Singleton

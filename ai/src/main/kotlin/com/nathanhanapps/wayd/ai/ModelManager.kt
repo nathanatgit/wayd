@@ -102,7 +102,22 @@ class ModelManager @Inject constructor(@ApplicationContext private val context: 
         prefs.edit().putString(KEY_ACTIVE, spec.id).apply()
     }
 
-    /** Custom mirror base URL entered by the user; replaces the catalog URL host+path for one model. */
+    private val _activeDownload = MutableStateFlow<String?>(null)
+
+    /** Id of the model being downloaded right now (a partial file with no running download is "paused"). */
+    val activeDownload: StateFlow<String?> = _activeDownload.asStateFlow()
+
+    /** Which catalog source ([ModelSpec.sources] index) all downloads use; one choice for every model. */
+    fun sourceIndex(): Int = prefs.getInt("source", 0).coerceAtLeast(0)
+
+    fun setSourceIndex(index: Int) {
+        prefs.edit().putInt("source", index).apply()
+    }
+
+    /** The address a download starts from: the model's own custom address if the user set one, else the chosen source. */
+    fun downloadUrl(spec: ModelSpec): String = customUrl(spec) ?: spec.sources[sourceIndex().coerceAtMost(spec.sources.lastIndex)].url
+
+    /** Custom address entered by the user for one model; replaces the catalog source. */
     fun customUrl(spec: ModelSpec): String? = prefs.getString("url_" + spec.id, null)
 
     fun setCustomUrl(spec: ModelSpec, url: String?) {
@@ -132,6 +147,7 @@ class ModelManager @Inject constructor(@ApplicationContext private val context: 
             set(spec, ModelState.Failed("not enough free storage"))
             return@withContext
         }
+        _activeDownload.value = spec.id
         try {
             fetch(spec, url, part)
             set(spec, ModelState.Verifying)
@@ -148,6 +164,8 @@ class ModelManager @Inject constructor(@ApplicationContext private val context: 
             throw e
         } catch (t: Throwable) {
             set(spec, ModelState.Failed(t.message ?: t.javaClass.simpleName))
+        } finally {
+            _activeDownload.value = null
         }
     }
 

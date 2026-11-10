@@ -5,19 +5,24 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nathanhanapps.wayd.ai.AiAnalyzer
 import com.nathanhanapps.wayd.ai.AiOutcome
+import com.nathanhanapps.wayd.ai.AiProvider
+import com.nathanhanapps.wayd.ai.ExternalAiException
+import com.nathanhanapps.wayd.ai.ExternalAiSettings
+import com.nathanhanapps.wayd.ai.ExternalAiUi
 import com.nathanhanapps.wayd.ai.LiteRtEngine
 import com.nathanhanapps.wayd.ai.ModelManager
 import com.nathanhanapps.wayd.ai.ModelSpec
 import com.nathanhanapps.wayd.ai.ModelState
+import com.nathanhanapps.wayd.ai.OpenAiCompatibleClient
 import com.nathanhanapps.wayd.feature.analysis.AppLabels
 import com.nathanhanapps.wayd.feature.analysis.Windows
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.util.Locale
 import javax.inject.Inject
 
 sealed interface AiUiState {
@@ -36,6 +41,7 @@ class AiAnalysisViewModel @Inject constructor(
     private val evidence: AiEvidenceService,
     private val labels: AppLabels,
     private val models: ModelManager,
+    private val gate: ExternalAiGate,
     engine: com.nathanhanapps.wayd.ai.AiEngine,
     savedState: SavedStateHandle,
 ) : ViewModel() {
@@ -54,7 +60,10 @@ class AiAnalysisViewModel @Inject constructor(
         job = viewModelScope.launch {
             val locale = evidence.uiLocale()
             val req = evidence.requestFor(pkg, labels.label(pkg), windowKey, locale)
-            _state.value = if (req == null) AiUiState.NoEvidence else AiUiState.Done(analyzer.analyse(req, useCache))
+            _state.value = if (req == null) AiUiState.NoEvidence else when (val o = analyzer.analyse(req, useCache, gate::ask)) {
+                AiOutcome.Declined -> AiUiState.Idle // the user chose not to send; nothing happened
+                else -> AiUiState.Done(o)
+            }
         }
     }
 
@@ -64,19 +73,37 @@ class AiAnalysisViewModel @Inject constructor(
     }
 }
 
-/** Settings → On-device AI: which model is installed, downloads, mirror choice. */
+/** Settings → AI: which provider answers, and the on-device models (download source, install, remove). */
 @HiltViewModel
 class AiSettingsViewModel @Inject constructor(
     private val models: ModelManager,
     private val engine: LiteRtEngine,
+    val external: ExternalAiSettings,
 ) : ViewModel() {
     val states: StateFlow<Map<String, ModelState>> = models.states
+    val downloading: StateFlow<String?> = models.activeDownload
+    val ext: StateFlow<ExternalAiUi> = external.state
     val ramGb: Double get() = models.totalRamGb()
-    val active: String? get() = models.activeModel()?.first?.id
 
-    fun url(spec: ModelSpec): String = models.customUrl(spec) ?: spec.sources.first().url
+    private val _active = MutableStateFlow(models.activeModel()?.first?.id)
+    val active: StateFlow<String?> = _active.asStateFlow()
+    private val _source = MutableStateFlow(models.sourceIndex())
+    val source: StateFlow<Int> = _source.asStateFlow()
 
-    fun setUrl(spec: ModelSpec, url: String) = models.setCustomUrl(spec, url.takeUnless { it == spec.sources.first().url })
+    init {
+        viewModelScope.launch { external.load() }
+        viewModelScope.launch { models.states.collect { _active.value = models.activeModel()?.first?.id } }
+    }
+
+    fun setProvider(p: AiProvider) = external.setProvider(p)
+
+    fun setSource(index: Int) { models.setSourceIndex(index); _source.value = index }
+
+    fun customUrl(spec: ModelSpec): String? = models.customUrl(spec)
+
+    fun setCustomUrl(spec: ModelSpec, url: String?) = models.setCustomUrl(spec, url)
+
+    fun url(spec: ModelSpec): String = models.downloadUrl(spec)
 
     fun delete(spec: ModelSpec) {
         viewModelScope.launch {
@@ -87,6 +114,73 @@ class AiSettingsViewModel @Inject constructor(
 
     fun use(spec: ModelSpec) {
         models.setActive(spec)
+        _active.value = spec.id
         viewModelScope.launch { engine.release() }
     }
+}
+
+sealed interface ExternalTest {
+    data object Idle : ExternalTest
+    data object Running : ExternalTest
+    data class Ok(val models: List<String>) : ExternalTest
+    data class Failed(val code: String) : ExternalTest
+}
+
+/** The form for the optional OpenAI-compatible provider. Nothing is sent anywhere except the user's own "Test connection". */
+@HiltViewModel
+class ExternalAiViewModel @Inject constructor(
+    val settings: ExternalAiSettings,
+    private val client: OpenAiCompatibleClient,
+) : ViewModel() {
+    val ui: StateFlow<ExternalAiUi> = settings.state
+    private val _test = MutableStateFlow<ExternalTest>(ExternalTest.Idle)
+    val test: StateFlow<ExternalTest> = _test.asStateFlow()
+    private val _saved = MutableStateFlow(false)
+    val saved: StateFlow<Boolean> = _saved.asStateFlow()
+    private var job: Job? = null
+
+    init { viewModelScope.launch { settings.load() } }
+
+    /** Asks the server for its model list: proves the address and key work, and offers the names to pick from. */
+    fun testConnection(url: String, model: String, key: String) {
+        val ep = settings.draft(url, model.ifBlank { "-" }, key)
+        if (ep == null) { job?.cancel(); _test.value = ExternalTest.Failed("ext_url"); return }
+        run(ep)
+    }
+
+    /**
+     * Fetches the model list as soon as the address is valid, so the names appear without pressing anything. Sends no key that is
+     * still being typed (a half-typed address could be someone else's server); a stored key goes only to the server it was saved for.
+     */
+    fun autoLoad(url: String) {
+        val ep = settings.draft(url, "-", null)
+        if (ep == null) { job?.cancel(); _test.value = ExternalTest.Idle; return }
+        run(ep)
+    }
+
+    private fun run(ep: com.nathanhanapps.wayd.ai.ExternalEndpoint) {
+        job?.cancel()
+        _test.value = ExternalTest.Running
+        job = viewModelScope.launch {
+            _test.value = try {
+                ExternalTest.Ok(client.models(ep))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ExternalAiException) {
+                ExternalTest.Failed(e.code)
+            } catch (_: Exception) {
+                ExternalTest.Failed("ext_network")
+            }
+        }
+    }
+
+    fun save(url: String, model: String, key: String, onResult: (Boolean) -> Unit) = viewModelScope.launch {
+        val ok = settings.save(url, model, key.takeIf { it.isNotBlank() })
+        _saved.value = ok
+        onResult(ok)
+    }
+
+    fun acknowledge(on: Boolean) = viewModelScope.launch { settings.setAcknowledged(on) }
+
+    fun remove() = viewModelScope.launch { settings.clear(); _test.value = ExternalTest.Idle }
 }

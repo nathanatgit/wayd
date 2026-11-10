@@ -15,27 +15,55 @@ import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** A failed resource download with a stable, URL-free code (same vocabulary as the native `download` command). */
+class RoutingDownloadException(val code: String) : Exception(code)
+
 /** Only explicit UI download actions call this client. No URL or payload logging. */
 object RoutingDownloads {
+    /**
+     * Direct downloads use Android's own network stack (system DNS, per-app network policy, platform trust store) rather
+     * than the Go client. `readTimeout` acts as the stall watchdog: a transfer that delivers no bytes for 25 s fails.
+     */
     suspend fun fetch(address: String, limit: Int = 8 * 1024 * 1024): ByteArray = withContext(Dispatchers.IO) {
         var url = URL(address)
-        repeat(6) {
-            require(url.protocol == "https" && url.userInfo == null && url.host.isNotEmpty())
-            val connection = url.openConnection() as HttpURLConnection
-            connection.instanceFollowRedirects = false
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 30_000
-            try {
-                if (connection.responseCode in 300..399) {
-                    url = URL(url, requireNotNull(connection.getHeaderField("Location")))
-                } else {
-                    require(connection.responseCode in 200..299)
-                    require(connection.contentLengthLong <= limit)
-                    return@withContext connection.inputStream.use { readBounded(it, limit) }
-                }
-            } finally { connection.disconnect() }
+        try {
+            repeat(6) {
+                if (url.protocol != "https" || url.userInfo != null || url.host.isEmpty()) throw RoutingDownloadException("resource_url")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = 15_000
+                connection.readTimeout = 25_000
+                connection.setRequestProperty("User-Agent", "WAYD-Clash/1")
+                try {
+                    val code = connection.responseCode
+                    if (code in 300..399) {
+                        url = URL(url, connection.getHeaderField("Location") ?: throw RoutingDownloadException("resource_http_$code"))
+                    } else {
+                        if (code != 200) throw RoutingDownloadException("resource_http_$code")
+                        if (connection.contentLengthLong > limit) throw RoutingDownloadException("resource_too_large")
+                        val body = connection.inputStream.use { readBounded(it, limit) }
+                        if (body.isEmpty()) throw RoutingDownloadException("resource_empty")
+                        return@withContext body
+                    }
+                } finally { connection.disconnect() }
+            }
+            throw RoutingDownloadException("resource_redirects")
+        } catch (e: RoutingDownloadException) {
+            throw e
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw RoutingDownloadException(classify(e))
         }
-        error("redirect_limit")
+    }
+
+    private fun classify(e: Exception): String = when (e) {
+        is java.net.UnknownHostException -> "resource_dns"
+        is java.net.SocketTimeoutException -> "resource_timeout"
+        is javax.net.ssl.SSLException -> "resource_tls"
+        is java.net.ConnectException, is java.net.NoRouteToHostException -> "resource_connect"
+        is IllegalArgumentException -> "resource_too_large" // readBounded's limit check
+        else -> "resource_network"
     }
     fun readBounded(input: java.io.InputStream, limit: Int): ByteArray {
         val output = ByteArrayOutputStream()

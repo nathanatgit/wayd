@@ -8,7 +8,7 @@ WAYD (在干嘛, `com.nathanhanapps.wayd`) is a local-only Android privacy monit
 
 ## Non-negotiables
 
-1. **Local inspection and analysis.** Never add analytics, uploading crash-reporting, remote logging, or automatic uploads of captures/reports/AI analysis. App traffic forwarding and user-initiated model/database downloads are allowed; exports require user choice. Future optional routing must follow docs/14-OPTIONAL-ROUTING.md and must not expose inspection stores or override WAYD blocks. Routing is not implemented by this documentation change.
+1. **Local inspection and analysis.** Never add analytics, uploading crash-reporting, remote logging, or automatic uploads of captures/reports/AI analysis. App traffic forwarding and user-initiated model/database downloads are allowed; exports require user choice. Future optional routing must follow docs/14-OPTIONAL-ROUTING.md and must not expose inspection stores or override WAYD blocks. **Sole exception (Nat, 2026-11-11, D-046):** the optional OpenAI-compatible external AI provider. It is off by default, the server is chosen by the user, each server origin needs a recorded acknowledgement (`ConsentRecord`), and every analysis shows the exact masked text in an approval dialog before anything is sent (fail closed). Plain `http://` is accepted only for loopback/private-network hosts.
 2. **Rules decide, AI explains.** Never let model output set severity, verdict colour, block rules, consents or privileges.
 3. **No free-form shell.** Privileged operations go through the sealed `Command` allowlist in `privilege/`. Do not add `exec(String)` APIs.
 4. **`ai/` must not depend on `privilege/`, `rootcap/` or `mitm/`.** Its tools are read-only DB queries.
@@ -16,7 +16,7 @@ WAYD (在干嘛, `com.nathanhanapps.wayd`) is a local-only Android privacy monit
 6. **No identifiers or payloads in logs** in release builds.
 7. **`mitm/` and `rootcap/` are `research`-flavor only.** Don't reference them from `standard` code paths.
 8. **Never claim complete coverage** in UI copy. Coverage gaps are shown, not hidden.
-9. **Every dangerous feature is opt-in, per app, reversible, and recorded in `ConsentRecord`.**
+9. **Every dangerous feature is opt-in, per app, reversible, and recorded in `ConsentRecord`.** Sole exception (Nat, 2026-11-10, D-045): optional Clash routing in **blacklist** mode is one revocable global consent covering every single-package app of the user except the excluded ones, including apps installed later. Unknown/shared-UID traffic stays Direct and WAYD blocks still apply first.
 
 ## How Nat likes to work
 

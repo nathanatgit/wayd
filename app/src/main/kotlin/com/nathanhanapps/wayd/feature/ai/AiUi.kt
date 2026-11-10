@@ -101,7 +101,11 @@ fun AiOutcomeView(o: AiOutcome) {
         is AiOutcome.Success -> AiResultCard(o)
         is AiOutcome.Unreliable -> Message(stringResource(R.string.ai_unreliable), error = true)
         AiOutcome.NoModel -> Message(stringResource(R.string.ai_no_model), error = false)
-        is AiOutcome.Failed -> Message(stringResource(R.string.ai_failed, o.message.take(120)), error = true)
+        is AiOutcome.Failed -> Message(
+            stringResource(R.string.ai_failed, if (o.message.startsWith("ext_")) externalErrorLabel(o.message) else o.message.take(120)),
+            error = true,
+        )
+        AiOutcome.Declined -> Message(stringResource(R.string.xg_declined), error = false)
     }
 }
 
@@ -295,78 +299,3 @@ fun dataTypeLabel(t: DataType) = stringResource(
     },
 )
 
-/** Settings → On-device AI: pick, download and remove Gemma models. Everything downloaded stays on the phone. */
-@Composable
-fun AiSettingsSection(vm: AiSettingsViewModel = hiltViewModel()) {
-    val states by vm.states.collectAsStateWithLifecycle()
-    val ctx = LocalContext.current
-    val recommended = ModelCatalog.recommended(vm.ramGb)
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(stringResource(R.string.ai_settings_title), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-        Text(stringResource(R.string.ai_settings_intro), style = MaterialTheme.typography.bodyMedium)
-        Text(
-            stringResource(R.string.ai_settings_ram, "%.1f".format(vm.ramGb)) +
-                (recommended?.let { " · " + stringResource(R.string.ai_settings_recommended, it.displayName) } ?: " · " + stringResource(R.string.ai_settings_low_ram)),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        ModelCatalog.all.forEach { spec ->
-            ModelCard(spec, states[spec.id] ?: ModelState.NotInstalled, vm, ctx)
-        }
-    }
-}
-
-@Composable
-private fun ModelCard(spec: ModelSpec, state: ModelState, vm: AiSettingsViewModel, ctx: android.content.Context) {
-    var url by remember(spec.id) { mutableStateOf(vm.url(spec)) }
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                spec.displayName + " · " + Formatter.formatShortFileSize(ctx, spec.sizeBytes),
-                style = MaterialTheme.typography.titleSmall,
-            )
-            when (state) {
-                ModelState.NotInstalled, is ModelState.Failed -> {
-                    (state as? ModelState.Failed)?.let { Text(stringResource(R.string.ai_state_failed, it.reason), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                    Text(stringResource(R.string.ai_source), style = MaterialTheme.typography.labelMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        spec.sources.forEach { src ->
-                            OutlinedButton(onClick = { url = src.url; vm.setUrl(spec, src.url) }) { Text(src.label) }
-                        }
-                    }
-                    OutlinedTextField(
-                        value = url,
-                        onValueChange = { url = it; vm.setUrl(spec, it) },
-                        label = { Text(stringResource(R.string.ai_url)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Button(onClick = { ModelDownloads.start(ctx, spec, url) }, enabled = url.startsWith("https://")) {
-                        Text(stringResource(R.string.ai_download))
-                    }
-                }
-                is ModelState.Downloading -> {
-                    LinearProgressIndicator(progress = { (state.doneBytes.toFloat() / state.totalBytes.coerceAtLeast(1)).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
-                    Text(
-                        Formatter.formatShortFileSize(ctx, state.doneBytes) + " / " + Formatter.formatShortFileSize(ctx, state.totalBytes),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { ModelDownloads.cancel(ctx) }) { Text(stringResource(R.string.ai_cancel)) }
-                        OutlinedButton(onClick = { ModelDownloads.start(ctx, spec, url) }) { Text(stringResource(R.string.ai_resume)) }
-                    }
-                }
-                ModelState.Verifying -> Text(stringResource(R.string.ai_state_verifying), style = MaterialTheme.typography.bodyMedium)
-                is ModelState.Ready -> {
-                    Text(
-                        stringResource(if (vm.active == spec.id) R.string.ai_state_active else R.string.ai_state_installed),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (vm.active != spec.id) Button(onClick = { vm.use(spec) }) { Text(stringResource(R.string.ai_use)) }
-                        OutlinedButton(onClick = { vm.delete(spec) }) { Text(stringResource(R.string.ai_delete)) }
-                    }
-                }
-            }
-        }
-    }
-}

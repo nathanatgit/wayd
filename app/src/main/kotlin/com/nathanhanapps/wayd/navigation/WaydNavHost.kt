@@ -34,10 +34,11 @@ import com.nathanhanapps.wayd.feature.reports.CompanyScreen
 import com.nathanhanapps.wayd.feature.reports.ReportDetailScreen
 import com.nathanhanapps.wayd.feature.reports.ReportsScreen
 import com.nathanhanapps.wayd.feature.settings.SettingsScreen
+import com.nathanhanapps.wayd.feature.ai.ExternalAiGateDialog
 
 private enum class Tab(val route: String, @StringRes val label: Int, val icon: ImageVector, val children: List<String> = emptyList()) {
     Record("record", R.string.tab_record, Icons.Filled.Home),
-    Apps("apps", R.string.tab_traffic, Icons.AutoMirrored.Filled.List, listOf("app/", "messages/")),
+    Apps("apps", R.string.tab_traffic, Icons.AutoMirrored.Filled.List, listOf("apps?", "app/", "messages/", "connection/")),
     Reports("reports", R.string.tab_insights, Icons.Filled.DateRange, listOf("report/", "company/")),
     Tools("tools", R.string.tab_tools, Icons.Filled.Build, listOf("controls", "scanner", "settings")),
 }
@@ -68,11 +69,21 @@ fun WaydNavHost() {
             }
         },
     ) { padding ->
+        ExternalAiGateDialog()
         NavHost(nav, startDestination = Tab.Record.route, modifier = Modifier.padding(padding)) {
             composable(Tab.Record.route) {
-                RecordScreen(onOpenControls = { nav.navigate("controls") }, onOpenReports = { nav.navigate(Tab.Reports.route) })
+                RecordScreen(
+                    onOpenControls = { nav.navigate("controls") },
+                    onOpenReports = { nav.navigate(Tab.Reports.route) { launchSingleTop = true } },
+                    onOpenConnections = { nav.navigate("apps?view=connections") { popUpTo(nav.graph.findStartDestination().id); launchSingleTop = true } },
+                )
             }
-            composable(Tab.Reports.route) { ReportsScreen(onOpenDay = { nav.navigate("report/$it") }) }
+            composable(Tab.Reports.route) {
+                ReportsScreen(
+                    onOpenApp = { pkg, win -> nav.navigate("app/$pkg/$win") },
+                    onOpenCompany = { name, win -> nav.navigate("company/${android.net.Uri.encode(name)}/$win") },
+                )
+            }
             composable("report/{win}", listOf(navArgument("win") { type = NavType.StringType })) {
                 ReportDetailScreen(
                     onBack = { nav.popBackStack() },
@@ -83,13 +94,18 @@ fun WaydNavHost() {
             composable("company/{name}/{win}", listOf(navArgument("name") { type = NavType.StringType }, navArgument("win") { type = NavType.StringType })) {
                 CompanyScreen(onBack = { nav.popBackStack() }, onOpenApp = { pkg, win -> nav.navigate("app/$pkg/$win") })
             }
-            composable(Tab.Apps.route) { AppsScreen(onOpenApp = { pkg, win -> nav.navigate("app/$pkg/$win") }) }
+            composable("apps?view={view}", listOf(navArgument("view") { type = NavType.StringType; defaultValue = "apps" })) { entry ->
+                com.nathanhanapps.wayd.feature.traffic.TrafficScreen(entry.arguments?.getString("view").orEmpty(), onOpenApp = { pkg, win -> nav.navigate("app/$pkg/$win") }, onOpenConnection = { id -> nav.navigate("connection/$id") })
+            }
             composable(Tab.Tools.route) {
                 com.nathanhanapps.wayd.feature.tools.ToolsScreen(
                     onOpenRules = { nav.navigate("controls") },
                     onOpenScanner = { nav.navigate("scanner") },
                     onOpenSettings = { nav.navigate("settings") },
                 )
+            }
+            composable("connection/{id}", listOf(navArgument("id") { type = NavType.LongType })) {
+                com.nathanhanapps.wayd.feature.traffic.ConnectionDetailScreen(onBack = { nav.popBackStack() }, onOpenApp = { pkg, win -> nav.navigate("app/$pkg/$win") })
             }
             composable("controls") {
                 com.nathanhanapps.wayd.feature.controls.ControlsScreen(onOpenApp = { pkg -> nav.navigate("app/${android.net.Uri.encode(pkg)}/today") })
@@ -103,7 +119,15 @@ fun WaydNavHost() {
             composable("messages/{pkg}/{win}", listOf(navArgument("pkg") { type = NavType.StringType }, navArgument("win") { type = NavType.StringType })) {
                 InspectorScreen(onBack = { nav.popBackStack() })
             }
-            composable("settings") { SettingsScreen() }
+            composable("settings") {
+                SettingsScreen(onOpenAi = { nav.navigate("settings/ai") }, onOpenAccess = { nav.navigate("settings/access") }, onOpenResearch = { nav.navigate("settings/research") })
+            }
+            composable("settings/ai") {
+                com.nathanhanapps.wayd.feature.ai.AiSettingsScreen(onBack = { nav.popBackStack() }, onOpenExternal = { nav.navigate("settings/ai/external") })
+            }
+            composable("settings/ai/external") { com.nathanhanapps.wayd.feature.ai.ExternalAiScreen(onBack = { nav.popBackStack() }) }
+            composable("settings/access") { com.nathanhanapps.wayd.feature.settings.AccessSettingsScreen(onBack = { nav.popBackStack() }) }
+            composable("settings/research") { com.nathanhanapps.wayd.feature.settings.ResearchSettingsScreen(onBack = { nav.popBackStack() }) }
         }
     }
 }

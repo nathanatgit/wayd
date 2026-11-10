@@ -51,7 +51,6 @@ class AppDetailViewModel @Inject constructor(
     private val analysis: AnalysisService,
     val labels: AppLabels,
     private val permissionService: PermissionHistoryService,
-    private val exporter: com.nathanhanapps.wayd.feature.export.ExportService,
     private val messageDao: com.nathanhanapps.wayd.core.db.MessageDao,
     savedState: SavedStateHandle,
 ) : ViewModel() {
@@ -81,9 +80,7 @@ class AppDetailViewModel @Inject constructor(
         viewModelScope.launch { _permissions.value = permissionService.forApp(pkg, windowKey) }
     }
 
-    fun exportName() = exporter.appFileName(pkg)
 
-    suspend fun export(target: android.net.Uri) = exporter.exportApp(pkg, windowKey, target)
 
     fun requestShizuku() = permissionService.requestAccess()
 
@@ -97,10 +94,40 @@ class AppDetailViewModel @Inject constructor(
     suspend fun flows(ids: List<Long>): List<Flow> = analysis.flowsByIds(ids)
 }
 
+/**
+ * Insights tab: one report for the selected window. Nothing here observes the Flow table (that re-ran full scans on every
+ * VPN flush); data is (re)loaded on resume and window change, and the analysis itself is cached in [AnalysisService].
+ */
 @HiltViewModel
-class ReportsViewModel @Inject constructor(flowDao: FlowDao) : ViewModel() {
-    val days: StateFlow<List<DayRow>> = flowDao.observeDays(60)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+class ReportsViewModel @Inject constructor(
+    private val flowDao: FlowDao,
+    private val analysis: AnalysisService,
+    val labels: AppLabels,
+) : ViewModel() {
+    val window = MutableStateFlow(Windows.TODAY)
+    val days = MutableStateFlow<List<DayRow>>(emptyList())
+    private val _report = MutableStateFlow<Loadable<DailyReport>>(Loadable.Loading)
+    val report: StateFlow<Loadable<DailyReport>> = _report
+    private var job: kotlinx.coroutines.Job? = null
+
+    fun select(key: String) {
+        if (key == window.value && _report.value is Loadable.Ready) return
+        window.value = key
+        load(showLoading = true)
+    }
+
+    fun refresh() {
+        viewModelScope.launch { days.value = withContext(kotlinx.coroutines.Dispatchers.IO) { flowDao.days(60) } }
+        load(showLoading = _report.value !is Loadable.Ready)
+    }
+
+    private fun load(showLoading: Boolean) {
+        job?.cancel()
+        job = viewModelScope.launch {
+            if (showLoading) _report.value = Loadable.Loading
+            _report.value = Loadable.Ready(analysis.analyse(window.value).report)
+        }
+    }
 }
 
 @HiltViewModel

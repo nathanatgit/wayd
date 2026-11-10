@@ -72,7 +72,7 @@ fun AppDetailScreen(onBack: () -> Unit, onOpenMessages: (pkg: String, window: St
             }
         }
         androidx.compose.material3.TextButton(onClick = { onOpenScanner(vm.pkg) }) { Text(stringResource(R.string.apk_title)) }
-        com.nathanhanapps.wayd.feature.export.ExportButton(stringResource(R.string.export_app), vm::exportName, Modifier.fillMaxWidth()) { vm.export(it) }
+        com.nathanhanapps.wayd.feature.export.ExportButton(com.nathanhanapps.wayd.feature.export.ExportScope.App(vm.pkg, vm.windowKey), stringResource(R.string.connections_export), Modifier.fillMaxWidth())
         when (val s = state) {
             Loadable.Loading -> Text("…")
             is Loadable.Ready -> {

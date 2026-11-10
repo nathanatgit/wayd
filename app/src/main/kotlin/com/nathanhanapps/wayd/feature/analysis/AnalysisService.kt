@@ -21,6 +21,7 @@ import com.nathanhanapps.wayd.core.db.PermEventDao
 import com.nathanhanapps.wayd.enrich.TrackerDb
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.ZoneId
@@ -60,8 +61,27 @@ class AnalysisService @Inject constructor(
 ) {
     private val engine = RuleEngine()
     private val tracker = TrackerDb()
+    private val lock = kotlinx.coroutines.sync.Mutex()
+    private class Cached(val maxId: Long, val at: Long, val result: AnalysisResult)
+    private val cache = HashMap<String, Cached>()
 
+    /**
+     * Cached per window: Traffic, Insights and app detail share one result instead of each re-running every rule. A result is
+     * reused while no new flow has been saved, or for [FRESH_MS] while recording keeps adding flows.
+     */
     suspend fun analyse(windowKey: String): AnalysisResult = withContext(Dispatchers.IO) {
+        lock.withLock {
+            val maxId = flows.maxId()
+            val now = android.os.SystemClock.elapsedRealtime()
+            cache[windowKey]?.let { c -> if (c.maxId == maxId || now - c.at < FRESH_MS) return@withLock c.result }
+            compute(windowKey).also { cache[windowKey] = Cached(maxId, now, it) }
+        }
+    }
+
+    /** Drops cached results, e.g. after history was cleared. */
+    suspend fun invalidate() = lock.withLock { cache.clear() }
+
+    private suspend fun compute(windowKey: String): AnalysisResult {
         val (start, end) = Windows.resolve(windowKey)
         // Flows recorded before a hostname/company was known get enriched now (cheap: per distinct host).
         flows.hostsWithoutCompany().forEach { h ->
@@ -75,7 +95,7 @@ class AnalysisService @Inject constructor(
         val found = engine.run(ctx)
         findings.deleteBetween(start, end)
         findings.insertAll(found)
-        AnalysisResult(
+        return AnalysisResult(
             DailyReportBuilder.build(ctx, found, engine, tracker),
             AppReportBuilder.buildAll(ctx, found, engine, tracker),
         )
@@ -103,6 +123,7 @@ class AnalysisService @Inject constructor(
 
     private companion object {
         val EVIDENCE = Regex("([fpm]):(\\d+)")
+        const val FRESH_MS = 20_000L
     }
 }
 
@@ -110,17 +131,21 @@ class AnalysisService @Inject constructor(
 @Singleton
 class AppLabels @Inject constructor(@ApplicationContext private val context: Context) {
     private val pm = context.packageManager
-    private val labels = HashMap<String, String>()
-    private val icons = HashMap<String, ImageBitmap?>()
+    private val labels = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val icons = java.util.concurrent.ConcurrentHashMap<String, java.util.Optional<ImageBitmap>>()
 
     fun label(pkg: String): String = labels.getOrPut(pkg) {
         runCatching { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
     }
 
+    /** Already-decoded icon, or null if it has not been loaded yet (never blocks). */
+    fun cachedIcon(pkg: String): ImageBitmap? = icons[pkg]?.orElse(null)
+
+    /** Decodes on first use; call from a background dispatcher (see [AppIcon]). */
     fun icon(pkg: String): ImageBitmap? = icons.getOrPut(pkg) {
-        runCatching {
+        java.util.Optional.ofNullable(runCatching {
             val d: Drawable = pm.getApplicationIcon(pkg)
             d.toBitmap(96, 96).asImageBitmap()
-        }.getOrNull()
-    }
+        }.getOrNull())
+    }.orElse(null)
 }

@@ -15,8 +15,8 @@ android {
         applicationId = "com.nathanhanapps.wayd"
         minSdk = 29
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.2.0"
+        versionCode = 6
+        versionName = "0.3.0"
         // WAYD's native libraries are built for 64-bit ARM phones only.
         ndk { abiFilters += "arm64-v8a" }
         (project.findProperty("appIdSuffix") as String?)?.let { applicationIdSuffix = it }

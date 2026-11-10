@@ -2,14 +2,13 @@ package com.nathanhanapps.wayd.feature.record
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nathanhanapps.wayd.capture.BlockingRules
 import com.nathanhanapps.wayd.capture.CaptureController
 import com.nathanhanapps.wayd.capture.CaptureState
 import com.nathanhanapps.wayd.capture.CaptureUi
 import com.nathanhanapps.wayd.capture.TrafficRecording
-import com.nathanhanapps.wayd.capture.BlockingRules
-import com.nathanhanapps.wayd.core.db.CoverageCounts
-import com.nathanhanapps.wayd.core.db.Flow
-import com.nathanhanapps.wayd.core.db.FlowDao
+import com.nathanhanapps.wayd.feature.common.SpeedSamples
+import com.nathanhanapps.wayd.feature.common.speedSamples
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -17,27 +16,19 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** Home only reads in-memory VPN state; it deliberately observes no database table. */
 @HiltViewModel
 class RecordViewModel @Inject constructor(
     state: CaptureState,
-    flowDao: FlowDao,
     private val controller: CaptureController,
-    private val exporter: com.nathanhanapps.wayd.feature.export.ExportService,
     val recording: TrafficRecording,
     val blocking: BlockingRules,
     val routing: com.nathanhanapps.wayd.capture.RoutingSettings,
 ) : ViewModel() {
     val ui: StateFlow<CaptureUi> = state.ui
 
-    val recent: StateFlow<List<Flow>> = flowDao.observeRecent(5)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    val coverage: StateFlow<CoverageCounts> = flowDao.observeCoverage()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CoverageCounts(0, 0, 0, 0))
-
-    fun exportName() = exporter.captureFileName()
-
-    suspend fun exportCapture(target: android.net.Uri) = exporter.exportLatestCapture(target)
+    /** Runs only while Home is on screen. */
+    val speed: StateFlow<SpeedSamples> = speedSamples(state).stateIn(viewModelScope, SharingStarted.WhileSubscribed(2_000), SpeedSamples())
 
     fun start() = controller.start()
 

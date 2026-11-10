@@ -29,6 +29,9 @@ interface SessionDao {
     @Query("SELECT COUNT(*) FROM Session")
     suspend fun count(): Int
 
+    @Query("SELECT * FROM Session ORDER BY id")
+    suspend fun all(): List<Session>
+
     @Query("SELECT * FROM Session ORDER BY id DESC LIMIT 1")
     suspend fun latest(): Session?
 }
@@ -37,6 +40,9 @@ interface SessionDao {
 interface MessageDao {
     @Insert
     suspend fun insertAll(messages: List<Message>)
+
+    @Query("SELECT * FROM Message WHERE flowId IN (:flowIds) ORDER BY flowId, ts, id")
+    suspend fun forFlowIds(flowIds: List<Long>): List<Message>
 
     @Query("SELECT * FROM Message WHERE flowId = :flowId ORDER BY ts, id")
     suspend fun forFlow(flowId: Long): List<Message>
@@ -95,6 +101,30 @@ interface FlowDao {
 
     @Query("SELECT * FROM Flow ORDER BY startAt DESC LIMIT :limit")
     fun observeRecent(limit: Int): KFlow<List<Flow>>
+
+    /** One page of connection history, newest first, for the Connections list (loaded on demand, not observed). */
+    @Query("SELECT * FROM Flow WHERE startAt < :beforeStart OR (startAt = :beforeStart AND id < :beforeId) ORDER BY startAt DESC, id DESC LIMIT :limit")
+    suspend fun page(beforeStart: Long, beforeId: Long, limit: Int): List<Flow>
+
+    @Query("SELECT * FROM Flow WHERE id = :id")
+    suspend fun byId(id: Long): Flow?
+
+    /** Keyset-paged flows in time order for exports: after (startAt,id), inside [from,to), optionally one session (negative = any). */
+    @Query(
+        "SELECT * FROM Flow WHERE (startAt > :afterStart OR (startAt = :afterStart AND id > :afterId)) AND startAt >= :from AND startAt < :to " +
+            "AND (:session < 0 OR sessionId = :session) ORDER BY startAt, id LIMIT :limit",
+    )
+    suspend fun exportChunk(afterStart: Long, afterId: Long, from: Long, to: Long, session: Long, limit: Int): List<Flow>
+
+    /** Cheap change marker (rowid lookup): a new value means flows were saved since the last read. */
+    @Query("SELECT COALESCE(MAX(id), 0) FROM Flow")
+    suspend fun maxId(): Long
+
+    @Query(
+        "SELECT strftime('%Y-%m-%d', startAt / 1000, 'unixepoch', 'localtime') AS day, COUNT(*) AS flows " +
+            "FROM Flow GROUP BY day ORDER BY day DESC LIMIT :limit",
+    )
+    suspend fun days(limit: Int): List<DayRow>
 
     @Query("SELECT COUNT(*) FROM Flow WHERE sessionId = :sessionId")
     suspend fun countForSession(sessionId: Long): Int
@@ -200,6 +230,9 @@ interface DnsDao {
 
     @Query("SELECT * FROM DnsRecord WHERE sessionId = :sessionId ORDER BY ts")
     suspend fun forSession(sessionId: Long): List<DnsRecord>
+
+    @Query("SELECT * FROM DnsRecord WHERE ts >= :start AND ts < :end ORDER BY ts")
+    suspend fun between(start: Long, end: Long): List<DnsRecord>
 
     @Query("SELECT * FROM DnsRecord WHERE uid IN (:uids) AND ts >= :start AND ts < :end ORDER BY ts")
     suspend fun forUids(uids: List<Int>, start: Long, end: Long): List<DnsRecord>

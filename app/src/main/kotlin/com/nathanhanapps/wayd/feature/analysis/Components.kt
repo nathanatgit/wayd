@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -93,13 +94,15 @@ fun categoryColor(c: TrackerCategory?): Color = when (c) {
 
 @Composable
 fun AppIcon(labels: AppLabels, pkg: String, size: Int = 40) {
-    val icon = labels.icon(pkg)
-    if (icon != null) {
-        Image(icon, contentDescription = null, modifier = Modifier.size(size.dp).clip(RoundedCornerShape(10.dp)))
+    // Decoding an icon is a package-manager call plus a bitmap render: keep it off the main thread.
+    val icon by androidx.compose.runtime.produceState(labels.cachedIcon(pkg), pkg) {
+        if (value == null) value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { labels.icon(pkg) }
+    }
+    val bitmap = icon
+    if (bitmap != null) {
+        Image(bitmap, contentDescription = null, modifier = Modifier.size(size.dp).clip(RoundedCornerShape(10.dp)))
     } else {
-        Box(Modifier.size(size.dp).clip(CircleShape).let { it }, contentAlignment = Alignment.Center) {
-            Surface(Modifier.size(size.dp), shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {}
-        }
+        Surface(Modifier.size(size.dp), shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceVariant) {}
     }
 }
 

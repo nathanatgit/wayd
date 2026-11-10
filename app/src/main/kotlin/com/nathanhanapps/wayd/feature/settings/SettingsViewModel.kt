@@ -2,6 +2,10 @@ package com.nathanhanapps.wayd.feature.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nathanhanapps.wayd.ai.AiProvider
+import com.nathanhanapps.wayd.ai.ExternalAiSettings
+import com.nathanhanapps.wayd.ai.ExternalAiUi
+import com.nathanhanapps.wayd.ai.ModelManager
 import com.nathanhanapps.wayd.core.db.DbHealth
 import com.nathanhanapps.wayd.feature.analysis.PermissionHistoryService
 import com.nathanhanapps.wayd.privilege.ShizukuState
@@ -23,9 +27,18 @@ sealed interface DbStatus {
 class SettingsViewModel @Inject constructor(
     private val health: DbHealth,
     private val rootProbe: RootProbe,
+    private val models: ModelManager,
+    external: ExternalAiSettings,
     permissions: PermissionHistoryService,
 ) : ViewModel() {
     val shizuku: StateFlow<ShizukuState> = permissions.state
+    val ai: StateFlow<ExternalAiUi> = external.state
+
+    /** Short summary for the AI row: the provider in use and its model. The templates take the model name as `%s`. */
+    fun aiSummary(ext: ExternalAiUi, none: String, onDevice: String, external: String): String = when {
+        ext.provider == AiProvider.EXTERNAL && ext.usable -> external.format(ext.model)
+        else -> models.activeModel()?.first?.let { onDevice.format(it.displayName) } ?: none
+    }
 
     private val _root = MutableStateFlow(rootProbe.last())
     val root: StateFlow<RootState> = _root.asStateFlow()
