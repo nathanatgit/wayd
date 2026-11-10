@@ -45,7 +45,7 @@ import com.nathanhanapps.wayd.feature.analysis.severityLabel
 fun ReportsScreen(onOpenDay: (String) -> Unit, vm: ReportsViewModel = hiltViewModel()) {
     val days by vm.days.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(stringResource(R.string.reports_title), style = MaterialTheme.typography.headlineMedium)
+        Text(stringResource(R.string.tab_insights), style = MaterialTheme.typography.headlineMedium)
         if (days.isEmpty()) {
             Text(stringResource(R.string.apps_empty_window), style = MaterialTheme.typography.bodyLarge)
         } else {
@@ -94,7 +94,7 @@ private fun ReportBody(
     val context = LocalContext.current
     fun name(pkg: String) = labels.label(pkg)
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { Text(stringResource(R.string.report_summary, r.appCount, r.domainCount, r.companyCount, r.trackerContacts), style = MaterialTheme.typography.bodyLarge) }
+        item { ReportDashboard(r, labels, window, onOpenApp, showCountries = com.nathanhanapps.wayd.feature.extensions.rememberClashInstalled()) }
 
         item { Text(stringResource(R.string.report_alerts), style = MaterialTheme.typography.titleMedium) }
         if (r.alerts.isEmpty()) item { Text(stringResource(R.string.report_no_alerts), style = MaterialTheme.typography.bodyMedium) }
@@ -133,14 +133,6 @@ private fun ReportBody(
         }
 
         item { Text(stringResource(R.string.report_countries_na), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline) }
-
-        item {
-            Text(stringResource(R.string.report_coverage), style = MaterialTheme.typography.titleMedium)
-            Text(
-                stringResource(R.string.report_coverage_text, r.coverage.flows, r.coverage.withPackagePct, r.coverage.withHostnamePct, r.coverage.measurableTcp),
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
     }
 }
 

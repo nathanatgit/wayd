@@ -5,12 +5,14 @@
 //! stream) must not be torn down just because one direction is quiet.
 
 use std::net::SocketAddr;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use ipstack::{IpStackTcpStream, IpStackUdpStream};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::net::{TcpSocket, UdpSocket};
 use tokio::time::timeout;
 
@@ -78,12 +80,13 @@ pub async fn tcp(id: u64, client: IpStackTcpStream, sink: EventSink, shared: Arc
     tcp_flow(id, client, src, dst, sink, shared).await;
 }
 
-async fn tcp_flow<S: AsyncRead + AsyncWrite + Unpin + Send>(id: u64, client: S, src: SocketAddr, dst: SocketAddr, sink: EventSink, shared: Arc<Shared>) {
+pub(crate) async fn tcp_flow<S: AsyncRead + AsyncWrite + Unpin + Send>(id: u64, client: S, src: SocketAddr, dst: SocketAddr, sink: EventSink, shared: Arc<Shared>) {
     let control = shared.blocking.open(id, dst.ip());
     tokio::select! {
         biased;
         d = control.cancelled() => {
             sink.policy(id, d);
+            sink.route(id, 3);
             sink.close(id, control.up.load(Ordering::Relaxed), control.down.load(Ordering::Relaxed));
         }
         _ = tcp_inner(id, client, src, dst, sink.clone(), shared.clone(), control.clone()) => {}
@@ -100,13 +103,14 @@ async fn tcp_inner<S: AsyncRead + AsyncWrite + Unpin + Send>(id: u64, mut client
     let up = control.up.clone();
     let down = control.down.clone();
 
-    if shared.blocking.active() && timeout(Duration::from_secs(1), control.owner_ready()).await.is_err() {
+    if (shared.blocking.active() || shared.routing_active()) && timeout(Duration::from_secs(1), control.owner_ready()).await.is_err() {
         sink.policy(id, shared.blocking.outcome(id, true));
+        sink.route(id, 4);
         sink.close(id, 0, 0);
         return;
     }
     let mut pre = Vec::new();
-    if shared.blocking.needs_host(id) {
+    if shared.blocking.needs_host(id) || shared.routing_needs_host(id) {
         // Reuse Kotlin's bounded, stream-aware SNI/HTTP parser. DATA arrives before any upstream dial.
         let _ = timeout(Duration::from_millis(600), async {
             let mut buf = [0u8; 4096];
@@ -127,6 +131,7 @@ async fn tcp_inner<S: AsyncRead + AsyncWrite + Unpin + Send>(id: u64, mut client
     let outcome = shared.blocking.outcome(id, false);
     sink.policy(id, outcome);
     if outcome.kind == 1 {
+        sink.route(id, 3);
         sink.close(id, 0, 0);
         return;
     }
@@ -138,7 +143,10 @@ async fn tcp_inner<S: AsyncRead + AsyncWrite + Unpin + Send>(id: u64, mut client
     let mut first = vec![0u8; TCP_CAPTURE];
     first[..pre.len()].copy_from_slice(&pre);
     let mut early: Option<usize> = if pre.is_empty() { None } else { Some(pre.len()) };
-    let connect_fut = connect(dst);
+    // Preserve this flow's selected metadata across research TLS fallback.
+    // Late host attribution must not turn a proxy failure into a Direct retry.
+    let route_metadata = shared.blocking.metadata(id);
+    let connect_fut = connect(dst, &shared, id, &sink, &route_metadata);
     tokio::pin!(connect_fut);
     let remote = loop {
         tokio::select! {
@@ -178,13 +186,13 @@ async fn tcp_inner<S: AsyncRead + AsyncWrite + Unpin + Send>(id: u64, mut client
                         }
                         crate::mitm::tls::Outcome::Fallback(replay) => {
                             // Nothing was sent to the app: continue as a plain relay, replaying what we consumed.
-                            if let Some(mut r2) = connect(dst).await {
+                            if let Some(mut r2) = connect(dst, &shared, id, &sink, &route_metadata).await {
                                 if r2.write_all(&replay).await.is_ok() {
                                     up.fetch_add(replay.len() as u64, Ordering::Relaxed);
                                     let act = Activity::new();
                                     act.touch();
                                     let (cr, cw) = tokio::io::split(rec);
-                                    let (rr, rw) = r2.into_split();
+                                    let (rr, rw) = tokio::io::split(r2);
                                     let _ = tokio::join!(
                                         pump(id, false, cr, rw, up.clone(), sink.clone(), TCP_CAPTURE, act.clone()),
                                         pump(id, true, rr, cw, down.clone(), sink.clone(), 0, act.clone()),
@@ -212,7 +220,7 @@ async fn tcp_inner<S: AsyncRead + AsyncWrite + Unpin + Send>(id: u64, mut client
             let act = Activity::new();
             act.touch();
             let (cr, cw) = tokio::io::split(client);
-            let (rr, rw) = remote.into_split();
+            let (rr, rw) = tokio::io::split(remote);
             let _ = tokio::join!(
                 pump(id, false, cr, rw, up.clone(), sink.clone(), captured0, act.clone()),
                 pump(id, true, rr, cw, down.clone(), sink.clone(), 0, act.clone()),
@@ -222,10 +230,46 @@ async fn tcp_inner<S: AsyncRead + AsyncWrite + Unpin + Send>(id: u64, mut client
     sink.close(id, up.load(Ordering::Relaxed), down.load(Ordering::Relaxed));
 }
 
-async fn connect(dst: SocketAddr) -> Option<tokio::net::TcpStream> {
-    let sock = if dst.is_ipv4() { TcpSocket::new_v4() } else { TcpSocket::new_v6() }.ok()?;
+trait Transport: AsyncRead + AsyncWrite + Unpin + Send {}
+impl<T: AsyncRead + AsyncWrite + Unpin + Send> Transport for T {}
+
+struct OutboundStream {
+    io: Box<dyn Transport>,
+    #[cfg(unix)]
+    _lease: Option<crate::routing::Lease>,
+}
+impl AsyncRead for OutboundStream {
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, b: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> { Pin::new(&mut *self.io).poll_read(cx, b) }
+}
+impl AsyncWrite for OutboundStream {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, b: &[u8]) -> Poll<std::io::Result<usize>> { Pin::new(&mut *self.io).poll_write(cx, b) }
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> { Pin::new(&mut *self.io).poll_flush(cx) }
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> { Pin::new(&mut *self.io).poll_shutdown(cx) }
+}
+
+async fn connect(dst: SocketAddr, shared: &Shared, id: u64, sink: &EventSink, metadata: &(String, String)) -> Option<OutboundStream> {
+    #[cfg(unix)]
+    if let Some(route) = &shared.routing {
+        let (owner, host) = metadata.clone();
+        if route.selected(&owner) {
+            return match route.dial(dst, owner, host, false).await {
+                Ok((fd, lease, kind)) => match crate::routing::stream(fd) {
+                    Ok(io) => { sink.route(id, kind); Some(OutboundStream { io: Box::new(io), _lease: Some(lease) }) },
+                    Err(_) => { sink.route(id, 4); None },
+                },
+                Err(kind) => { sink.route(id, kind); None },
+            };
+        }
+    }
+    let sock = match if dst.is_ipv4() { TcpSocket::new_v4() } else { TcpSocket::new_v6() } {
+        Ok(socket) => socket,
+        Err(_) => { sink.route(id, 4); return None; },
+    };
     let _ = sock.set_nodelay(true);
-    timeout(CONNECT_TIMEOUT, sock.connect(dst)).await.ok()?.ok()
+    match timeout(CONNECT_TIMEOUT, sock.connect(dst)).await {
+        Ok(Ok(io)) => { sink.route(id, 1); Some(OutboundStream { io: Box::new(io), #[cfg(unix)] _lease: None }) },
+        _ => { sink.route(id, 4); None },
+    }
 }
 
 /// Copies `from` to `to`, counting bytes and reporting the first `TCP_CAPTURE` bytes.
@@ -277,6 +321,7 @@ pub async fn udp(id: u64, client: IpStackUdpStream, sink: EventSink, shared: Arc
         biased;
         d = control.cancelled() => {
             sink.policy(id, d);
+            sink.route(id, 3);
             sink.close(id, control.up.load(Ordering::Relaxed), control.down.load(Ordering::Relaxed));
         }
         _ = udp_inner(id, client, src, dst, sink.clone(), shared.clone(), control.clone()) => {}
@@ -289,14 +334,15 @@ async fn udp_inner<S: AsyncRead + AsyncWrite + Unpin>(id: u64, client: S, src: S
     // QUIC (UDP 443) of an intercepted app is dropped so the app falls back to TCP+TLS, which can be intercepted.
     let decision = if shared.mitm_active() && dst.port() == 443 { Some(shared.register(id)) } else { None };
     sink.open(id, 17, src, dst);
-    let error = shared.blocking.active() && timeout(Duration::from_secs(1), control.owner_ready()).await.is_err();
+    let error = (shared.blocking.active() || shared.routing_active()) && timeout(Duration::from_secs(1), control.owner_ready()).await.is_err();
     let outcome = shared.blocking.outcome(id, error);
     sink.policy(id, outcome);
-    if outcome.kind == 1 || error { sink.close(id, 0, 0); return; }
+    if outcome.kind == 1 || error { sink.route(id, if error { 4 } else { 3 }); sink.close(id, 0, 0); return; }
     if let Some(rx) = decision {
         let drop_it = matches!(timeout(DECISION_WAIT, rx).await, Ok(Ok(true)));
         shared.forget(id);
         if drop_it {
+            sink.route(id, 3);
             sink.close(id, 0, 0);
             return;
         }
@@ -307,9 +353,7 @@ async fn udp_inner<S: AsyncRead + AsyncWrite + Unpin>(id: u64, client: S, src: S
     let is_dns = dst.port() == DNS_PORT;
     let limit = if is_dns { DNS_IDLE } else { UDP_IDLE };
 
-    let bind: SocketAddr = if dst.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" }.parse().unwrap();
-    if let Ok(sock) = UdpSocket::bind(bind).await {
-        if sock.connect(dst).await.is_ok() {
+    if let Some(sock) = connect_udp(dst, &shared, id, &sink).await {
             let sock = Arc::new(sock);
             let act = Activity::new();
             act.touch();
@@ -366,14 +410,111 @@ async fn udp_inner<S: AsyncRead + AsyncWrite + Unpin>(id: u64, client: S, src: S
             };
             // The flow ends when either side errors or the *whole flow* has been idle for `limit`.
             tokio::select! { _ = up_task => {}, _ = down_task => {} }
-        }
     }
     sink.close(id, up.load(Ordering::Relaxed), down.load(Ordering::Relaxed));
+}
+
+enum Datagram {
+    Direct(UdpSocket),
+    #[cfg(unix)]
+    Routed { socket: tokio::net::UnixDatagram, _lease: crate::routing::Lease },
+}
+impl Datagram {
+    async fn send(&self, b: &[u8]) -> std::io::Result<usize> {
+        match self { Self::Direct(s) => s.send(b).await, #[cfg(unix)] Self::Routed { socket, .. } => socket.send(b).await }
+    }
+    async fn recv(&self, b: &mut [u8]) -> std::io::Result<usize> {
+        match self { Self::Direct(s) => s.recv(b).await, #[cfg(unix)] Self::Routed { socket, .. } => socket.recv(b).await }
+    }
+}
+async fn connect_udp(dst: SocketAddr, shared: &Shared, id: u64, sink: &EventSink) -> Option<Datagram> {
+    #[cfg(unix)]
+    if let Some(route) = &shared.routing {
+        let (owner, host) = shared.blocking.metadata(id);
+        if route.selected(&owner) {
+            return match route.dial(dst, owner, host, true).await {
+                Ok((fd, lease, kind)) => match crate::routing::datagram(fd) {
+                    Ok(socket) => { sink.route(id, kind); Some(Datagram::Routed { socket, _lease: lease }) },
+                    Err(_) => { sink.route(id, 4); None },
+                },
+                Err(kind) => { sink.route(id, kind); None },
+            };
+        }
+    }
+    let bind = if dst.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" };
+    if let Ok(socket) = UdpSocket::bind(bind).await {
+        if socket.connect(dst).await.is_ok() { sink.route(id, 1); return Some(Datagram::Direct(socket)); }
+    }
+    sink.route(id, 4); None
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "android")]
+    #[tokio::test]
+    async fn android_fallback_keeps_the_original_route_when_host_arrives_late() {
+        let proxy = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let destination = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let profile = format!("proxies:\n - {{name: test, type: http, server: 127.0.0.1, port: {}}}\nrules: ['DOMAIN,late.test,DIRECT', 'MATCH,test']", proxy.local_addr().unwrap().port());
+        let route = crate::routing::Routing::new(profile.as_bytes(), "0:com.example.probe").unwrap();
+        let shared = Shared::with_routing(Some(route));
+        shared.blocking.open(1, destination.local_addr().unwrap().ip());
+        shared.blocking.info(1, "0:com.example.probe", false);
+        let original = shared.blocking.metadata(1);
+        let (sink, events) = EventSink::channel();
+        let server = tokio::spawn(async move {
+            for _ in 0..2 {
+                let (mut c, _) = timeout(Duration::from_secs(2), proxy.accept()).await.unwrap().unwrap();
+                let mut head = Vec::new(); let mut b = [0; 1];
+                while !head.ends_with(b"\r\n\r\n") { c.read_exact(&mut b).await.unwrap(); head.push(b[0]); assert!(head.len() < 2048); }
+                c.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await.unwrap();
+            }
+        });
+        drop(connect(destination.local_addr().unwrap(), &shared, 1, &sink, &original).await.unwrap());
+        shared.blocking.info(1, "late.test", true);
+        drop(connect(destination.local_addr().unwrap(), &shared, 1, &sink, &original).await.unwrap());
+        server.await.unwrap();
+        assert!(timeout(Duration::from_millis(100), destination.accept()).await.is_err());
+        assert_eq!(events.try_iter().filter(|e| e[4] == 8 && e[13] == 2).count(), 2);
+    }
+
+    #[cfg(target_os = "android")]
+    #[tokio::test]
+    async fn android_local_block_precedes_mihomo_and_proxy_error_never_dials_direct() {
+        for blocked in [true, false] {
+            let proxy = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let destination = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let profile = format!("proxies:\n - {{name: test, type: http, server: 127.0.0.1, port: {}}}\nrules: ['MATCH,test']", proxy.local_addr().unwrap().port());
+            let route = crate::routing::Routing::new(profile.as_bytes(), "0:com.example.probe").unwrap();
+            let shared = Shared::with_routing(Some(route));
+            assert!(shared.blocking.install(if blocked { "WAYD1\t1\n1\t0:com.example.probe\tAPP\t*" } else { "WAYD1\t1" }));
+            let (mut app, client) = tokio::io::duplex(1024);
+            let (sink, events) = EventSink::channel();
+            let local = shared.clone(); let dst = destination.local_addr().unwrap();
+            let task = tokio::spawn(async move { tcp_flow(1, client, "127.0.0.1:20000".parse().unwrap(), dst, sink, local).await });
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+            loop {
+                if events.try_iter().any(|e| e[4] == crate::events::OPEN) { break; }
+                assert!(tokio::time::Instant::now() < deadline); tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            shared.blocking.info(1, "0:com.example.probe", false);
+            app.write_all(b"not direct").await.unwrap();
+            if blocked {
+                assert!(timeout(Duration::from_millis(200), proxy.accept()).await.is_err());
+            } else {
+                let (mut server, _) = timeout(Duration::from_secs(2), proxy.accept()).await.unwrap().unwrap();
+                let mut b = [0; 1024]; let n = server.read(&mut b).await.unwrap();
+                assert!(std::str::from_utf8(&b[..n]).unwrap().starts_with("CONNECT "));
+                server.write_all(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n").await.unwrap();
+            }
+            timeout(Duration::from_secs(2), task).await.unwrap().unwrap();
+            assert!(timeout(Duration::from_millis(200), destination.accept()).await.is_err());
+            let all: Vec<_> = events.try_iter().collect();
+            assert!(all.iter().any(|e| e[4] == 8 && e[13] == if blocked { 3 } else { 4 }));
+        }
+    }
 
     #[tokio::test]
     async fn installing_a_rule_closes_an_existing_flow_and_preserves_counts() {

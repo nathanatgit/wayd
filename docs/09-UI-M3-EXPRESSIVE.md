@@ -105,5 +105,13 @@ AI entry points are contextual (selection action bar, finding card, app detail),
 
 ## Accessibility
 
+2026-11-10 Controls additions: reviewed persistent-rule JSON transfer and optional
+Clash profile import/app-consent/enable/delete. Routing edits are disabled while
+WAYD runs; import saves disabled and unsupported YAML is rejected. Home links to
+configuration and shows actual transport outcome counters. Both locales disclose
+the initial protocol/rule subset, numeric bootstrap, Direct scope, DNS gaps,
+same-UID boundary and credential handling. This supersedes the disabled future
+Clash placeholder; broader tab redesign is still unsettled.
+
 - Content descriptions on all icon buttons; charts have a text summary alternative.
 - Minimum touch target 48 dp; test with TalkBack and font scale 200%.

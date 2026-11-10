@@ -25,6 +25,7 @@ class RecordViewModel @Inject constructor(
     private val exporter: com.nathanhanapps.wayd.feature.export.ExportService,
     val recording: TrafficRecording,
     val blocking: BlockingRules,
+    val routing: com.nathanhanapps.wayd.capture.RoutingSettings,
 ) : ViewModel() {
     val ui: StateFlow<CaptureUi> = state.ui
 
@@ -42,5 +43,5 @@ class RecordViewModel @Inject constructor(
 
     fun stop() = controller.stop()
 
-    fun refreshRules() = viewModelScope.launch { runCatching { blocking.refresh() } }
+    fun refreshRules() = viewModelScope.launch { runCatching { blocking.refresh(); routing.refresh() } }
 }

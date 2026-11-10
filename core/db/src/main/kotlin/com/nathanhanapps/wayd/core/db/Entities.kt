@@ -181,7 +181,7 @@ data class AiAnalysis(
     val durationMs: Long,
 )
 
-@Entity
+@Entity(indices = [Index(value = ["portableId"], unique = true)])
 data class BlockRule(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val scope: BlockScope,
@@ -192,6 +192,9 @@ data class BlockRule(
     @ColumnInfo(defaultValue = "'HOST'") val matchKind: String = "HOST",
     @ColumnInfo(defaultValue = "''") val signingSha256: String = "",
     @ColumnInfo(defaultValue = "0") val userId: Int = 0,
+    val portableId: String? = null,
+    @ColumnInfo(defaultValue = "1") val portableRevision: Int = 1,
+    @ColumnInfo(defaultValue = "0") val needsImportReview: Boolean = false,
 )
 
 @Entity

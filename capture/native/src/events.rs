@@ -36,6 +36,9 @@ impl EventSink {
         (EventSink(tx), rx)
     }
 
+    /// Observed transport outcome: 1 Direct, 2 Proxied, 3 Blocked, 4 Error.
+    pub fn route(&self, id: u64, kind: u8) { self.send(8, id, &[kind]); }
+
     fn send(&self, ty: u8, id: u64, body: &[u8]) {
         let mut ev = Vec::with_capacity(13 + body.len());
         ev.extend_from_slice(&((13 + body.len()) as u32).to_be_bytes());

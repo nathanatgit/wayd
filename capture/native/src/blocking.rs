@@ -50,7 +50,7 @@ impl Policy {
     }
 }
 
-fn valid_owner(s: &str) -> bool {
+pub(crate) fn valid_owner(s: &str) -> bool {
     let Some((user, pkg)) = s.split_once(':') else { return false; };
     user.parse::<u32>().is_ok() && !pkg.is_empty() && pkg.len() <= 255 &&
         pkg.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'.' || c == b'_')
@@ -125,6 +125,10 @@ impl Blocking {
 
     pub fn close(&self, id: u64) { self.0.lock().unwrap().flows.remove(&id); }
     pub fn active(&self) -> bool { !self.0.lock().unwrap().policy.rules.is_empty() }
+
+    pub fn metadata(&self, id: u64) -> (String, String) {
+        self.0.lock().unwrap().flows.get(&id).map(|m| (m.owner.clone().unwrap_or_default(), m.host.clone().unwrap_or_default())).unwrap_or_default()
+    }
 
     pub fn info(&self, id: u64, value: &str, host: bool) {
         let mut s = self.0.lock().unwrap();

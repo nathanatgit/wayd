@@ -1,4 +1,46 @@
-# 14 · Optional proxy routing (planned)
+# 14 · Optional proxy routing
+
+## Current implementation · 2026-11-10
+
+An initial Mihomo v1.19.33 transport is now implemented beneath WAYD's VPN,
+disabled until explicit profile import, per-app consent and enablement. It is a
+bounded Clash subset, not arbitrary Clash/FlClash profile compatibility. See
+[supported fields and build/source notices](../routing/README.md). SOCKS5 and HTTP
+CONNECT, static first-entry select groups, package/exact-domain/domain-suffix/IP
+rules and explicit final MATCH are supported. No subscriptions, health probes,
+controllers, scripts, custom filesystem references, engine TUN or sniffing. Proxy
+bootstrap addresses must be numeric IPs; there is no bootstrap DNS resolver.
+
+Local blocks gate both TCP and UDP before adapter dispatch; TLS passthrough
+fallback uses the same adapter. Cancelled flows cancel pending proxy handshakes.
+The private C API passes only live numeric destination/protocol, approved owner,
+visible host and permitted bytes through Unix socketpairs. No listening port,
+inspection-store handle or CA key crosses that API. The library shares WAYD's
+UID; this is an API boundary, **not OS isolation**.
+
+Controls imports a local document, requests app selection/consent, encrypts the
+profile with Android Keystore AES-GCM in no-backup private storage, and saves it
+disabled. Enablement and edits require stopping WAYD. Delete destroys the file
+and key and revokes routing grants. Grants bind current profile/package/signers;
+package changes stop the routed VPN and startup revalidates all grants. Bad
+enabled configuration fails startup. Proxy failure never retries Direct.
+
+Only selected, attributable single-UID apps use profile routing. Unselected,
+unknown and shared-UID flows use the normal Direct relay, explicitly disclosed.
+DNS remains on the underlying network unless an attributable selected flow is
+routed; no encrypted-DNS/fake-IP/leak-protection claim. Existing IPv6 coverage
+gaps remain. Home/Controls show observed Direct/Proxied/Blocked/Error transport
+outcomes, including reconnect/fallback attempts, without storing routing history.
+
+Both app flavors build/lint. Android-native loopback tests cover the actual
+Mihomo/C/Rust boundary, block precedence, proxy failure, cancellation, TCP/UDP and
+proxy half-close. Installed-app document-picker, Keystore/consent and end-to-end
+VPN routing acceptance remain pending. Research response controls, full profile
+compatibility, GeoIP and a complete release distribution audit remain open.
+
+The requirements and earlier design text below remain the target contract;
+references to a planned/unimplemented extension describe the earlier baseline
+and are superseded by the implementation status above.
 
 WAYD is an on-device traffic inspector and control tool. Core inspection and planned M7 blocking work independently of proxy routing. Clash/FlClash-style features belong to an optional extension, disabled by default. This document defines requirements, not an existing integration; engine, packaging and API choices remain open.
 
@@ -52,3 +94,11 @@ WAYD JSON preserves persistent definitions, app identity, priority and bounded r
 A future Clash exporter is a labelled subset conversion, not a lossless backup. Host exact/suffix and IP/CIDR can translate where the selected dialect has equivalent semantics; per-app conjunctions require equivalent logical matching and verified Android package metadata. Never split app AND host into independent reject rules. Show a conversion report for temporary rules, response edits, consent bindings, regex differences and all other unsupported semantics; never silently drop them. DIRECT in a converted or imported profile never bypasses canonical local blocks. Refer to the chosen engine's actual [Mihomo rule semantics](https://wiki.metacubex.one/en/config/rules/), rather than assuming all Clash derivatives agree.
 
 GeoIP implementation remains scheduled after Clash integration, per Nat's instruction.
+
+## Extension resource and GeoIP continuation (2026-11-10)
+
+A native Compose optional extension now provides Dashboard, Profiles, Proxies, Connections, Rules, Events and Settings pages. Local picker accepts downloaded YAML irrespective of MIME. Encrypted multiple profiles, explicit subscription import, group/mode selection and app-consent review are implemented. The extension bundle accepts bounded anchors, upstream adapter protocols (including the user's SS/VLESS/VMess/Hysteria2/TUIC nodes), supported upstream groups, YAML/text domain/IP/classical providers and shared MMDB GEOIP rules. This supersedes the initial subset above only for extension bundles; the original strict legacy transport remains available.
+
+Resources are downloaded only on explicit import/update. The UI displays provider hosts and lets the user choose direct download or the first embedded proxy node, with no Direct fallback. GeoIP source is editable. One private validated country.mmdb serves routing and local Flow.country enrichment, even with proxy routing disabled. WAYD app flow details display the code. MMDB routing categories such as CLOUDFLARE are not presented as countries. No remote country lookup, inspection upload or new permissions.
+
+This remains partial FlClash parity: no actual Flutter UI, MRS/GEOSITE/ASN/subrules support, full profile DNS/fake-IP behavior, persistent subscription updates, complete live connection controls/event stream or automatic health scheduling. Explicit probe API exists; UI is not yet complete. Profile DNS/TUN/listener settings are overridden and disclosed because WAYD retains VPN ownership. Device acceptance of picker/download/consent/live VPN is still required. Do not describe this as full FlClash compatibility.

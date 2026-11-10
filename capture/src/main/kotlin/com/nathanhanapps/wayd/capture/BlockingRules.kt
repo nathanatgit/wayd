@@ -16,6 +16,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -24,6 +25,26 @@ data class BlockingState(
     val activeIds: Set<Long> = emptySet(),
     val running: Boolean = false,
 )
+
+/** Imported definitions cannot use an existing per-app grant before individual review. */
+internal fun BlockRule.canActivateAfterReview(): Boolean = !needsImportReview
+
+internal fun PortableBlockRule.pendingRule(userId: Int, createdAt: Long) = BlockRule(
+    scope = if (kind == "APP") BlockScope.APP else BlockScope.APP_HOST,
+    pkg = packageName, host = target, enabled = enabled,
+    createdAt = createdAt, matchKind = kind, signingSha256 = signers.joinToString(","), userId = userId,
+    portableId = id, portableRevision = revision, needsImportReview = true,
+)
+
+data class PolicyImportPlan(
+    val rules: List<PortableBlockRule>,
+    val existing: List<BlockRule>,
+    val conflicts: Int,
+    val missingIdentity: Int,
+    val mismatchedIdentity: Int,
+) {
+    val additions get() = rules.count { r -> existing.none { it.portableId == r.id } }
+}
 
 /** Owns consent, durable/session rules and the native handle lifetime. No network or privileged operations. */
 @Singleton
@@ -51,14 +72,14 @@ class BlockingRules @Inject constructor(
         publish(all, valid)
     } }
 
-    suspend fun startEngine(engine: NativeNet, fd: Int, mtu: Int): Long = withContext(Dispatchers.IO) { mutex.withLock {
+    suspend fun startEngine(engine: NativeNet, fd: Int, mtu: Int, routingProfile: ByteArray = byteArrayOf(), routingOwners: String = ""): Long = withContext(Dispatchers.IO) { mutex.withLock {
         temporary = emptyList()
         val all = dao.all()
         val valid = validRules(all)
         val h = synchronized(bridge) {
             check(handle == 0L)
-            check(engine.nativePolicyVersion() == 1) { "Incompatible native policy engine" }
-            engine.nativeStart(fd, mtu, wire(valid)).also {
+            check(engine.nativePolicyVersion() == 2) { "Incompatible native policy engine" }
+            engine.nativeStart(fd, mtu, wire(valid), routingProfile, routingOwners).also {
                 if (it != 0L) { net = engine; handle = it; installed = valid }
             }
         }
@@ -113,6 +134,7 @@ class BlockingRules @Inject constructor(
             scope = if (kind == "APP") BlockScope.APP else BlockScope.APP_HOST,
             pkg = pkg, host = target, enabled = true, createdAt = now,
             matchKind = kind, signingSha256 = signer, userId = userId,
+            portableId = if (persistent) UUID.randomUUID().toString() else null,
         )
         val old = installed
         var id = 0L
@@ -152,12 +174,90 @@ class BlockingRules @Inject constructor(
         publish(candidate, installed)
     } }
 
+    suspend fun exportPolicy(ids: Set<Long>, includeTargets: Boolean): ByteArray = withContext(Dispatchers.IO) { mutex.withLock {
+        require(ids.isNotEmpty() && ids.all { it > 0 })
+        val all = dao.all()
+        val selected = all.filter { it.id in ids }
+        require(selected.size == ids.size)
+        val assigned = selected.map { if (it.portableId == null) it.copy(portableId = UUID.randomUUID().toString()) else it }
+        val bytes = PolicyBackup.encode(assigned.map { r ->
+            val redact = r.matchKind != "APP" && (!includeTargets || r.host == null)
+            PortableBlockRule(r.portableId!!, r.portableRevision, r.enabled, r.pkg.orEmpty(),
+                r.signingSha256.split(',').filter { it.isNotEmpty() }.sorted(), r.matchKind,
+                if (redact) null else r.host, redact)
+        })
+        db.withTransaction { assigned.filter { r -> selected.first { it.id == r.id }.portableId == null }.forEach { dao.update(it) } }
+        publish(dao.all() + temporary, installed)
+        bytes
+    } }
+
+    suspend fun previewImport(bytes: ByteArray): PolicyImportPlan = withContext(Dispatchers.IO) { mutex.withLock {
+        val rules = PolicyBackup.decode(bytes)
+        require(rules.none { it.packageName == context.packageName })
+        val existing = dao.all() + temporary
+        val identities = rules.map { it.packageName }.distinct().associateWith { identity(it) }
+        PolicyImportPlan(rules, existing, rules.count { r -> existing.any { it.portableId == r.id } },
+            rules.count { identities[it.packageName] == null },
+            rules.count { identities[it.packageName] != null && identities[it.packageName] != it.signers.joinToString(",") })
+    } }
+
+    /** Merge only: existing UUIDs are kept. No grant is imported or created here. */
+    suspend fun importPolicy(plan: PolicyImportPlan): List<Long> = withContext(Dispatchers.IO) { mutex.withLock {
+        val all = dao.all() + temporary
+        check(all == plan.existing) { "Preview expired" }
+        val incoming = plan.rules.filter { r -> all.none { it.portableId == r.id } }
+        require(all.size + incoming.size <= PolicyBackup.MAX_RULES)
+        val ids = ArrayList<Long>()
+        db.withTransaction {
+            incoming.forEach { r ->
+                require(r.packageName != context.packageName)
+                ids += dao.insert(r.pendingRule(userId, System.currentTimeMillis()))
+            }
+        }
+        publish(dao.all() + temporary, installed)
+        ids.toList()
+    } }
+
+    suspend fun undoImport(ids: List<Long>) = withContext(Dispatchers.IO) { mutex.withLock {
+        val all = dao.all()
+        require(ids.isNotEmpty() && ids.all { id -> all.any { it.id == id && it.needsImportReview } })
+        db.withTransaction { ids.forEach { dao.delete(it) } }
+        publish(dao.all() + temporary, installed)
+    } }
+
+    /** User confirms this exact definition; a prior app grant never clears the review state. */
+    suspend fun approveImport(id: Long) = withContext(Dispatchers.IO) { mutex.withLock {
+        val all = dao.all() + temporary
+        val rule = all.single { it.id == id }
+        require(rule.needsImportReview && rule.userId == userId && rule.pkg != context.packageName)
+        val pkg = requireNotNull(rule.pkg)
+        require(rule.signingSha256.isNotEmpty() && identity(pkg) == rule.signingSha256)
+        val target = requireNotNull(rule.host)
+        require(when (rule.matchKind) {
+            "APP" -> target == "*"
+            "HOST" -> BlockTargets.host(target) == target
+            "IP" -> BlockTargets.ip(target) != null
+            else -> false
+        })
+        val reviewed = rule.copy(needsImportReview = false)
+        val candidate = all.map { if (it.id == id) reviewed else it }
+        val old = installed
+        try {
+            db.withTransaction {
+                dao.update(reviewed)
+                db.consentDao().upsert(ConsentRecord(feature(pkg), 1, System.currentTimeMillis(), null))
+                install(validRules(candidate))
+            }
+        } catch (e: Exception) { install(old); throw e }
+        publish(candidate, installed)
+    } }
+
     private suspend fun validRules(all: List<BlockRule>): List<BlockRule> {
         val identities = HashMap<String, String?>()
         val consents = HashMap<String, Boolean>()
         return all.filter { r ->
             val pkg = r.pkg ?: return@filter false
-            r.enabled && r.userId == userId && pkg != context.packageName &&
+            r.enabled && r.canActivateAfterReview() && r.userId == userId && pkg != context.packageName &&
                 r.signingSha256.isNotEmpty() && identities.getOrPut(pkg) { identity(pkg) } == r.signingSha256 &&
                 consents.getOrPut(pkg) { dao.consent(feature(pkg))?.let { it.statementVersion == 1 && it.revokedAt == null } == true } &&
                 when (r.matchKind) { "APP" -> r.host == "*"; "HOST" -> BlockTargets.host(r.host.orEmpty()) == r.host;

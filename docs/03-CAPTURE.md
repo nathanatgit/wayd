@@ -96,3 +96,13 @@ App/IP gates now precede upstream TCP dialing or UDP forwarding. Native policy s
 A capability-version check prevents starting an older native library without policy enforcement. Policy mutation and native-handle destruction are serialized; only the polling thread destroys its engine after the final poll. See [13-BLOCKING.md](13-BLOCKING.md).
 
 Shutdown owns relays in a JoinSet: signal the accept loop, abort/drain relays while their TCP protocol tasks can still run, then drop the stack and stop the runtime. IpStack TCP destructors synchronously wait for protocol tasks; shutting the runtime down first can leave native threads and the duplicated TUN open. Cleanup waits at most two seconds for the owner task, then one second for runtime shutdown. This work stays on the polling thread, serialized with policy JNI calls. See D-035 and the Android-native lifecycle regression in [12-TESTING.md](12-TESTING.md).
+
+Optional routing now passes the immutable profile/app grant snapshot into native
+start before accepting flows (JNI capability version 2). A private version-1
+transport ABI loads pinned Mihomo outbound adapters. Local blocks remain first;
+selected apps' TCP/UDP and research passthrough fallback use the same adapter.
+Unix socketpair ownership and explicit leases cancel pending dials and close
+transport resources on flow/VPN teardown. Route outcome event 8 carries one byte
+(1 Direct, 2 Proxied, 3 Blocked, 4 Error); session aggregate counters remain live
+even when inspection recording is off. No route-history schema was added. See
+[routing scope and DNS limitations](14-OPTIONAL-ROUTING.md).

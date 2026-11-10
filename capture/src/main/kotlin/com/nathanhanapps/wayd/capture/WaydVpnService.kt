@@ -50,10 +50,15 @@ class WaydVpnService : VpnService() {
     @Inject lateinit var interceptHook: InterceptHook
     @Inject lateinit var blocking: BlockingRules
     @Inject lateinit var recording: TrafficRecording
+    @Inject lateinit var routing: RoutingSettings
+    @Inject lateinit var geoIp: RoutingGeoIp
 
     private val policyScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val packageChanges = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            // Stop rather than transferring an active routing grant to a changed
+            // installation/UID. Fresh startup revalidates every selected signer.
+            if (routing.affected(intent.data?.schemeSpecificPart)) stopCapture()
             policyScope.launch { runCatching { blocking.refresh() } }
         }
     }
@@ -121,7 +126,10 @@ class WaydVpnService : VpnService() {
             return
         }
         val net = NativeNet()
-        val h = runCatching { runBlocking { blocking.startEngine(net, tun.fd, MTU) } }.getOrDefault(0L)
+        val h = runCatching { runBlocking {
+            val route = routing.prepare()
+            blocking.startEngine(net, tun.fd, MTU, route.profile, route.owners)
+        } }.getOrDefault(0L)
         if (h == 0L) {
             tun.close()
             fail()
@@ -211,9 +219,11 @@ class WaydVpnService : VpnService() {
             policyOwner = blocking::owner,
             policyHost = blocking::host,
             recording = { recording.window },
+            country = geoIp::country,
         )
         val buf = ByteArray(POLL_BUF)
         var lastFlush = SystemClock.elapsedRealtime()
+        var routeStats = RouteStats()
         var lastNotify = 0L
         try {
             while (running) {
@@ -221,6 +231,8 @@ class WaydVpnService : VpnService() {
                 if (n < 0) break
                 if (n > 0) {
                     for (ev in NativeEvents.decode(buf, n)) {
+                        state.observe(ev)
+                        if (ev is NativeEvent.Route) routeStats = routeStats.add(ev.kind)
                         // One bad flow must not stop recording; nothing about the flow is logged.
                         runCatching { t.onEvent(ev) }
                     }
@@ -229,6 +241,8 @@ class WaydVpnService : VpnService() {
                 if (now - lastFlush >= FLUSH_MS) {
                     sink.flush()
                     state.set(t.stats())
+                    state.setRoutes(routeStats)
+                    state.publishConnections()
                     lastFlush = now
                     if (now - lastNotify >= NOTIFY_MS) {
                         promote(t.stats().flows, t.stats().apps)
@@ -241,6 +255,8 @@ class WaydVpnService : VpnService() {
                 t.finishAll()
                 sink.flush()
                 state.set(t.stats())
+                state.setRoutes(routeStats)
+                    state.publishConnections()
             } finally {
                 runBlocking { blocking.stopEngine() }
                 if (running) {

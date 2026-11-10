@@ -170,7 +170,7 @@ private fun FindingRow(f: Finding, vm: AppDetailViewModel, context: android.cont
                 }
                 evidence.flows.forEach { e ->
                     Text(
-                        "${fmt.format(Date(e.startAt))}  ${e.host ?: e.dstIp}:${e.dstPort}  ${e.proto.name}  ↑${fmtBytes(context, e.bytesUp)} ↓${fmtBytes(context, e.bytesDown)}",
+                        "${fmt.format(Date(e.startAt))}  ${e.host ?: e.dstIp}:${e.dstPort}  ${e.country.orEmpty()}  ${e.proto.name}  ↑${fmtBytes(context, e.bytesUp)} ↓${fmtBytes(context, e.bytesDown)}",
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }

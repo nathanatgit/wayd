@@ -8,6 +8,8 @@
 
 pub mod events;
 pub mod blocking;
+#[cfg(unix)]
+mod routing;
 
 #[cfg(feature = "mitm")]
 pub mod mitm;

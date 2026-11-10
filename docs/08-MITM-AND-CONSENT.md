@@ -55,3 +55,11 @@ Statement versions are integers; changing text → bump version → re-consent r
 ## Legal note (non-binding)
 
 This is not legal advice. Review PIPL (个人信息保护法) and local rules before public distribution; keep all processing on-device and avoid collecting anything about the developer side.
+
+## Combined HTTPS inspection and optional routing (2026-11-10)
+
+The integrated Clash extension uses WAYD's VPN; running a separate Clash/FlClash Android VPN replaces WAYD's VPN and is not a supported coexistence setup. Within WAYD, local blocks gate forwarding, routing chooses the upstream stream, and research MITM performs server-authenticated TLS over that same stream. Successful optional routing does not bypass interception. TLS fallback keeps the original selected routing metadata and does not silently switch a failed proxy to Direct.
+
+Decrypted messages require the research build, active decryption consent, explicit app selection and app trust in the local CA. Saved inspection additionally requires Record traffic on. A Proxied outcome, captured SNI/bytes or a successful Google request alone is not evidence of decryption: require TLS_INTERCEPTED plus MESSAGE events for plaintext request and response. The current MITM parser negotiates HTTP/1.1 over TCP; QUIC/HTTP3, certificate pinning, rejected user CA and existing exclusion/IPv6 gaps must remain visible as coverage limits.
+
+Android-native combined regression android_mihomo_routing_and_https_decryption_capture_both_messages exercises the actual relay, a Mihomo HTTP CONNECT adapter, a TLS origin, explicit flow approval and both captured plaintext messages. Optional ignored android_live_google_via_mihomo_is_decrypted accepts an explicitly supplied private profile and live Google IPv4:443 fixture. It requests only public www.google.com/robots.txt without account/cookies, validates upstream TLS against public roots, asserts Proxied with no Direct outcome, TLS_INTERCEPTED, captured request and Google response body. This is bounded native engine evidence; it does not replace installed VpnService/CA/ConsentRecord/Room acceptance.

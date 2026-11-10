@@ -42,16 +42,14 @@ import javax.inject.Inject
 
 /** Apps tab: every app that did something in the window, busiest first, with who it talks to. */
 @Composable
-fun AppsScreen(onOpenApp: (pkg: String, window: String) -> Unit, onOpenScanner: () -> Unit, onOpenControls: () -> Unit, vm: AppsViewModel = hiltViewModel(), labelsHolder: LabelsHolder = hiltViewModel()) {
+fun AppsScreen(onOpenApp: (pkg: String, window: String) -> Unit, vm: AppsViewModel = hiltViewModel(), labelsHolder: LabelsHolder = hiltViewModel()) {
     val window by vm.window.collectAsStateWithLifecycle()
     val result by vm.result.collectAsStateWithLifecycle()
     val labels = labelsHolder.labels
     val context = LocalContext.current
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(stringResource(R.string.apps_title), style = MaterialTheme.typography.headlineMedium)
-        androidx.compose.material3.TextButton(onClick = onOpenScanner) { Text(stringResource(R.string.apk_title)) }
-        androidx.compose.material3.TextButton(onClick = onOpenControls) { Text(stringResource(R.string.control_title)) }
+        Text(stringResource(R.string.tab_traffic), style = MaterialTheme.typography.headlineMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(Windows.TODAY to R.string.window_today, Windows.YESTERDAY to R.string.window_yesterday, Windows.WEEK to R.string.window_week)
                 .forEach { (key, label) ->

@@ -15,8 +15,8 @@ android {
         applicationId = "com.nathanhanapps.wayd"
         minSdk = 29
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.1.2"
+        versionCode = 5
+        versionName = "0.2.0"
         // WAYD's native libraries are built for 64-bit ARM phones only.
         ndk { abiFilters += "arm64-v8a" }
         (project.findProperty("appIdSuffix") as String?)?.let { applicationIdSuffix = it }
@@ -61,6 +61,7 @@ android {
     }
 
     sourceSets {
+        getByName("main").jniLibs.srcDir(rootProject.file("routing/build"))
         // Each flavor packages its own native library: `research` includes the TLS-interception engine, `standard` does not.
         getByName("standard").jniLibs.srcDir(rootProject.file("capture/build/native/standard"))
         getByName("research").jniLibs.srcDir(rootProject.file("capture/build/native/research"))
@@ -113,6 +114,7 @@ dependencies {
 // The native libraries are produced by :capture; make sure they exist before they are merged into an APK.
 tasks.configureEach {
     if (name.startsWith("merge") && name.endsWith("JniLibFolders")) {
+          dependsOn(":capture:buildRouting")
         when {
             name.contains("Standard") -> dependsOn(":capture:buildNativeStandard")
             name.contains("Research") -> dependsOn(":capture:buildNativeResearch")

@@ -34,14 +34,19 @@ struct Engine {
     pending: Mutex<Option<Vec<u8>>>,
 }
 
+#[cfg(test)]
 fn start_engine(tun_fd: i32, mtu: u16, policy: &str) -> std::io::Result<Engine> {
+    start_engine_routed(tun_fd, mtu, policy, None)
+}
+
+fn start_engine_routed(tun_fd: i32, mtu: u16, policy: &str, routing: Option<Arc<crate::routing::Routing>>) -> std::io::Result<Engine> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2) // small on purpose: battery
         .enable_all()
         .thread_name("wayd-net")
         .build()?;
     let (sink, rx) = EventSink::channel();
-    let shared = Shared::new();
+    let shared = Shared::with_routing(routing);
     if !shared.blocking.install(policy) {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid policy"));
     }
@@ -137,13 +142,28 @@ fn poll_engine(e: &Engine, out: &mut [u8], timeout_ms: u64) -> i32 {
 // ---- JNI (class com.nathanhanapps.wayd.capture.NativeNet) ----
 
 #[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
-pub fn native_start<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, tun_fd: jint, mtu: jint, policy: jni::objects::JString<'l>) -> jlong {
+pub fn native_start<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, tun_fd: jint, mtu: jint, policy: jni::objects::JString<'l>, profile: JByteArray<'l>, owners: jni::objects::JString<'l>) -> jlong {
     env.with_env(|env| -> jni::errors::Result<jlong> {
         let policy = policy.try_to_string(env)?;
-        Ok(match start_engine(tun_fd, mtu.clamp(1280, 65535) as u16, &policy) {
+        if profile.len(env)? > 48 * 1024 * 1024 { return Ok(0); }
+        let bytes = env.convert_byte_array(&profile)?;
+        let routing = if bytes.is_empty() { None } else {
+            let owners = owners.try_to_string(env)?;
+            match crate::routing::Routing::new(&bytes, &owners) { Ok(r) => Some(r), Err(_) => return Ok(0) }
+        };
+        Ok(match start_engine_routed(tun_fd, mtu.clamp(1280, 65535) as u16, &policy, routing) {
             Ok(e) => Box::into_raw(Box::new(e)) as jlong,
             Err(_) => 0,
         })
+    }).resolve::<jni::errors::LogErrorAndDefault>()
+}
+
+#[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
+pub fn native_validate_routing<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, profile: JByteArray<'l>) -> jni::sys::jboolean {
+    env.with_env(|env| -> jni::errors::Result<bool> {
+        if profile.len(env)? > 48 * 1024 * 1024 { return Ok(false); }
+        let bytes = env.convert_byte_array(&profile)?;
+        Ok(crate::routing::Routing::new(&bytes, "0:com.example.validation").is_ok())
     }).resolve::<jni::errors::LogErrorAndDefault>()
 }
 
@@ -206,7 +226,7 @@ pub fn native_poll<'l>(
 // ---- MITM controls (research flavor; stubs in the standard build) ----
 
 #[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
-pub fn native_policy_version<'l>(_env: EnvUnowned<'l>, _this: JObject<'l>) -> jint { 1 }
+pub fn native_policy_version<'l>(_env: EnvUnowned<'l>, _this: JObject<'l>) -> jint { 2 }
 
 #[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
 pub fn native_has_mitm<'l>(_env: EnvUnowned<'l>, _this: JObject<'l>) -> jni::sys::jboolean {
@@ -379,4 +399,14 @@ mod lifecycle_tests {
             assert_eq!(workers, 0, "native runtime worker survived Stop");
         }
     }
+}
+
+#[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
+pub fn native_routing_command<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, profile: JByteArray<'l>, request: JByteArray<'l>) -> JByteArray<'l> {
+    env.with_env(|env| -> jni::errors::Result<JByteArray<'l>> {
+        if profile.len(env)? > 48*1024*1024 || request.len(env)? > 48*1024*1024 { return env.byte_array_from_slice(&[]); }
+        let bytes=env.convert_byte_array(&profile)?;
+        let request=env.convert_byte_array(&request)?;
+        env.byte_array_from_slice(&crate::routing::command(&bytes,&request))
+    }).resolve::<jni::errors::LogErrorAndDefault>()
 }

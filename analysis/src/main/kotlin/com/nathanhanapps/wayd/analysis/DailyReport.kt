@@ -10,6 +10,8 @@ import com.nathanhanapps.wayd.enrich.TrackerDb
 
 data class AppTraffic(val pkg: String, val flows: Int, val bytesUp: Long, val bytesDown: Long, val screenOffUp: Long, val screenOffDown: Long)
 data class CompanyRow(val company: String, val category: TrackerCategory, val apps: List<Pair<String, Long>>, val bytesUp: Long)
+/** Traffic to one country (ISO 3166-1 alpha-2). Only produced when the GeoIP database from the Clash extension is present. */
+data class CountryRow(val code: String, val flows: Int, val bytes: Long)
 data class CoverageSummary(val flows: Int, val withPackagePct: Int, val measurableTcp: Int, val withHostnamePct: Int)
 
 /** Everything the Reports screen shows for one day; cheap to render, built once per analysis run. */
@@ -29,6 +31,7 @@ data class DailyReport(
     val appTraffic: List<AppTraffic>,
     val hourlyBytes: LongArray,
     val coverage: CoverageSummary,
+    val countries: List<CountryRow> = emptyList(),
 )
 
 object DailyReportBuilder {
@@ -61,6 +64,12 @@ object DailyReportBuilder {
         val trackerContacts = attributed.count { tracker.lookup(it.host)?.category in setOf(TrackerCategory.ADS, TrackerCategory.ANALYTICS, TrackerCategory.CRASH) }
         val measurable = flows.filter { it.proto == Proto.TCP && (it.bytesUp > 0 || it.bytesDown > 0) && !PrivateAddr.isPrivate(it.dstIp) }
 
+        // Routing categories (e.g. CLOUDFLARE) and private/unknown addresses are not countries; keep only two-letter codes.
+        val countries = attributed.mapNotNull { f -> f.country?.uppercase()?.takeIf { it.length == 2 && it.all { c -> c in 'A'..'Z' } }?.let { it to f } }
+            .groupBy({ it.first }, { it.second })
+            .map { (code, fl) -> CountryRow(code, fl.size, fl.sumOf { it.bytesUp + it.bytesDown }) }
+            .sortedByDescending { it.bytes }
+
         return DailyReport(
             windowStart = ctx.windowStart,
             windowEnd = ctx.windowEnd,
@@ -82,6 +91,7 @@ object DailyReportBuilder {
                 measurableTcp = measurable.size,
                 withHostnamePct = if (measurable.isEmpty()) 0 else measurable.count { it.host != null } * 100 / measurable.size,
             ),
+            countries = countries,
         )
     }
 }

@@ -6,7 +6,7 @@
 - **Publisher:** nathanhanapps
 - **Platform:** Android 10+ (API 29+) — target latest stable SDK
 - **UI:** Jetpack Compose + Material 3 Expressive
-- **Core principle:** On-device inspection and analysis. WAYD inspects traffic and analyzes findings on your Android device. It never automatically uploads captured traffic, inspection logs, reports, or AI analysis. You can explicitly export data to a destination you choose. Apps still communicate with their destinations; user-initiated model/database downloads also use the network. A planned, opt-in routing extension will send traffic selected by routing rules through your configured proxy.
+- **Core principle:** On-device inspection and analysis. WAYD inspects traffic and analyzes findings on your Android device. It never automatically uploads captured traffic, inspection logs, reports, or AI analysis. You can explicitly export data to a destination you choose. Apps still communicate with their destinations; user-initiated model/database downloads also use the network. An opt-in routing adapter forwards permitted traffic from selected apps through configured proxies.
 
 ## Product scope (implemented and planned)
 
@@ -18,8 +18,8 @@ See Status below and the handoff for implementation coverage; this list describe
 4. **Analyse** — a deterministic rule engine produces *findings* with evidence links.
 5. **Explain** — an on-device Gemma 4 model explains selected findings/traffic and returns structured JSON that the UI visualises.
 6. **Inspect APKs** — static analysis of installed apps (manifest, certificate, SDKs, embedded endpoints), linked to observed behaviour.
-7. **Act (planned M7)** — local app/domain blocking and content control; no proxy or account required.
-8. **Route (planned optional extension)** — Clash/FlClash-style proxy routing, separate from core inspection and blocking. WAYD retains VPN ownership and enforces blocks before routing. See [routing design](docs/14-OPTIONAL-ROUTING.md).
+7. **Act (M7 core)** — local exact app/host/IP blocking and reviewed rule transfer; research content control remains planned; no proxy or account required.
+8. **Route (initial optional subset)** — Pinned Mihomo SOCKS5/HTTP CONNECT routing with explicit per-app consent and encrypted profiles. Unsupported Clash options are rejected; full FlClash compatibility is not claimed. WAYD retains VPN ownership and enforces blocks before routing. See [routing design](docs/14-OPTIONAL-ROUTING.md).
 
 ## Privilege levels (target capabilities; see handoff for current coverage)
 
@@ -52,4 +52,4 @@ See Status below and the handoff for implementation coverage; this list describe
 
 ## Status
 
-The handoff records signed release **v0.1.2**, working capture, local analysis, on-device AI, and research HTTPS inspection. Coverage and acceptance gaps remain. **M7 blocking is designed, not implemented; optional proxy routing is planned.** See [current handoff](docs/HANDOFF.md) and [roadmap](docs/11-ROADMAP.md).
+The handoff records signed release **v0.1.2**, working capture, local analysis, on-device AI, and research HTTPS inspection. Coverage and acceptance gaps remain. **M7 core blocking, reviewed persistent-rule transfer and an initial optional Mihomo routing subset are implemented locally. Installed-app routing/transfer acceptance, research response controls and broader Clash compatibility remain open.** See [current handoff](docs/HANDOFF.md) and [roadmap](docs/11-ROADMAP.md).

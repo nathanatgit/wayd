@@ -1,5 +1,9 @@
 # Decisions log
 
+**D-038 · 2026-11-10 · portable rule identity and import review gate**
+
+Add a nullable unique portable UUID, revision and explicit import-review state to persistent blocking rules in Room v5. New durable rules receive a UUID; v4 rules preserve all existing behavior and get an ID later during transactional export. The native policy excludes pending-review rules even when a matching per-app consent already exists. Future import must set the review flag regardless of enabled state or saved grants; review and fresh consent are not implemented in this slice. No importer, exporter, permission, network endpoint or change to session-rule lifetime is introduced.
+
 Format: ID · date · status (proposed / accepted / superseded) · decision · why · alternatives.
 Add new entries at the bottom. Never delete; supersede instead.
 
@@ -137,3 +141,23 @@ Provide a dedicated Controls / 管控 bottom tab for all apps' saved and session
 **D-035 · 2026-11-10 · drain native relays before runtime shutdown**
 
 Android regression reproduced a leaked TUN duplicate after Stop raced blocked TCP teardown. ipstack 1.0.1 TCP destructors synchronously wait for protocol tasks, so shutdown_background before relay cleanup can strand workers/resources. Own relay tasks in a JoinSet, stop accepting, abort/drain relays while the runtime is active, then release the stack and stop the runtime. Bound owner cleanup to two seconds and runtime shutdown to one second; keep the polling thread as the native handle owner with existing serialized JNI access. Drain completed relay handles during normal recording. No periodic cleanup task, new permissions or routing change. Synthetic Android lifecycle tests and installed-app start/stop checks verify resource release; battery cost is not measured.
+
+**D-039 · 2026-11-10 · reviewed persistent rule transfer**
+
+Implement a strict, versioned, bounded JSON subset for persistent exact block definitions. Reject unknown keys/actions, malformed UTF-8, duplicate decoded keys/UUIDs, noncanonical identities/targets and excessive nesting/size. Export assigns missing UUIDs transactionally and defaults to target redaction. Import keeps existing UUIDs, previews current-profile identity gaps, commits pending-review definitions atomically without grants, and offers undo only while the batch remains unreviewed. Per-rule explicit review rechecks installed signer/profile/target and obtains fresh consent before clearing the gate. No automatic rebind, remote sync, session-rule transfer or credential/history export. Both locales expose document-picker and provider/privacy warnings. This completes the local first transfer workflow, subject to device acceptance; it does not implement response editing or Clash routing.
+
+**D-040 · 2026-11-10 · initial optional Mihomo transport**
+
+Pin Mihomo v1.19.33 outbound adapters and Go 1.27.3, recording module hashes and source/license notices in routing/. Use a strict bounded Clash subset (SOCKS5/HTTP CONNECT, numeric proxy IPs, static first-entry select groups, package/domain/IP rules and final MATCH), rather than loading Mihomo hub/executor, listeners, DNS, resource providers or arbitrary profiles. Reject unsupported/security-sensitive fields. WAYD supplies live metadata and selects routes; its native gates and cancellation remain authoritative before dispatch. The private version-1 C ABI returns Unix socketpairs with cancellation leases; no listening port or inspection-store/CA handles. JNI start capability is version 2 to reject older native libraries that could ignore routing arguments. TLS fallback uses the same route. No Direct retry on proxy error. The same-UID library is not OS isolation. Release distribution audit remains separate from this source implementation.
+
+**D-041 · 2026-11-10 · explicit routing grants and secret lifecycle**
+
+Document-picker import requires current-user, single-UID app selection and fresh signer-bound ConsentRecords, and saves disabled. Keep profiles AES-GCM encrypted under Android Keystore in no-backup private storage; no credential exports. Configure only while WAYD is stopped; enabled invalid profiles fail startup, and selected-package changes stop active routing before revalidation. Delete destroys profile/key and revokes current-user routing records even if the file is damaged. Unselected/unknown/shared-UID flows explicitly remain Direct. No DNS bootstrap, automatic downloads, subscriptions or health probes; retain visible underlying-DNS and IPv6 limitations. Aggregate observed Direct/Proxied/Blocked/Error transport outcomes in session UI without a routing-history schema; reconnect/TLS fallback can add outcomes. Routing does not enable inspection recording. Broader protocols/profile compatibility, installed-VPN/DNS acceptance and research response controls remain open.
+
+**D-042 · 2026-11-10 · shared GeoIP and optional Clash extension resources**
+
+Use one validated, private no-backup country.mmdb asset for both optional Mihomo GEOIP routing and WAYD flow country enrichment. Country enrichment performs local numeric-IP lookup without sending IPs to a geolocation service; private/unknown destinations remain unknown. Preserve database routing categories for Clash but expose only two-letter country codes as WAYD countries. Existing Room Flow.country is reused, with no schema change. Explicit HTTPS downloads show resource hosts; users can edit the GeoIP source or choose download through the first embedded proxy node, without Direct retry. Profile source is bounded to 4 MiB, individual provider YAML to 8 MiB, resources to 28 MiB, compiled bundle to 48 MiB, and encrypted profile catalog to 70 MiB. Domain/IP providers use upstream indexed strategies. Native Compose extension screens reuse WAYD VPN ownership and per-app consent; this is not bundled Flutter FlClash or full config compatibility. GEOSITE, ASN, MRS, subrules, full DNS handling, persistent subscription refresh and complete health/event controls remain open. No automatic updates or health probes.
+
+**D-043 · 2026-11-10 · bounded, cancellable import downloads**
+
+Resource review shows current index/host and errors inside its modal. Explicit cancellation reaches native HTTP context; each fetch is bounded to 45 seconds and the batch to four minutes. Retry reuses at most 28 MiB of memory-only assets. Optional jsDelivr rewriting requires an explicit checkbox and applies only to public raw GitHub URLs without credentials, query, fragment, custom port or escaped path segments. Bootstrap instantiates only the selected embedded node. No silent mirror or Direct fallback.

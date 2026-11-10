@@ -17,7 +17,6 @@ use rustls::pki_types::ServerName;
 use rustls::server::Acceptor;
 use rustls::{ClientConfig, RootCertStore, ServerConfig};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
-use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tokio_rustls::{LazyConfigAcceptor, TlsConnector};
 
@@ -153,16 +152,18 @@ impl Mitm {
         Ok(cfg)
     }
 
-    pub async fn intercept<S>(&self, client: &mut Recording<S>, remote: TcpStream, id: u64, sink: &EventSink) -> Outcome
+    pub async fn intercept<S, R>(&self, client: &mut Recording<S>, remote: R, id: u64, sink: &EventSink) -> Outcome
     where
         S: AsyncRead + AsyncWrite + Unpin + Send,
+        R: AsyncRead + AsyncWrite + Unpin + Send,
     {
         self.intercept_counted(client, remote, id, sink, None).await
     }
 
-    pub async fn intercept_counted<S>(&self, client: &mut Recording<S>, remote: TcpStream, id: u64, sink: &EventSink, counters: Option<&crate::blocking::FlowControl>) -> Outcome
+    pub async fn intercept_counted<S, R>(&self, client: &mut Recording<S>, remote: R, id: u64, sink: &EventSink, counters: Option<&crate::blocking::FlowControl>) -> Outcome
     where
         S: AsyncRead + AsyncWrite + Unpin + Send,
+        R: AsyncRead + AsyncWrite + Unpin + Send,
     {
         // 1. learn the SNI from the ClientHello (nothing is sent to the app yet)
         let start = match LazyConfigAcceptor::new(Acceptor::default(), &mut *client).await {

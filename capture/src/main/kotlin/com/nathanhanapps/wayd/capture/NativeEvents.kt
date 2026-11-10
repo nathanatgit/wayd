@@ -40,6 +40,9 @@ sealed interface NativeEvent {
     class Close(override val flowId: Long, val bytesUp: Long, val bytesDown: Long) : NativeEvent
 
     class Policy(override val flowId: Long, val kind: Int, val revision: Long, val ruleId: Long) : NativeEvent
+
+    /** Observed transport outcome: 1 Direct, 2 Proxied, 3 Blocked, 4 Error. */
+    class Route(override val flowId: Long, val kind: Int) : NativeEvent
 }
 
 object NativeEvents {
@@ -81,6 +84,7 @@ object NativeEvents {
                 type == PROGRESS && e - b >= 9 -> out += NativeEvent.Progress(id, buf[b].toInt() == 1, u64(buf, b + 1))
                 type == CLOSE && e - b >= 16 -> out += NativeEvent.Close(id, u64(buf, b), u64(buf, b + 8))
                 type == 7 && e - b == 17 && buf[b].toInt() in 1..5 -> out += NativeEvent.Policy(id, buf[b].toInt(), u64(buf, b + 1), u64(buf, b + 9))
+                type == 8 && e - b == 1 && buf[b].toInt() in 1..4 -> out += NativeEvent.Route(id, buf[b].toInt())
             }
             p = e
         }

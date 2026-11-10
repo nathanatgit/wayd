@@ -98,7 +98,12 @@ fun RecordScreen(onOpenControls: () -> Unit, onOpenReports: () -> Unit, vm: Reco
                 Text(stringResource(R.string.dashboard_features), style = MaterialTheme.typography.titleLarge)
                 ToggleRow(stringResource(R.string.dashboard_record), stringResource(R.string.dashboard_record_hint), recording, !starting, vm.recording::setEnabled)
                 Text(stringResource(if (!active) R.string.dashboard_record_waiting else if (recording) R.string.dashboard_record_on else R.string.dashboard_record_off), style = MaterialTheme.typography.bodySmall)
-                ToggleRow(stringResource(R.string.dashboard_clash), stringResource(R.string.dashboard_clash_hint), false, false) { }
+                if (com.nathanhanapps.wayd.feature.extensions.rememberClashInstalled()) {
+                    Text(stringResource(R.string.dashboard_clash))
+                    Text(stringResource(R.string.routing_scope), style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.routing_outcomes, ui.routes.direct, ui.routes.proxied, ui.routes.blocked, ui.routes.errors), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { com.nathanhanapps.wayd.feature.extensions.ClashExtension.intent(context)?.let(context::startActivity) }) { Text(stringResource(R.string.routing_configure)) }
+                }
             }
         }
         item {

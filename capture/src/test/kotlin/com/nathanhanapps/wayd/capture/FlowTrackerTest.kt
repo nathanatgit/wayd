@@ -11,6 +11,19 @@ import java.io.ByteArrayOutputStream
 import java.net.InetAddress
 
 class FlowTrackerTest {
+    @Test fun countryEnrichment_usesDestinationAndPreservesUnknown() {
+        val sink = Sink()
+        val lookedUp = ArrayList<String>()
+        val tracker = FlowTracker(1, { _, _, _ -> Owner(10123, "com.example.app") }, sink, env,
+            country = { ip -> lookedUp += ip; if (ip == "1.1.1.1") "AU" else null })
+        tracker.onEvent(open(1, 6, "1.1.1.1", 443))
+        tracker.onEvent(NativeEvent.Close(1, 10, 20))
+        tracker.onEvent(open(2, 6, "192.168.1.1", 443))
+        tracker.onEvent(NativeEvent.Close(2, 10, 20))
+        assertEquals(listOf("1.1.1.1", "192.168.1.1"), lookedUp)
+        assertEquals("AU", sink.flows[0].country)
+        assertNull(sink.flows[1].country)
+    }
     @Test fun recordingOff_keepsPolicyMetadataButStoresNoTraffic() {
         val sink = Sink()
         val mode = TrafficRecording()

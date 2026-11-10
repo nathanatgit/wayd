@@ -60,6 +60,7 @@ class FlowTracker(
     private val policyOwner: (Long, Owner?) -> Unit = { _, _ -> },
     private val policyHost: (Long, String) -> Unit = { _, _ -> },
     private val recording: () -> TrafficRecording.Window = { TrafficRecording.Window(true, 0) },
+    private val country: (String) -> String? = { null },
 ) {
     private class State(
         val open: NativeEvent.Open,
@@ -105,6 +106,7 @@ class FlowTracker(
                 if (e.kind == 2) it.pinned = true
             }
             is NativeEvent.Policy -> open[e.flowId]?.let { it.policy = e }
+            is NativeEvent.Route -> Unit // Live route outcomes are aggregated outside inspection storage.
             is NativeEvent.Close -> open.remove(e.flowId)?.let { finish(it, e.bytesUp, e.bytesDown) }
         }
     }
@@ -286,7 +288,7 @@ class FlowTracker(
                 tlsVersion = s.tlsVersion,
                 alpn = s.alpn,
                 ja4 = null,
-                country = null,
+                country = country(dstIp),
                 asn = null,
                 company = info?.company,
                 category = info?.category,

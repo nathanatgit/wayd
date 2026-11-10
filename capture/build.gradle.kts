@@ -78,3 +78,30 @@ fun registerNative(variant: String, extraArgs: List<String>) = tasks.register<Ex
 
 registerNative("standard", emptyList())
 registerNative("research", listOf("--features", "mitm"))
+
+tasks.register<Exec>("buildRouting") {
+    group = "build"
+    description = "Builds the pinned optional Mihomo transport for arm64 Android"
+    val source = rootProject.layout.projectDirectory.dir("routing")
+    val output = source.dir("build/arm64-v8a")
+    workingDir = source.asFile
+    inputs.files(fileTree(source) { include("**/*.go", "go.mod", "go.sum"); exclude("build/**") })
+    outputs.dir(output)
+    onlyIf { !project.hasProperty("skipNative") }
+    val windows = OperatingSystem.current().isWindows
+    val goName = if (windows) "go.exe" else "go"
+    val portable = rootProject.file("build/tools/go/bin/$goName")
+    val go = project.findProperty("goExecutable")?.toString() ?: if (portable.exists()) portable.absolutePath else goName
+    environment("GOOS", "android")
+    environment("GOARCH", "arm64")
+    environment("CGO_ENABLED", "1")
+    environment("GOMODCACHE", rootProject.file("build/tools/gomodcache").absolutePath)
+    environment("GOCACHE", rootProject.file("build/tools/gocache").absolutePath)
+    environment("GOPATH", rootProject.file("build/tools/gopath").absolutePath)
+    doFirst {
+        val host = if (windows) "windows-x86_64" else if (OperatingSystem.current().isMacOsX) "darwin-x86_64" else "linux-x86_64"
+        val compiler = ndkDir.get().file("toolchains/llvm/prebuilt/$host/bin/aarch64-linux-android29-clang${if (windows) ".cmd" else ""}").asFile
+        environment("CC", compiler.absolutePath)
+    }
+    commandLine(go, "build", "-mod=readonly", "-buildmode=c-shared", "-trimpath", "-ldflags=-s -w -buildid=", "-o", output.file("libwayd_route.so").asFile.absolutePath, "./cmd/wayd-route")
+}

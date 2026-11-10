@@ -182,3 +182,96 @@ fn exclusion_list_matches_on_label_boundaries() {
     assert!(!m.skip_host("notalipay.com"));
     assert!(!m.skip_host("alipay.com.evil.example"));
 }
+
+/// Exercise the actual relay order: app TLS -> WAYD MITM -> Mihomo socket -> HTTPS.
+/// An OPEN event receives the same explicit owner/host/consent answers Kotlin supplies.
+#[cfg(target_os = "android")]
+async fn routed_capture(profile: &[u8], destination: std::net::SocketAddr, host: &'static str,
+    mitm: Mitm, ca: &CaPem, path: &'static str) -> Vec<(bool, String, Vec<u8>)> {
+    use tokio::time::{timeout, Duration};
+    let route = crate::routing::Routing::new(profile, "0:com.example.probe").expect("valid test route");
+    let shared = crate::shared::Shared::with_routing(Some(route));
+    shared.set_mitm(Some(Arc::new(mitm)));
+    let (app, client) = tokio::io::duplex(128 * 1024);
+    let (sink, rx) = EventSink::channel();
+    let local = shared.clone();
+    let relay = tokio::spawn(async move {
+        crate::relay::tcp_flow(71, client, "127.0.0.1:20001".parse().unwrap(), destination, sink, local).await;
+    });
+    let collector = tokio::spawn(async move {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(40);
+        let mut events = Vec::new();
+        loop {
+            while let Ok(event) = rx.try_recv() {
+                if event[4] == crate::events::OPEN {
+                    shared.blocking.info(71, "0:com.example.probe", false);
+                    shared.blocking.info(71, host, true);
+                    shared.decide(71, true);
+                }
+                let closed = event[4] == crate::events::CLOSE;
+                events.push(event);
+                if closed { return events; }
+            }
+            assert!(tokio::time::Instant::now() < deadline, "relay event timeout");
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    });
+    let mut tls = timeout(Duration::from_secs(20), TlsConnector::from(client_config(&ca.cert_pem))
+        .connect(ServerName::try_from(host).unwrap(), app)).await.expect("TLS timed out").expect("app TLS failed");
+    let request = format!("GET {path} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: WAYD-Routing-Test\r\nConnection: close\r\n\r\n");
+    tls.write_all(request.as_bytes()).await.unwrap();
+    let mut response = Vec::new();
+    timeout(Duration::from_secs(20), tls.read_to_end(&mut response)).await.expect("HTTPS response timeout").unwrap();
+    assert!(response.starts_with(b"HTTP/1.1 200"), "HTTPS did not return 200");
+    let _ = tls.shutdown().await;
+    drop(tls);
+    timeout(Duration::from_secs(5), relay).await.unwrap().unwrap();
+    let events = collector.await.unwrap();
+    assert!(events.iter().any(|e| e[4] == 8 && e[13] == 2), "no observed Proxied outcome");
+    assert!(!events.iter().any(|e| e[4] == 8 && e[13] == 1), "unexpected Direct outcome");
+    assert!(events.iter().any(|e| e[4] == crate::events::DATA), "no captured TLS metadata bytes");
+    assert!(events.iter().any(|e| e[4] == crate::events::TLS_NOTE && e[13] == crate::events::TLS_INTERCEPTED), "not decrypted");
+    let (sender, receiver) = std::sync::mpsc::channel();
+    for event in events { sender.send(event).unwrap(); }
+    drop(sender);
+    let messages = decode_messages(&receiver);
+    assert!(messages.iter().any(|m| !m.0 && m.1 == format!("{host}{path}")), "no plaintext request");
+    assert!(messages.iter().any(|m| m.0 && !m.2.is_empty()), "no plaintext response body");
+    messages
+}
+
+#[cfg(target_os = "android")]
+#[tokio::test]
+async fn android_mihomo_routing_and_https_decryption_capture_both_messages() {
+    let server_ca = generate_ca("Test HTTPS Server CA").unwrap();
+    let local_ca = generate_ca("WAYD Combined Routing Test CA").unwrap();
+    let destination = spawn_server(&server_ca).await;
+    let proxy = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let profile = format!("proxies:\n - {{name: test, type: http, server: 127.0.0.1, port: {}}}\nrules: ['MATCH,test']", proxy.local_addr().unwrap().port());
+    let proxy_task = tokio::spawn(async move {
+        let (mut client, _) = proxy.accept().await.unwrap();
+        let mut head = Vec::new(); let mut byte = [0u8; 1];
+        while !head.ends_with(b"\r\n\r\n") { client.read_exact(&mut byte).await.unwrap(); head.push(byte[0]); assert!(head.len() < 2048); }
+        assert!(head.starts_with(format!("CONNECT {destination} ").as_bytes()));
+        let mut upstream = TcpStream::connect(destination).await.unwrap();
+        client.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await.unwrap();
+        let _ = tokio::io::copy_bidirectional(&mut client, &mut upstream).await;
+    });
+    let mitm = Mitm::with_roots(&local_ca.cert_pem, &local_ca.key_pem, vec![], roots_from(&server_ca.cert_pem)).unwrap();
+    let messages = routed_capture(profile.as_bytes(), destination, "localhost", mitm, &local_ca, "/routed-test").await;
+    assert!(messages.iter().any(|m| m.0 && m.2 == b"hello"));
+    tokio::time::timeout(std::time::Duration::from_secs(3), proxy_task).await.unwrap().unwrap();
+}
+
+/// Explicit opt-in only: requests public robots.txt, with no browser cookies/account.
+#[cfg(target_os = "android")]
+#[tokio::test]
+#[ignore = "requires an explicitly supplied private routing fixture and Google destination"]
+async fn android_live_google_via_mihomo_is_decrypted() {
+    let profile = std::fs::read(std::env::var("WAYD_LIVE_ROUTING_PROFILE").expect("routing fixture required")).unwrap();
+    let destination = std::env::var("WAYD_LIVE_GOOGLE_DESTINATION").expect("Google IP:443 required").parse().unwrap();
+    let ca = generate_ca("WAYD Ephemeral Google Test CA").unwrap();
+    let mitm = Mitm::new(&ca.cert_pem, &ca.key_pem, vec![]).unwrap();
+    let messages = routed_capture(&profile, destination, "www.google.com", mitm, &ca, "/robots.txt").await;
+    assert!(messages.iter().any(|m| m.0 && m.2.windows(10).any(|w| w == b"User-agent")), "Google robots content missing");
+}

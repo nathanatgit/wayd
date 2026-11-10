@@ -55,6 +55,8 @@ class ControlsViewModel @Inject constructor(val blocking: BlockingRules, val lab
         notice.value = R.string.block_removed
     }
 
+    fun approveImport(id: Long) = update(R.string.policy_review_failed) { blocking.approveImport(id) }
+
     private fun update(error: Int, action: suspend () -> Unit) {
         if (busy.value) return
         busy.value = true
@@ -84,6 +86,7 @@ fun ControlsScreen(onOpenApp: (String) -> Unit, vm: ControlsViewModel = hiltView
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableStateOf("ALL") }
     var removingId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var reviewingId by rememberSaveable { mutableStateOf<Long?>(null) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refresh() }
 
     val effective = policy.rules.count { it.id in policy.activeIds }
@@ -113,6 +116,9 @@ fun ControlsScreen(onOpenApp: (String) -> Unit, vm: ControlsViewModel = hiltView
             }
         }
         item {
+            PolicyTransferSection()
+        }
+        item {
             Text(stringResource(R.string.block_rules_title), style = MaterialTheme.typography.titleLarge)
             OutlinedTextField(
                 value = query, onValueChange = { query = it.take(253) },
@@ -133,6 +139,7 @@ fun ControlsScreen(onOpenApp: (String) -> Unit, vm: ControlsViewModel = hiltView
                 appLabel = rule.pkg?.let(vm.labels::label).orEmpty(),
                 onOpenApp = { rule.pkg?.let(onOpenApp) },
                 onRemove = { removingId = rule.id },
+                onReview = { reviewingId = rule.id },
             )
         }
         item {
@@ -157,10 +164,26 @@ fun ControlsScreen(onOpenApp: (String) -> Unit, vm: ControlsViewModel = hiltView
             dismissButton = { TextButton(onClick = { removingId = null }) { Text(stringResource(R.string.block_cancel)) } },
         )
     }
+    policy.rules.firstOrNull { it.id == reviewingId && it.needsImportReview }?.let { rule ->
+        AlertDialog(
+            onDismissRequest = { reviewingId = null },
+            title = { Text(stringResource(R.string.policy_review)) },
+            text = { Column {
+                Text(rule.pkg.orEmpty())
+                Text(rule.host ?: stringResource(R.string.policy_redacted))
+                Text(stringResource(R.string.control_identity, rule.signingSha256.ifEmpty { stringResource(R.string.control_unbound) }))
+                Text(stringResource(R.string.policy_review_warning))
+            } },
+            confirmButton = { TextButton(onClick = { vm.approveImport(rule.id); reviewingId = null }, enabled = !busy && rule.host != null) {
+                Text(stringResource(R.string.policy_review_confirm))
+            } },
+            dismissButton = { TextButton(onClick = { reviewingId = null }) { Text(stringResource(R.string.export_cancel)) } },
+        )
+    }
 }
 
 @Composable
-private fun RuleCard(rule: BlockRule, effective: Boolean, running: Boolean, busy: Boolean, appLabel: String, onOpenApp: () -> Unit, onRemove: () -> Unit) {
+private fun RuleCard(rule: BlockRule, effective: Boolean, running: Boolean, busy: Boolean, appLabel: String, onOpenApp: () -> Unit, onRemove: () -> Unit, onReview: () -> Unit) {
     var details by rememberSaveable(rule.id) { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -178,6 +201,7 @@ private fun RuleCard(rule: BlockRule, effective: Boolean, running: Boolean, busy
             Text(stringResource(if (rule.id < 0) R.string.block_session else R.string.block_persistent), style = MaterialTheme.typography.bodySmall)
             val status = when {
                 effective -> R.string.control_status_effective
+                rule.needsImportReview -> R.string.policy_pending_review
                 !rule.enabled -> R.string.control_status_disabled
                 !running -> R.string.control_status_waiting
                 else -> R.string.control_status_invalid
@@ -195,6 +219,7 @@ private fun RuleCard(rule: BlockRule, effective: Boolean, running: Boolean, busy
                 TextButton(onClick = onOpenApp, enabled = !rule.pkg.isNullOrBlank()) { Text(stringResource(R.string.control_app_history)) }
                 TextButton(onClick = onRemove, enabled = !busy) { Text(stringResource(R.string.block_remove)) }
             }
+            if (rule.needsImportReview) TextButton(onClick = onReview, enabled = !busy) { Text(stringResource(R.string.policy_review)) }
         }
     }
 }

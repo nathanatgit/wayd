@@ -1,10 +1,10 @@
 # 13 · Blocking and content control (M7 design)
 
-Status: **core blocking and history controls implemented locally, 2026-11-10; device acceptance pending.** Response editing, JSON backup/import and Clash integration below remain designs, not available features. Budgets are not measured battery results.
+Status: **core blocking and history controls implemented locally, 2026-11-10; device acceptance pending.** Persistent exact-rule JSON transfer is implemented with an inactive-on-import review gate and device acceptance pending. Response editing remains unavailable. Initial optional Mihomo routing is implemented as the bounded subset in [14-OPTIONAL-ROUTING.md](14-OPTIONAL-ROUTING.md). Budgets are not measured battery results.
 
 ## Current implementation
 
-Sample blocking, future local replies/replacement and field-specific regex: [Rule examples / 规则示例](15-RULE-EXAMPLES.md). Only typed exact blocking is currently executable; examples do not add import or regex support. Session rule lifetime follows the WAYD VPN engine, not the independent Home recording toggle.
+Sample blocking, future local replies/replacement and field-specific regex: [Rule examples / 规则示例](15-RULE-EXAMPLES.md). Typed exact blocking and reviewed persistent-definition transfer are executable; examples do not add regex or response support. Session rule lifetime follows the WAYD VPN engine, not the independent Home recording toggle.
 
 - [BlockingRules](../capture/src/main/kotlin/com/nathanhanapps/wayd/capture/BlockingRules.kt) owns durable and memory-only session rules, explicit per-app ConsentRecords, current-user/package/signer binding, activation acknowledgment and removal. Shared UIDs, missing identity and legacy unbound records remain inactive. Rules added while VPN is off are saved but inactive.
 - [Native policy](../capture/native/src/blocking.rs) atomically installs increasing versioned snapshots (1,000 rules / 512 KiB); any matching BLOCK wins. Supported targets are per-app APP, exact HOST and exact numeric IP, including IPv6. No generic ALLOW, suffix/CIDR/regex or DNS-derived host rules yet.
@@ -13,9 +13,9 @@ Sample blocking, future local replies/replacement and field-specific regex: [Rul
 - [Controls](../app/src/main/kotlin/com/nathanhanapps/wayd/feature/controls/ControlsScreen.kt) is a dedicated bottom tab (also reachable from Apps) for the complete saved/session rule inventory, independent of history windows. It shows native-acknowledged effective counts, All / Effective / Inactive filters, literal package/host/IP search, target/action/lifetime/status, expandable identity details, app-history navigation and confirmed removal. Capture-off rules remain visible as inactive. Response replacement/local replies are explicitly unavailable; the alteration section is reserved for their future inventory. Refresh on resume or user request; no periodic polling.
 - Temporary rules expire on WAYD VPN stop or process/engine restart, independently of the traffic-recording switch. Persistent rules require the WAYD VPN engine to run and a valid installed identity/consent. Package changes trigger revalidation. Recorded flow rows retain policy outcome, revision and matched rule ID separately from risk findings; recording off does not save new flow evidence. Room v4 adds these fields and binding fields; legacy rules have empty signer bindings and stay inactive.
 - Native ABI capability is checked before starting capture; an old library cannot silently start without enforcement. Native destruction happens after the polling thread's final poll, serialized with UI policy JNI calls.
-- HTTP capture remains passive. No response-edit button, script engine, backup/import UI or routing engine is introduced in this slice. Existing research UDP/443 dropping is separate from host blocking.
+- HTTP capture remains passive. No response-edit button or script engine is implemented. Reviewed backup/import and the initial optional routing adapter are described in their current status sections. Existing research UDP/443 dropping is separate from host blocking.
 
-## Remaining design (not implemented below)
+## Control design and remaining work
 
 ## Connection-history actions
 
@@ -89,7 +89,7 @@ Per-app consent revocation disables its content controls and releases intercepti
 
 ## Rule backup and restore
 
-WAYD JSON is the lossless format, separate from Clash conversion. Explicit Android document-picker export only; a chosen provider may be cloud storage. No automatic sync. Proposed envelope (not an implemented importer):
+WAYD JSON is the lossless format, separate from Clash conversion. Explicit Android document-picker export only; a chosen provider may be cloud storage. No automatic sync. Implemented initial subset: persistent exact APP/HOST/IP BLOCK rules only; no labels, priority or response templates yet. Required `redacted` marks incomplete exports. Envelope:
 
 ```json
 {
@@ -102,17 +102,18 @@ WAYD JSON is the lossless format, separate from Clash conversion. Explicit Andro
     "app": { "packageName": "org.example.app", "signingSha256": [] },
     "lifetime": "persistent",
     "match": { "hostExact": "metrics.example.com" },
-    "action": { "type": "BLOCK" }
+    "action": { "type": "BLOCK" },
+    "redacted": false
   }]
 }
 ```
 
 Populate signing identity from verified installed-package metadata before activation. Empty/unavailable identities require binding review. Map user/profile on restore; Linux UIDs are not portable identities. Missing packages, certificate mismatches, shared-UID conflicts and unverified signing-key rotations remain inactive pending review.
 
-- Include persistent rule definitions, priority, labels and bounded static templates; preserve disabled state. Exclude session rules, traffic/history, counters, device identifiers, UID bindings, AI outputs, grants/ConsentRecords, CA/private keys, database keys and proxy credentials/subscription URLs.
+- The initial implementation includes persistent exact-block definitions and disabled state. Priority, labels and bounded static templates remain future work. Exclude session rules, traffic/history, counters, device identifiers, UID bindings, AI outputs, grants/ConsentRecords, CA/private keys, database keys and proxy credentials/subscription URLs.
 - Hosts/paths/query matches/replies may contain secrets. Show export selection and redact sensitive values by default, marking redacted rules incomplete/inactive on restore. Explicit include-sensitive-values is required for a full-fidelity backup. Do not call a redacted file lossless. Password-encrypted backup is a later reviewed format, not home-grown encryption or a current promise.
 - Bound input (initial 4 MiB/1,000 rules plus field/body caps). Reject duplicate JSON keys/IDs, invalid predicates/headers, unknown executable actions and unsupported schema versions before writing. No archives, remote includes, code or filesystem references.
-- Dry-run shows additions/conflicts/unsupported/missing-app counts and scope changes. Default merge keeps existing UUIDs/revisions; replacement/copy is explicit. Copy assigns new UUIDs. Apply an approved valid batch atomically with rollback to the prior active snapshot; never silently widen scope.
+- Dry-run shows additions/conflicts/unsupported/missing-app counts and scope changes. Implemented merge keeps existing UUIDs/revisions; replacement/copy is not supported yet. Apply an approved valid batch atomically with rollback to the prior active snapshot; never silently widen scope.
 - Imported rules start inactive pending scope/identity review. Content controls require fresh per-app consent on this install. Imported consent cannot grant privileges. Retain provenance, offer Undo; no auto-start VPN, proxy connection or CA installation.
 
 ## Clash boundary and implementation slices

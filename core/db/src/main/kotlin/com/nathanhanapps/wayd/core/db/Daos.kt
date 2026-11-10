@@ -8,6 +8,9 @@ import kotlinx.coroutines.flow.Flow as KFlow
 
 @Dao
 interface ConsentDao {
+    @Query("SELECT * FROM ConsentRecord WHERE feature LIKE 'routing-v1:%'")
+    suspend fun routingRecords(): List<ConsentRecord>
+
     @Query("SELECT * FROM ConsentRecord")
     fun observeAll(): KFlow<List<ConsentRecord>>
 

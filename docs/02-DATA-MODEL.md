@@ -133,6 +133,10 @@ data class Message(
 
 `android:allowBackup="false"`, plus `dataExtractionRules` excluding everything.
 
+## M7 schema v5 · 2026-11-10
+
+Room auto-migrates 4→5 and exports schema 5. BlockRule adds nullable `portableId` (uniquely indexed), `portableRevision` (default 1), and `needsImportReview` (default false). New persistent rules receive a UUID; migrated rules have null portable IDs until a future export assigns them transactionally. Pending-review rules are excluded from native policy even when enabled and an app consent exists. Existing rules retain their prior eligibility. The importer, review/consent workflow and export are not implemented by this schema change; a future importer must always mark every imported rule for review and must not treat the file as a consent grant.
+
 ## M7 schema v4 · 2026-11-10
 
 Room exports v4 and auto-migrates 3→4 with additive columns. BlockRule adds `matchKind TEXT NOT NULL DEFAULT 'HOST'`, `signingSha256 TEXT NOT NULL DEFAULT ''`, `userId INTEGER NOT NULL DEFAULT 0`. Existing scope/package/host fields remain. Unbound legacy rules remain stored but inactive; current installation identity and explicit per-app consent are required before native installation. Exact APP/HOST/IP kinds are the current supported subset. Persistent positive IDs are database IDs; negative session IDs exist only in memory and are never backed up.
