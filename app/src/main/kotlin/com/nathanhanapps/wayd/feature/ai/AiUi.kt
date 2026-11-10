@@ -1,6 +1,19 @@
 package com.nathanhanapps.wayd.feature.ai
 
 import android.text.format.Formatter
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -97,55 +110,120 @@ private fun Message(text: String, error: Boolean) {
     Text(text, style = MaterialTheme.typography.bodyMedium, color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
 }
 
+/** Verdict colour is decoration only; the verdict is always spelled out. It comes from the model, so it never touches rule severity. */
+@Composable
+private fun verdictColor(v: Verdict): Color = when (v) {
+    Verdict.BENIGN -> MaterialTheme.colorScheme.primary
+    Verdict.EXPECTED_TELEMETRY -> MaterialTheme.colorScheme.secondary
+    Verdict.EXCESSIVE -> MaterialTheme.colorScheme.tertiary
+    Verdict.LIKELY_LEAK -> MaterialTheme.colorScheme.error
+    Verdict.UNKNOWN -> MaterialTheme.colorScheme.outline
+}
+
 @Composable
 private fun AiResultCard(o: AiOutcome.Success) {
     val r: AiResult = o.result
-    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Badge(stringResource(R.string.ai_opinion), MaterialTheme.colorScheme.secondary)
-                Badge(verdictLabel(r.verdict), MaterialTheme.colorScheme.onSecondaryContainer)
+    val accent = verdictColor(r.verdict)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Verdict banner
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = accent.copy(alpha = 0.14f))) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Badge(stringResource(R.string.ai_opinion), MaterialTheme.colorScheme.secondary)
+                    Text(verdictLabel(r.verdict), style = MaterialTheme.typography.titleLarge, color = accent)
+                }
+                Text(r.summary, style = MaterialTheme.typography.bodyLarge)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LinearProgressIndicator(progress = { r.confidence.toFloat().coerceIn(0f, 1f) }, modifier = Modifier.weight(1f), color = accent)
+                    Text(stringResource(R.string.ai_confidence, (r.confidence * 100).toInt()), style = MaterialTheme.typography.labelMedium)
+                }
             }
-            Text(r.summary, style = MaterialTheme.typography.bodyLarge)
+        }
 
-            if (r.dataTypes.isNotEmpty()) {
-                Text(stringResource(R.string.ai_data_types), style = MaterialTheme.typography.titleSmall)
+        if (r.dataTypes.isNotEmpty()) AiBlock(stringResource(R.string.ai_data_types)) {
+            @OptIn(ExperimentalLayoutApi::class)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 r.dataTypes.forEach { d ->
-                    Text(
-                        "• ${dataTypeLabel(d.type)} · ${certaintyLabel(d.certainty)} · ${d.evidence.joinToString(" ")}" + (d.note?.let { " — $it" } ?: ""),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                    // Decrypted content is the strongest evidence (solid), seen metadata is tonal, inference is outlined.
+                    val label = dataTypeLabel(d.type) + " · " + certaintyLabel(d.certainty)
+                    when (d.certainty) {
+                        Certainty.DECRYPTED -> AssistChip(onClick = {}, label = { Text(label) }, colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer))
+                        Certainty.SEEN -> AssistChip(onClick = {}, label = { Text(label) }, colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.secondaryContainer))
+                        Certainty.INFERRED -> AssistChip(onClick = {}, label = { Text(label) })
+                    }
                 }
             }
-            if (r.destinations.isNotEmpty()) {
-                Text(stringResource(R.string.ai_destinations), style = MaterialTheme.typography.titleSmall)
-                r.destinations.forEach { d ->
-                    Text(
-                        "• ${d.host}" + (d.company?.let { " ($it)" } ?: "") + " · ${purposeLabel(d.purpose)} · ${d.evidence.joinToString(" ")}",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+            r.dataTypes.filter { it.note != null }.forEach { d -> Text("${dataTypeLabel(d.type)}: ${d.note}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+
+        if (r.destinations.isNotEmpty()) AiBlock(stringResource(R.string.ai_destinations)) {
+            r.destinations.forEach { d ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text(d.host, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        val sub = listOfNotNull(d.company, d.evidence.takeIf { it.isNotEmpty() }?.joinToString(" ")).joinToString(" · ")
+                        if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    }
+                    Badge(purposeLabel(d.purpose), purposeColor(d.purpose))
                 }
             }
-            if (r.timeline.isNotEmpty()) {
-                Text(stringResource(R.string.ai_timeline), style = MaterialTheme.typography.titleSmall)
-                r.timeline.forEach { t -> Text("• ${t.text} · ${t.evidence.joinToString(" ")}", style = MaterialTheme.typography.bodyMedium) }
+        }
+
+        if (r.timeline.isNotEmpty()) AiBlock(stringResource(R.string.ai_timeline)) {
+            val line = MaterialTheme.colorScheme.outlineVariant
+            val dot = MaterialTheme.colorScheme.primary
+            r.timeline.forEachIndexed { i, t ->
+                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Canvas(Modifier.width(12.dp).fillMaxHeight()) {
+                        if (i < r.timeline.lastIndex) drawLine(line, Offset(size.width / 2, 10f), Offset(size.width / 2, size.height), strokeWidth = 3f)
+                        drawCircle(dot, radius = 5f, center = Offset(size.width / 2, 10f))
+                    }
+                    Column(Modifier.padding(bottom = 10.dp)) {
+                        Text(t.text, style = MaterialTheme.typography.bodyMedium)
+                        if (t.evidence.isNotEmpty()) Text(t.evidence.joinToString(" "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    }
+                }
             }
-            if (r.actions.isNotEmpty()) {
-                Text(stringResource(R.string.ai_actions), style = MaterialTheme.typography.titleSmall)
-                r.actions.forEach { a -> Text("• ${actionLabel(a.action)} ${a.target} — ${a.reason}", style = MaterialTheme.typography.bodyMedium) }
-                Text(stringResource(R.string.ai_actions_note), style = MaterialTheme.typography.labelSmall)
+        }
+
+        if (r.actions.isNotEmpty()) AiBlock(stringResource(R.string.ai_actions)) {
+            r.actions.forEach { a ->
+                Column {
+                    Text(actionLabel(a.action) + " · " + a.target, style = MaterialTheme.typography.titleSmall)
+                    Text(a.reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
-            if (r.openQuestions.isNotEmpty()) {
-                Text(stringResource(R.string.ai_questions), style = MaterialTheme.typography.titleSmall)
-                r.openQuestions.forEach { q -> Text("• $q", style = MaterialTheme.typography.bodyMedium) }
-            }
-            Text(
-                stringResource(R.string.ai_footer, (r.confidence * 100).toInt(), o.model, if (o.fromCache) stringResource(R.string.ai_cached) else "%.1f s".format(o.durationMs / 1000.0)) +
-                    if (o.stripped > 0) " · " + stringResource(R.string.ai_stripped, o.stripped) else "",
-                style = MaterialTheme.typography.labelSmall,
-            )
+            Text(stringResource(R.string.ai_actions_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+        }
+
+        if (r.openQuestions.isNotEmpty()) AiBlock(stringResource(R.string.ai_questions)) {
+            r.openQuestions.forEach { q -> Text("? $q", style = MaterialTheme.typography.bodyMedium) }
+        }
+
+        Text(
+            stringResource(R.string.ai_footer, (r.confidence * 100).toInt(), o.model, if (o.fromCache) stringResource(R.string.ai_cached) else "%.1f s".format(o.durationMs / 1000.0)) +
+                if (o.stripped > 0) " · " + stringResource(R.string.ai_stripped, o.stripped) else "",
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline,
+        )
+    }
+}
+
+@Composable
+private fun AiBlock(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+            content()
         }
     }
+}
+
+@Composable
+private fun purposeColor(p: Purpose): Color = when (p) {
+    Purpose.ADS -> MaterialTheme.colorScheme.error
+    Purpose.ANALYTICS, Purpose.CRASH -> MaterialTheme.colorScheme.tertiary
+    Purpose.UNKNOWN -> MaterialTheme.colorScheme.outline
+    else -> MaterialTheme.colorScheme.primary
 }
 
 @Composable

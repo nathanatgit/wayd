@@ -36,6 +36,9 @@ impl EventSink {
         (EventSink(tx), rx)
     }
 
+    /// Observed transport outcome: 1 Direct, 2 Proxied, 3 Blocked, 4 Error.
+    pub fn route(&self, id: u64, kind: u8) { self.send(8, id, &[kind]); }
+
     fn send(&self, ty: u8, id: u64, body: &[u8]) {
         let mut ev = Vec::with_capacity(13 + body.len());
         ev.extend_from_slice(&((13 + body.len()) as u32).to_be_bytes());
@@ -102,6 +105,14 @@ impl EventSink {
         b.extend_from_slice(&up.to_be_bytes());
         b.extend_from_slice(&down.to_be_bytes());
         self.send(CLOSE, id, &b);
+    }
+
+    /// POLICY (7): kind (1 blocked, 2 gate failure, 3 unknown owner, 4 unknown host, 5 passed), revision, rule id.
+    pub fn policy(&self, id: u64, d: crate::blocking::Decision) {
+        let mut b = vec![d.kind];
+        b.extend_from_slice(&d.revision.to_be_bytes());
+        b.extend_from_slice(&d.rule.to_be_bytes());
+        self.send(7, id, &b);
     }
 }
 

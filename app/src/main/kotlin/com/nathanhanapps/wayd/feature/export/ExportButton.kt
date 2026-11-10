@@ -16,6 +16,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import com.nathanhanapps.wayd.R
 import kotlinx.coroutines.launch
@@ -32,6 +33,7 @@ fun ExportButton(
     export: suspend (Uri) -> ExportResult,
 ) {
     val ctx = LocalContext.current
+    val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     var confirm by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -40,9 +42,9 @@ fun ExportButton(
         busy = true
         scope.launch {
             val msg = when (val r = export(uri)) {
-                is ExportResult.Saved -> ctx.getString(R.string.export_saved, r.name, r.flows, r.messages)
-                ExportResult.Empty -> ctx.getString(R.string.export_empty)
-                ExportResult.Failed -> ctx.getString(R.string.export_failed)
+                is ExportResult.Saved -> resources.getString(R.string.export_saved, r.name, r.flows, r.messages)
+                ExportResult.Empty -> resources.getString(R.string.export_empty)
+                ExportResult.Failed -> resources.getString(R.string.export_failed)
             }
             busy = false
             Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()

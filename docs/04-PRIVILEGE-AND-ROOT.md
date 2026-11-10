@@ -81,4 +81,8 @@ Parsers must be tolerant: output format varies by Android version and OEM. Keep 
 
 ## Coverage
 
+### Implemented M5 package inventory
+
+`Command.ListPackages` is a parameter-free allowlist entry for `pm list packages --user current`, exposed through the fixed `IPrivilegedService.listPackages` call. APK scanning reuses this only when Shizuku is already granted; it never opens a permission dialog automatically. Replies are capped at 600 KiB and parsed to at most 5,000 validated package names, including the special `android` package. No APK bytes, private directories, installation or root modification are accessed through this call. The UserService version is now 2 so an old binder cannot accidentally serve the new API. Direct PackageManager queries can still fail for packages hidden by a ROM; those remain unavailable in the scan counts.
+
 Even with root, cellular baseband traffic (IMS/VoLTE, SMS, carrier provisioning, A-GPS over modem) is invisible. Always state this in the coverage panel.

@@ -4,11 +4,11 @@ Read this file first, then `docs/HANDOFF.md` for current state, then the doc for
 
 ## Project in one paragraph
 
-WAYD (在干嘛, `com.nathanhanapps.wayd`) is a local-only Android privacy monitor. A `VpnService` records all app traffic; Shizuku/root collectors add permission-use evidence; a deterministic rule engine produces findings; an on-device Gemma 4 model explains selected evidence as schema-validated JSON; the UI is Jetpack Compose with Material 3 Expressive. Nothing leaves the phone.
+WAYD (在干嘛, `com.nathanhanapps.wayd`) is a local-only Android privacy monitor. A `VpnService` records all app traffic; Shizuku/root collectors add permission-use evidence; a deterministic rule engine produces findings; an on-device Gemma 4 model explains selected evidence as schema-validated JSON; the UI is Jetpack Compose with Material 3 Expressive. Inspection copies, reports and AI analysis stay local unless the user explicitly exports them. App traffic still leaves for its destinations; optional proxy routing is planned (docs/14-OPTIONAL-ROUTING.md).
 
 ## Non-negotiables
 
-1. **Local only.** Never add analytics, crash-reporting, remote logging, or any network call except user-initiated model/database downloads to configured hosts.
+1. **Local inspection and analysis.** Never add analytics, uploading crash-reporting, remote logging, or automatic uploads of captures/reports/AI analysis. App traffic forwarding and user-initiated model/database downloads are allowed; exports require user choice. Future optional routing must follow docs/14-OPTIONAL-ROUTING.md and must not expose inspection stores or override WAYD blocks. Routing is not implemented by this documentation change.
 2. **Rules decide, AI explains.** Never let model output set severity, verdict colour, block rules, consents or privileges.
 3. **No free-form shell.** Privileged operations go through the sealed `Command` allowlist in `privilege/`. Do not add `exec(String)` APIs.
 4. **`ai/` must not depend on `privilege/`, `rootcap/` or `mitm/`.** Its tools are read-only DB queries.

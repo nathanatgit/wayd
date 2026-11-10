@@ -11,18 +11,51 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::oneshot;
 
 pub struct Shared {
+    pub blocking: crate::blocking::Blocking,
+    #[cfg(unix)]
+    pub routing: Option<Arc<crate::routing::Routing>>,
     #[cfg(feature = "mitm")]
     mitm: std::sync::RwLock<Option<Arc<crate::mitm::tls::Mitm>>>,
     decisions: Mutex<HashMap<u64, oneshot::Sender<bool>>>,
 }
 
 impl Shared {
+    #[cfg(test)]
     pub fn new() -> Arc<Self> {
+        Self::with_routing(None)
+    }
+
+    #[cfg(unix)]
+    pub fn with_routing(routing: Option<Arc<crate::routing::Routing>>) -> Arc<Self> {
         Arc::new(Shared {
+            blocking: crate::blocking::Blocking::new(),
+            routing,
             #[cfg(feature = "mitm")]
             mitm: std::sync::RwLock::new(None),
             decisions: Mutex::new(HashMap::new()),
         })
+    }
+
+    #[cfg(not(unix))]
+    fn with_routing(_: Option<()>) -> Arc<Self> {
+        Arc::new(Shared {
+            blocking: crate::blocking::Blocking::new(),
+            #[cfg(feature = "mitm")]
+            mitm: std::sync::RwLock::new(None),
+            decisions: Mutex::new(HashMap::new()),
+        })
+    }
+
+    pub fn routing_active(&self) -> bool {
+        #[cfg(unix)] { self.routing.is_some() }
+        #[cfg(not(unix))] { false }
+    }
+
+    pub fn routing_needs_host(&self, id: u64) -> bool {
+        #[cfg(unix)] {
+            self.routing.as_ref().is_some_and(|r| r.needs_host() && r.selected(&self.blocking.metadata(id).0))
+        }
+        #[cfg(not(unix))] { let _ = id; false }
     }
 
     #[cfg(feature = "mitm")]

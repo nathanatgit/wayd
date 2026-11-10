@@ -135,6 +135,30 @@ class ParsersTest {
         assertNull(TlsSniParser.parse(ch)!!.sni)
     }
 
+    @Test fun tls_reassemblesHandshakeAcrossRecords() {
+        val hello = clientHello("records.example")
+        val handshake = hello.copyOfRange(5, hello.size)
+        for (split in 1 until handshake.size) {
+            val first = bytes(0x16, 3, 3) + u16(split) + handshake.copyOfRange(0, split)
+            val second = bytes(0x16, 3, 3) + u16(handshake.size - split) + handshake.copyOfRange(split, handshake.size)
+            assertEquals("records.example", TlsSniParser.parse(first + second)?.sni)
+        }
+    }
+
+    @Test fun tls_truncationAndInvalidSlicesNeverProducePartialMetadata() {
+        val hello = clientHello("complete.example")
+        for (cut in 0 until hello.size) assertNull(TlsSniParser.parse(hello.copyOf(cut)))
+        assertNull(TlsSniParser.parse(hello, -1))
+        assertNull(TlsSniParser.parse(hello, hello.size + 1))
+        assertNull(TlsSniParser.parse(hello, 0, -1))
+        val framed = bytes(9, 9) + hello + bytes(9)
+        assertEquals("complete.example", TlsSniParser.parse(framed, 2, hello.size)?.sni)
+        val badRecord = hello.copyOf().also { it[3] = 0x7F }
+        assertNull(TlsSniParser.parse(badRecord))
+        val badHandshake = hello.copyOf().also { it[6] = 0x7F }
+        assertNull(TlsSniParser.parse(badHandshake))
+    }
+
     // ---- HTTP ----
 
     @Test fun http_parsesRequestHead() {

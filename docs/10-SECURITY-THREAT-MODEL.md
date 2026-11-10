@@ -1,5 +1,11 @@
 # 10 · Security and threat model
 
+## Local APK scanner (M5)
+
+APK scanning is user-started WorkManager work. It reads installed base/split APKs through PackageManager paths, never executes their code, never extracts ZIP paths to disk, and never reads privileged APK directories. Already-granted Shizuku access may run the fixed read-only current-user package inventory call in `Command.ListPackages`; no generic command execution or automatic permission prompt is added. Binary XML/DEX readers bound sizes, counts and offsets; malformed/unsupported input remains a coverage limitation. Facts and certificate metadata stay in the existing SQLCipher store. Possible endpoints retain hosts only, without embedded credentials, paths or query values. No package names, parser exceptions or APK data are logged. Signer subjects and static signatures are untrusted evidence, not verified identity or behavioral proof.
+
+WorkManager's merged `WAKE_LOCK` and `RECEIVE_BOOT_COMPLETED` permissions support OS scheduling and resumption of user-enqueued local scans; no automatic periodic scan or network destination is added. Its scheduler services use the library's system binding protections. Existing `QUERY_ALL_PACKAGES` permission is reused; a ROM may still restrict visibility.
+
 WAYD holds the most sensitive data on the phone. Treat WAYD itself as a high-value target.
 
 ## Assets
@@ -19,7 +25,7 @@ WAYD holds the most sensitive data on the phone. Treat WAYD itself as a high-val
 | T4 | Malicious payload exploits WAYD parsers | Parsers in memory-safe code where possible; fuzz parsers (DNS/TLS/HTTP/AXML/DEX) in CI; size limits everywhere |
 | T5 | CA key theft enables interception | Per-install CA, encrypted key, delete on disable, short validity |
 | T6 | Root command injection | Sealed `Command` allowlist, argument validation, no string shells; dev console research-only |
-| T7 | WAYD leaks data itself | No analytics/crash SDKs; network allowlist for WAYD's own sockets (model/DB downloads only); WAYD's own traffic shown in its own report |
+| T7 | WAYD leaks data itself | No automatic uploads of inspection data; no analytics/uploading crash SDKs. Separate app forwarding, explicit exports and user-initiated model/DB downloads from local inspection. Planned routing must follow docs/14. |
 | T8 | Misleading report (false "clean") | Coverage panel; tiers; "unknown" verdicts; never claim completeness |
 | T9 | Root state left broken after crash | RootStateJournal + restore on start; "Restore network" button |
 | T10 | Supply chain (model file, tracker DB) | SHA-256 pinned in app release; signed manifest for updates |
@@ -57,7 +63,7 @@ The captured data is masked (identifiers replaced by type tokens), wrapped in in
 
 | Permission | Why | Risk / mitigation |
 |---|---|---|
-| `INTERNET` | The userspace stack relays the user's own traffic to its real destination. WAYD makes no network calls of its own. | Code review rule: no other `Socket`/`URL` use outside `capture/native` relay. The app excludes itself from the VPN (`addDisallowedApplication`) so relay sockets bypass the tunnel. |
+| `INTERNET` | The userspace stack relays the user's own traffic to its real destination. Separate from user-initiated model downloads. | Review relay and download network use separately; optional routing is still planned. The app excludes itself from the VPN (`addDisallowedApplication`) so relay sockets bypass the tunnel. |
 | `BIND_VPN_SERVICE` (service) | Declared on `WaydVpnService`; only the system can bind. | User must accept the system VPN consent dialog. |
 | `ACCESS_NETWORK_STATE` | Read the underlying network type (Wi-Fi / cellular) and resolve connection owners. | Read-only; no data leaves the device. |
 | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SYSTEM_EXEMPTED`, `POST_NOTIFICATIONS` | Keep recording alive and show a persistent "recording" notification with a Stop action. | Notification permission is optional; recording works without it. |
@@ -66,3 +72,51 @@ The captured data is masked (identifiers replaced by type tokens), wrapped in in
 Native code (`capture/native`) parses no payloads; it reports only bounded prefixes (2 KB TCP per direction, DNS datagrams, first UDP datagram) to Kotlin, where parsers are size-limited and treat input as hostile.
 
 **Debug-only intent extra:** `WaydVpnService` honours `--es exclude <cidr,...>` to keep prefixes out of the tunnel, but only when the APK is debuggable (`FLAG_DEBUGGABLE`) and the service is not exported. Release builds ignore it.
+
+## Planned optional routing threats
+
+The extension is not implemented. Before shipping, enforce WAYD blocks before routing, isolate inspection stores/CA keys, validate untrusted profiles, protect proxy credentials and subscription URLs, disclose proxy/DNS visibility, and prohibit silent direct fallback. Authorize subscription refreshes and health checks explicitly. Existing local-only statements concern inspection data, not ordinary forwarded traffic or explicit exports. See [14-OPTIONAL-ROUTING.md](14-OPTIONAL-ROUTING.md) for acceptance checks.
+
+### Initial routing implementation superseding the planned baseline · 2026-11-10
+
+No new Android permission. Existing INTERNET also permits explicitly imported
+numeric proxy endpoints chosen by the user; these are new user-configured network
+destinations. No default endpoints, automatic profile fetch, DNS bootstrap,
+subscription update, health probe or remote administration. Only selected apps'
+permitted bytes reach those endpoints, after local block gates. Proxy operators
+can observe metadata/plaintext; no anonymity or DNS-leak protection promise.
+
+Mihomo v1.19.33 outbound adapters run under the same UID. A strict bounded YAML
+subset rejects unknown fields, external resources, file/certificate/key paths,
+scripts, controller/listener/TUN/DNS settings and insecure certificate bypass.
+The API carries minimum live metadata/bytes, not DB/history/AI/CA handles. This
+does not create OS isolation from app files; do not claim it does. Upstream logs
+are discarded and transport errors have fixed, nonidentifying text.
+
+Profiles are AES-GCM encrypted with Android Keystore keys in no-backup private
+storage, excluded from rule backup/export. Explicit per-app ConsentRecords bind
+user/package/signers; shared UIDs are not grantable. Import saves disabled;
+changes require stopped VPN. Missing/changed consent or identity in an enabled
+profile fails startup. Package changes stop active routing. Delete revokes
+routing grants even if the encrypted profile is damaged and deletes its key.
+No automatic Direct fallback follows proxy failure. Unknown/unselected traffic
+continues Direct under the clearly disclosed initial scope. DNS and IPv6 need
+broader installed-VPN/leak acceptance before any protection claim.
+
+## M7 core controls · 2026-11-10
+
+No new permissions or network destinations. Rules require explicit per-app confirmation and a versioned ConsentRecord, bind to current Android user, package and installed signer fingerprints, and reject shared-UID/unknown identities. Legacy unbound rules stay inactive. Temporary controls live only in engine-session memory; permanent controls run only while WAYD VPN runs. Package changes revalidate bindings; removal and a global rules list provide reversal. Missing names/owners are disclosed coverage gaps, not successful policy decisions. Snapshot validation/activation is bounded and atomic; a required gate failure closes its flow. Old native ABI versions fail startup.
+
+Release logs must not contain target names, package identifiers or payloads. No response rewriting or imported grants exist in this slice. Future routing receives only permitted streams after WAYD policy; inspect [13-BLOCKING.md](13-BLOCKING.md) for pending acceptance cases. Capture manifest lint exceptions are scoped to the existing UID-attribution package permission and active-VPN foreground exemption; no exact-alarm permission is required for that VPN eligibility ([Android types](https://developer.android.com/develop/background-work/services/fgs/service-types#system-exempted)).
+
+## Explicit extension resource downloads and shared GeoIP (2026-11-10)
+
+The optional extension can fetch user-entered HTTPS subscriptions, declared HTTPS rule/proxy providers and a user-selected GeoIP MMDB source. The default GeoIP source is https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/release/country.mmdb. Downloads are initiated in the UI, bounded, HTTPS-only across redirects, and never include inspection stores. Resource hosts are displayed before import. An explicit bootstrap choice downloads through the first embedded proxy node; failure never retries Direct. Ordinary downloads and proxy hostname bootstrap can use underlying-network DNS. No scheduled refresh, telemetry, controller or listening port is started.
+
+The shared GeoIP file and source/checksum metadata stay in app-private no-backup storage. Native MMDB validation precedes replacement. Lookup uses destination numeric IPs locally. Database categories are retained for routing, but WAYD country labels accept only two-letter codes and unknown/private IPs remain unknown. The existing library shares WAYD UID; this is not a process sandbox. Profile YAML/embedded providers remain untrusted bounded inputs; unsupported MRS/GEOSITE/ASN/subrules fail explicitly. Profiles and credentials stay encrypted, and local blocks and per-app consent still precede proxy forwarding. No new Android permissions.
+
+### Explicit public HTTPS integration test
+
+The opt-in Android-native live routing/decryption test contacts www.google.com/robots.txt through the supplied routing profile, using a freshly resolved public numeric destination. It sends no account, cookies or inspection history. An ephemeral local test CA exists only within the native test process and is never installed into the phone trust store. Private profile fixtures are excluded from source control and removed from the device after testing. This does not authorize automatic production probes or uploading captured content.
+
+Explicit resource mirror: the import review can opt into cdn.jsdelivr.net for public GitHub raw assets. URLs with credentials/query/fragment/custom port/escaped path segments are never rewritten. The displayed host reflects this choice; no automatic mirror retry. Resource cache remains memory-only and bounded; cancellation interrupts native HTTP I/O.

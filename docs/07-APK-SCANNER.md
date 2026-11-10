@@ -1,6 +1,18 @@
 # 07 · APK scanner
 
+## Implementation status · 2026-11-10
+
+`apkscan/` implements a user-started WorkManager scan (maximum two APKs concurrently) over visible installed packages plus packages observed in retained traffic. Apps → APK scanner lists stored results (including system apps); a package-name field permits an explicit lookup when the ROM hides the installed-app list. Individual app pages link to their static snapshot. Cancel preserves completed packages. Unavailable package counts are shown; a successful batch does not mean every installed app was visible.
+
+Implemented: base/split binary manifests and receiver actions; PackageManager permissions/components/exported flags, shared UID and current signing certificates; declared NSC XML (including trust anchors, domains and pin declarations); defined-class SDK prefixes; possible host literals; native library names and protector heuristics. DEX readers accept 035/037–040, skip non-ASCII string evidence and retain hosts without paths/credentials/query values. Reflection type presence is not a hidden-API call-site finding. Certificates show SHA-256 plus subject, with no verified company attribution claim.
+
+Bounds per package: 64 APK paths, 50,000 ZIP entries per path, 4 MiB manifest, 64 DEX entries, 32 MiB per DEX / 96 MiB DEX read budget, 500,000 string IDs, 4,096 characters per examined string, 256 hosts per DEX, about 4,096 facts plus bounded coverage records. Malformed entries and limits become coverage facts. No extracted APK files are retained. NSC is limited to 10,000 parser events. Cache uses scanner/version/update/file metadata; explicit per-app rescan bypasses cache. WorkManager concurrency is capped at two.
+
+The original extraction table below remains the broader specification. Not implemented: root odex/VDEX extraction, non-ASCII endpoint extraction, hidden-API call-site analysis, complete licensed tracker signatures, automatic NSC/MITM feasibility verdicts or AI component explanation. The Declared/Used/Sent panel shows independent observations over retained history, with up to 100 operation types / 200 hosts; only exact static/observed host matches are highlighted. No three-way causal claim is made. All-app performance and carrier/vendor signer identification require device acceptance evidence.
+
 ## Inputs
+
+When Shizuku is already authorized, discovery also reuses its fixed read-only current-user package inventory (`Command.ListPackages`). No automatic Shizuku permission request or root APK access is added. Ordinary PackageManager lookups still determine which APK paths can be read. Discovery does not guarantee access to a hidden package.
 
 - `ApplicationInfo.sourceDir` + `splitSourceDirs` for every installed package (system apps included; needs `QUERY_ALL_PACKAGES`, justified by core functionality).
 - Root: `/data/dalvik-cache`, `oat/` dirs for odexed system apps.

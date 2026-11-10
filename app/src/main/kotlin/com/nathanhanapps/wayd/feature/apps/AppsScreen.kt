@@ -49,7 +49,7 @@ fun AppsScreen(onOpenApp: (pkg: String, window: String) -> Unit, vm: AppsViewMod
     val context = LocalContext.current
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(stringResource(R.string.apps_title), style = MaterialTheme.typography.headlineMedium)
+        Text(stringResource(R.string.tab_traffic), style = MaterialTheme.typography.headlineMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(Windows.TODAY to R.string.window_today, Windows.YESTERDAY to R.string.window_yesterday, Windows.WEEK to R.string.window_week)
                 .forEach { (key, label) ->

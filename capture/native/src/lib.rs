@@ -7,15 +7,18 @@
 //! through a polled binary queue. No payload is stored here; only bounded prefixes are reported.
 
 pub mod events;
+pub mod blocking;
+#[cfg(unix)]
+mod routing;
 
 #[cfg(feature = "mitm")]
 pub mod mitm;
 
-#[cfg(unix)]
+#[cfg(any(unix, test))]
 mod shared;
 #[cfg(unix)]
 mod engine;
-#[cfg(unix)]
+#[cfg(any(unix, test))]
 mod relay;
 #[cfg(unix)]
 mod tun;

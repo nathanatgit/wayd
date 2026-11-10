@@ -4,9 +4,9 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -36,10 +36,10 @@ import com.nathanhanapps.wayd.feature.reports.ReportsScreen
 import com.nathanhanapps.wayd.feature.settings.SettingsScreen
 
 private enum class Tab(val route: String, @StringRes val label: Int, val icon: ImageVector, val children: List<String> = emptyList()) {
-    Record("record", R.string.tab_record, Icons.Filled.PlayArrow),
-    Reports("reports", R.string.tab_reports, Icons.Filled.DateRange, listOf("report/", "company/")),
-    Apps("apps", R.string.tab_apps, Icons.AutoMirrored.Filled.List, listOf("app/", "messages/")),
-    Settings("settings", R.string.tab_settings, Icons.Filled.Settings),
+    Record("record", R.string.tab_record, Icons.Filled.Home),
+    Apps("apps", R.string.tab_traffic, Icons.AutoMirrored.Filled.List, listOf("app/", "messages/")),
+    Reports("reports", R.string.tab_insights, Icons.Filled.DateRange, listOf("report/", "company/")),
+    Tools("tools", R.string.tab_tools, Icons.Filled.Build, listOf("controls", "scanner", "settings")),
 }
 
 @Composable
@@ -69,7 +69,9 @@ fun WaydNavHost() {
         },
     ) { padding ->
         NavHost(nav, startDestination = Tab.Record.route, modifier = Modifier.padding(padding)) {
-            composable(Tab.Record.route) { RecordScreen() }
+            composable(Tab.Record.route) {
+                RecordScreen(onOpenControls = { nav.navigate("controls") }, onOpenReports = { nav.navigate(Tab.Reports.route) })
+            }
             composable(Tab.Reports.route) { ReportsScreen(onOpenDay = { nav.navigate("report/$it") }) }
             composable("report/{win}", listOf(navArgument("win") { type = NavType.StringType })) {
                 ReportDetailScreen(
@@ -82,13 +84,26 @@ fun WaydNavHost() {
                 CompanyScreen(onBack = { nav.popBackStack() }, onOpenApp = { pkg, win -> nav.navigate("app/$pkg/$win") })
             }
             composable(Tab.Apps.route) { AppsScreen(onOpenApp = { pkg, win -> nav.navigate("app/$pkg/$win") }) }
+            composable(Tab.Tools.route) {
+                com.nathanhanapps.wayd.feature.tools.ToolsScreen(
+                    onOpenRules = { nav.navigate("controls") },
+                    onOpenScanner = { nav.navigate("scanner") },
+                    onOpenSettings = { nav.navigate("settings") },
+                )
+            }
+            composable("controls") {
+                com.nathanhanapps.wayd.feature.controls.ControlsScreen(onOpenApp = { pkg -> nav.navigate("app/${android.net.Uri.encode(pkg)}/today") })
+            }
+            composable("scanner?pkg={pkg}", listOf(navArgument("pkg") { type = NavType.StringType; defaultValue = "" })) {
+                com.nathanhanapps.wayd.feature.apps.ApkScanScreen(onBack = { nav.popBackStack() })
+            }
             composable("app/{pkg}/{win}", listOf(navArgument("pkg") { type = NavType.StringType }, navArgument("win") { type = NavType.StringType })) {
-                AppDetailScreen(onBack = { nav.popBackStack() }, onOpenMessages = { pkg, win -> nav.navigate("messages/$pkg/$win") })
+                AppDetailScreen(onBack = { nav.popBackStack() }, onOpenMessages = { pkg, win -> nav.navigate("messages/$pkg/$win") }, onOpenScanner = { nav.navigate("scanner?pkg=${android.net.Uri.encode(it)}") })
             }
             composable("messages/{pkg}/{win}", listOf(navArgument("pkg") { type = NavType.StringType }, navArgument("win") { type = NavType.StringType })) {
                 InspectorScreen(onBack = { nav.popBackStack() })
             }
-            composable(Tab.Settings.route) { SettingsScreen() }
+            composable("settings") { SettingsScreen() }
         }
     }
 }

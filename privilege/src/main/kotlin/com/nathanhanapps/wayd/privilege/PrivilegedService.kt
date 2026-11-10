@@ -23,6 +23,8 @@ object OpNames {
  * Replies cross Binder, so output is filtered/capped here (see [MAX_REPLY]).
  */
 class PrivilegedService : IPrivilegedService.Stub() {
+    override fun listPackages(): String = run(Command.ListPackages.argv) { it.startsWith("package:") }
+
     override fun destroy() {
         exitProcess(0)
     }

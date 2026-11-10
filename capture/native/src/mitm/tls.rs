@@ -17,7 +17,6 @@ use rustls::pki_types::ServerName;
 use rustls::server::Acceptor;
 use rustls::{ClientConfig, RootCertStore, ServerConfig};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
-use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tokio_rustls::{LazyConfigAcceptor, TlsConnector};
 
@@ -153,9 +152,18 @@ impl Mitm {
         Ok(cfg)
     }
 
-    pub async fn intercept<S>(&self, client: &mut Recording<S>, remote: TcpStream, id: u64, sink: &EventSink) -> Outcome
+    pub async fn intercept<S, R>(&self, client: &mut Recording<S>, remote: R, id: u64, sink: &EventSink) -> Outcome
     where
         S: AsyncRead + AsyncWrite + Unpin + Send,
+        R: AsyncRead + AsyncWrite + Unpin + Send,
+    {
+        self.intercept_counted(client, remote, id, sink, None).await
+    }
+
+    pub async fn intercept_counted<S, R>(&self, client: &mut Recording<S>, remote: R, id: u64, sink: &EventSink, counters: Option<&crate::blocking::FlowControl>) -> Outcome
+    where
+        S: AsyncRead + AsyncWrite + Unpin + Send,
+        R: AsyncRead + AsyncWrite + Unpin + Send,
     {
         // 1. learn the SNI from the ClientHello (nothing is sent to the app yet)
         let start = match LazyConfigAcceptor::new(Acceptor::default(), &mut *client).await {
@@ -204,14 +212,14 @@ impl Mitm {
         sink.tls_note(id, crate::events::TLS_INTERCEPTED);
 
         // 4. copy plaintext both ways while capturing HTTP/1.1
-        let (up, down) = pump_plain(app, upstream, id, sink).await;
+        let (up, down) = pump_plain(app, upstream, id, sink, counters).await;
         Outcome::Done(up, down)
     }
 }
 
 /// Forwards bytes unchanged in both directions; copies of them feed the HTTP capture. One task handles both
 /// directions so requests and responses can be paired without locks.
-async fn pump_plain<A, U>(app: A, upstream: U, id: u64, sink: &EventSink) -> (u64, u64)
+async fn pump_plain<A, U>(app: A, upstream: U, id: u64, sink: &EventSink, counters: Option<&crate::blocking::FlowControl>) -> (u64, u64)
 where
     A: AsyncRead + AsyncWrite + Unpin,
     U: AsyncRead + AsyncWrite + Unpin,
@@ -233,6 +241,7 @@ where
                 Ok(n) if n > 0 => {
                     if uw.write_all(&ab[..n]).await.is_err() { break; }
                     up += n as u64;
+                    if let Some(c) = counters { c.up.store(up, std::sync::atomic::Ordering::Relaxed); }
                     if last_report.elapsed() >= Duration::from_secs(2) {
                         sink.progress(id, false, up);
                         sink.progress(id, true, down);
@@ -250,6 +259,7 @@ where
                 Ok(n) if n > 0 => {
                     if aw.write_all(&ub[..n]).await.is_err() { break; }
                     down += n as u64;
+                    if let Some(c) = counters { c.down.store(down, std::sync::atomic::Ordering::Relaxed); }
                     if last_report.elapsed() >= Duration::from_secs(2) {
                         sink.progress(id, false, up);
                         sink.progress(id, true, down);
