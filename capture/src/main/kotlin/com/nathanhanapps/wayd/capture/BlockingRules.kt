@@ -76,14 +76,13 @@ class BlockingRules @Inject constructor(
         val expired = temporary
         temporary = emptyList()
         installed = emptyList()
-        _state.value = BlockingState(_state.value.rules.filter { it.id > 0 })
         val persistent = dao.all()
         db.withTransaction {
             expired.mapNotNull { it.pkg }.distinct().filter { pkg -> persistent.none { it.enabled && it.pkg == pkg } }.forEach { pkg ->
                 dao.consent(feature(pkg))?.let { db.consentDao().upsert(it.copy(revokedAt = System.currentTimeMillis())) }
             }
         }
-        _state.value = BlockingState(persistent)
+        publish(dao.all(), emptyList())
     } }
 
     fun owner(id: Long, owner: Owner?) = synchronized(bridge) {

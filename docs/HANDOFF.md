@@ -249,3 +249,7 @@ Validation on NX733J: all 11 standard and 26 research native tests passed direct
 Evidence stays ignored under build/: m7-lifecycle-standard-test.log, m7-lifecycle-research-test.log, m7-shutdown-build.log and m7-installed-shutdown-result.json. Native test binaries and generated CA fixtures on the phone were removed after testing. Capture remains stopped, FlClash was not restarted, and no saved rules were added. Secure keyguard remains intact; the ADB regression/service checks did not require unlocking, superseding the pending unlock request for this shutdown check.
 
 Remaining M7 device acceptance: whole-app and durable-rule enforcement through UI, persistent consent/identity/profile/reinstall cases. Previously verified exact-host blocking/Undo and session expiry stand. Portable backup/import, response editing and actual Clash integration remain later slices; GeoIP follows Clash. No battery/soak or complete-coverage claim.
+
+## 2026-11-10 · Session-rule lifecycle state normalization
+
+Normalized the VPN-stop path in [BlockingRules](../capture/src/main/kotlin/com/nathanhanapps/wayd/capture/BlockingRules.kt) so transient rules are dropped and the final persistent-only state is published only after consent revocation completes. This keeps the UI and `activeIds` consistent when session rules expire on VPN stop, without affecting durable rules or the independent recording toggle.
