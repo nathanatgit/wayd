@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Answers the CLASH_EXTENSION lookup in main (D-049); core has no such activity, so Clash rows and the country panel hide. -->
+        <activity android:name=".feature.extensions.ClashExtensionActivity" android:exported="false">
+            <intent-filter>
+                <action android:name="com.nathanhanapps.wayd.action.CLASH_EXTENSION" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

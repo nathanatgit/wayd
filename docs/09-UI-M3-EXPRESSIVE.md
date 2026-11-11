@@ -91,7 +91,7 @@ AI entry points are contextual (selection action bar, finding card, app detail),
 
 ### Settings
 - Privilege; AI model manager (download size, device check, delete); retention; export; wipe.
-- **Danger zone** (collapsed, red outline): MITM, root plaintext capture, developer console (research).
+- **Danger zone** (collapsed, red outline): MITM, root plaintext capture, developer console.
 
 ## Motion
 

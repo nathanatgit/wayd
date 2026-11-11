@@ -1,6 +1,6 @@
 name: Release
 
-# Pushing a tag like v0.1.1 builds the signed release APK and publishes it as a GitHub release.
+# Pushing a tag like v0.1.1 builds the signed core and clash release APKs and publishes them as a GitHub release.
 # The tag must match versionName in app/build.gradle.kts (v0.1.1 <-> "0.1.1").
 on:
   push:
@@ -73,36 +73,43 @@ jobs:
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/wayd-release.p12"
           echo "WAYD_KEYSTORE_FILE=$RUNNER_TEMP/wayd-release.p12" >> "$GITHUB_ENV"
 
-      - name: Build signed release APK
+      - name: Build signed release APKs
         env:
           WAYD_KEYSTORE_PASSWORD: ${{ secrets.WAYD_KEYSTORE_PASSWORD }}
           WAYD_KEY_ALIAS: ${{ secrets.WAYD_KEY_ALIAS }}
           WAYD_KEY_PASSWORD: ${{ secrets.WAYD_KEY_PASSWORD }}
-        run: ./gradlew :app:assembleResearchRelease
+        run: ./gradlew :app:assembleCoreRelease :app:assembleClashRelease
 
-      - name: Verify and name the APK
+      - name: Verify and name the APKs
         run: |
-          APK_IN=app/build/outputs/apk/research/release/app-research-release.apk
           APK="wayd-v${VERSION}.apk"
-          cp "$APK_IN" "$APK"
-          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --print-certs "$APK" | tee cert.txt
-          sha256sum "$APK" > "$APK.sha256"
-          cat "$APK.sha256"
+          APK_CLASH="wayd-clash-v${VERSION}.apk"
+          cp app/build/outputs/apk/core/release/app-core-release.apk "$APK"
+          cp app/build/outputs/apk/clash/release/app-clash-release.apk "$APK_CLASH"
+          for f in "$APK" "$APK_CLASH"; do
+            "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --print-certs "$f" | tee "cert-$f.txt"
+            sha256sum "$f" > "$f.sha256"
+            cat "$f.sha256"
+          done
           echo "APK=$APK" >> "$GITHUB_ENV"
+          echo "APK_CLASH=$APK_CLASH" >> "$GITHUB_ENV"
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          CERT=$(grep -m1 "certificate SHA-256 digest" cert.txt | sed 's/.*: //')
+          CERT=$(grep -m1 "certificate SHA-256 digest" "cert-$APK.txt" | sed 's/.*: //')
           {
             echo "WAYD ${VERSION}"
             echo
-            echo "Install: \`${APK}\` (arm64 phones, Android 10+). Local-only: no data leaves the phone except model downloads you start."
+            echo "Two builds (arm64 phones, Android 10+), same application id and signing key; install either one over the other to switch, keeping your data. Local-only: no data leaves the phone except model downloads you start."
+            echo
+            echo "- \`${APK}\`: core. Traffic recording, blocking, analysis and consent-gated HTTPS decryption."
+            echo "- \`${APK_CLASH}\`: everything in core plus optional Clash (Mihomo) routing and its screens."
             echo
             echo "Signing certificate SHA-256: \`${CERT}\`"
-            echo "APK SHA-256: see \`${APK}.sha256\`."
+            echo "APK SHA-256: see the \`.sha256\` file next to each APK."
             echo
-            echo "This build includes the research features (HTTPS decryption, off by default, behind a consent flow)."
+            echo "HTTPS decryption is included in both builds, off by default, and only starts after you accept the Danger zone consent in Settings."
           } > notes.md
-          gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" --title "WAYD ${VERSION}" --notes-file notes.md --generate-notes
+          gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" "$APK_CLASH" "$APK_CLASH.sha256" --title "WAYD ${VERSION}" --notes-file notes.md --generate-notes

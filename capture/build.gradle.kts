@@ -34,9 +34,8 @@ dependencies {
 }
 
 // ---- Native netstack (Rust, see capture/native) -------------------------------------------------
-// Two variants of libwayd_net.so are built with cargo-ndk:
-//   standard: no TLS interception code at all;  research: built with `--features mitm` (D-006, AGENTS.md rule 7).
-// Each goes to its own folder under build/native/<variant>; the :app module packages the matching one per flavor.
+// One libwayd_net.so is built with cargo-ndk, always with `--features mitm` (D-048): decryption ships in every variant but stays
+// inert until the Danger zone consent (AGENTS.md rule 7). It goes to build/native/mitm; the :app module packages it for all variants.
 // Needs: rustup + Android targets, cargo-ndk, and the NDK declared above. Pass -PskipNative to reuse built libraries.
 val nativeAbis = listOf("arm64-v8a")
 val ndkDir = project.extensions.getByType<com.android.build.api.variant.LibraryAndroidComponentsExtension>()
@@ -76,8 +75,7 @@ fun registerNative(variant: String, extraArgs: List<String>) = tasks.register<Ex
     )
 }
 
-registerNative("standard", emptyList())
-registerNative("research", listOf("--features", "mitm"))
+registerNative("mitm", listOf("--features", "mitm"))
 
 tasks.register<Exec>("buildRouting") {
     group = "build"

@@ -50,8 +50,7 @@ class WaydVpnService : VpnService() {
     @Inject lateinit var interceptHook: InterceptHook
     @Inject lateinit var blocking: BlockingRules
     @Inject lateinit var recording: TrafficRecording
-    @Inject lateinit var routing: RoutingSettings
-    @Inject lateinit var geoIp: RoutingGeoIp
+    @Inject lateinit var routing: RoutingBridge
 
     private val policyScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val packageChanges = object : BroadcastReceiver() {
@@ -219,7 +218,7 @@ class WaydVpnService : VpnService() {
             policyOwner = blocking::owner,
             policyHost = blocking::host,
             recording = { recording.window },
-            country = geoIp::country,
+            country = routing::country,
         )
         val buf = ByteArray(POLL_BUF)
         var lastFlush = SystemClock.elapsedRealtime()

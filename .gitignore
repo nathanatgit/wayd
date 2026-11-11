@@ -18,3 +18,4 @@ capture/src/main/jniLibs/
 capture/native/target/
 capture/native/target-standard/
 capture/native/target-research/
+capture/native/target-mitm/

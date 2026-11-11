@@ -22,13 +22,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Wayd">
 
-        <activity android:name=".feature.extensions.ClashExtensionActivity" android:exported="false">
-            <intent-filter>
-                <action android:name="com.nathanhanapps.wayd.action.CLASH_EXTENSION" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
-
         <activity
             android:name=".MainActivity"
             android:exported="true">

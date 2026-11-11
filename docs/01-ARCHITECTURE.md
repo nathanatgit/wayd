@@ -1,6 +1,6 @@
 # 01 · Architecture
 
-This document includes target architecture and planned components. See [HANDOFF.md](HANDOFF.md) for implemented behavior; optional routing below is a future design.
+Target architecture, including planned components. See [HANDOFF.md](HANDOFF.md) for what is implemented.
 
 ## Layers
 
@@ -29,12 +29,12 @@ wayd/
 ├─ core/ui/                Shared Compose components (EvidenceChip, TierBadge, AppIcon…)
 ├─ capture/                WaydVpnService, TunLoop, Netstack bridge, FlowTracker,
 │                          parsers (Dns, Tls, Http, Quic-SNI), PcapWriter, CoverageMonitor
-├─ mitm/        [research] CaManager, TlsInterceptor, PinnedHostCache, PerAppPolicy
+├─ mitm/        [consent]  CaManager, TlsInterceptor, PinnedHostCache, PerAppPolicy
 ├─ privilege/              PrivilegeDetector, PrivilegedShell, ShizukuShell, LibsuShell,
 │                          Command (sealed allowlist)
 ├─ collectors/             AppOpsCollector, AlarmCollector, NetstatsCollector,
 │                          PackageCollector, UsageCollector
-├─ rootcap/     [research] NflogCapture, BpfLoader, SslUprobeCapture, FileAccessMonitor,
+├─ rootcap/     [consent]  NflogCapture, BpfLoader, SslUprobeCapture, FileAccessMonitor,
 │                          SystemCaModule
 ├─ enrich/                 UidResolver, DnsIpMap, GeoIp, TrackerDb, CompanyMap
 ├─ analysis/               RuleEngine, rules/*, RiskScorer, DailyReportBuilder
@@ -46,7 +46,7 @@ wayd/
 
 Feature screens live in `app/feature/*` until a feature grows large enough to justify its own module.
 
-`[research]` modules are only included in the `research` product flavor.
+`[consent]` components ship in the single build (D-048) but stay inert until the Danger zone consent is recorded. The only flavor dimension is `routing` (D-049); see below.
 
 ## Dependency rules
 
@@ -90,13 +90,15 @@ Feature screens live in `app/feature/*` until a feature grows large enough to ju
 6. Collectors (if privileged) run on a schedule and on session stop.
 7. Session stop → enrichment pass → rule engine → report ready notification.
 
-## Build flavors
+## Builds
 
-| Flavor | Includes | Distribution |
+| Variant | Includes | Release asset |
 |---|---|---|
-| `standard` | capture, collectors (ADB), analysis, ai, apkscan | stores / public |
-| `research` | + mitm, rootcap, developer console | GitHub / sideload |
+| `core` | everything above; decryption/root features consent-gated | `wayd-vX.Y.Z.apk` |
+| `clash` | `core` + `routing/` Mihomo transport, profiles, resources/GeoIP, Clash screens (`app/src/clash`) | `wayd-clash-vX.Y.Z.apk` |
 
-## Planned routing boundary
+Same application id and signing key: installing one over the other keeps data. Both are distributed via GitHub / sideload.
 
-WAYD retains sole VPN ownership. Applicable local app/host/IP blocks run before upstream routing; only allowed flows reach Direct or the optional proxy extension. Content rules run locally before matching content is forwarded. Imported routing profiles cannot override WAYD blocks. Inspection stores, findings, AI outputs and CA keys are unavailable to the routing extension. Direct fallback requires explicit opt-in. See [14-OPTIONAL-ROUTING.md](14-OPTIONAL-ROUTING.md) for the planned contract and acceptance checks; this is not implemented.
+## Routing boundary
+
+WAYD keeps sole VPN ownership. Local blocks run before routing; only allowed flows of routed apps reach the routing transport, which never sees inspection stores, findings, AI outputs or CA keys. Proxy failure never falls back to Direct. Contract and acceptance: [14-OPTIONAL-ROUTING.md](14-OPTIONAL-ROUTING.md).

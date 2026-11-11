@@ -12,6 +12,8 @@ import "C"
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/netip"
@@ -20,6 +22,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
 
 	routing "com.nathanhanapps.wayd/routing"
@@ -127,7 +130,16 @@ func WaydRouteCommand(profile unsafe.Pointer, size C.int, request unsafe.Pointer
 	if profile == nil || size <= 0 || size > routing.MaxExtensionBytes || request == nil || requestSize <= 0 || requestSize > routing.MaxExtensionBytes {
 		return nil
 	}
-	result := routing.ExtensionCommand(C.GoBytes(profile, size), C.GoBytes(request, requestSize))
+	profileBytes, requestBytes := C.GoBytes(profile, size), C.GoBytes(request, requestSize)
+	var result []byte
+	var q struct {
+		Action string `json:"action"`
+	}
+	if json.Unmarshal(requestBytes, &q) == nil && q.Action == "connect" {
+		result = connect(profileBytes, requestBytes)
+	} else {
+		result = routing.ExtensionCommand(profileBytes, requestBytes)
+	}
 	*outSize = C.int(len(result))
 	return C.CBytes(result)
 }
@@ -308,6 +320,90 @@ func WaydRouteDial(flowID C.uint64_t, data unsafe.Pointer, size C.int, fd *C.int
 		*outcome = 2
 	}
 	return C.uint64_t(id)
+}
+
+var connects atomic.Int32
+
+// connect serves WAYD's own external AI call (D-050). It dials host:port by name through the route the profile picks for
+// the given owner and hands one end of a socketpair back to the caller, which runs TLS over it: this library only ever sees
+// ciphertext. The reply carries the descriptor and the route kind, never a node name, address or credential.
+func connect(profile, request []byte) []byte {
+	fail := func(code string) []byte { v, _ := json.Marshal(map[string]any{"error": code}); return v }
+	var q struct {
+		Host  string `json:"host"`
+		Port  int    `json:"port"`
+		Owner string `json:"owner"`
+	}
+	if json.Unmarshal(request, &q) != nil || q.Port <= 0 || q.Port > 65535 {
+		return fail("invalid_request")
+	}
+	if connects.Add(1) > 8 {
+		connects.Add(-1)
+		return fail("busy")
+	}
+	e, err := routing.New(profile)
+	if err != nil {
+		connects.Add(-1)
+		return fail("invalid_profile")
+	}
+	// Hard cap on one connection's life; the caller's own read timeout is shorter.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	remote, r, err := e.DialName(ctx, q.Host, uint16(q.Port), q.Owner)
+	if err != nil {
+		cancel()
+		e.Close()
+		connects.Add(-1)
+		switch {
+		case errors.Is(err, routing.ErrRejected):
+			return fail("route_blocked")
+		case errors.Is(err, routing.ErrMetadata):
+			return fail("route_unsupported")
+		default:
+			return fail("route_failed")
+		}
+	}
+	var closeOnce sync.Once
+	var local net.Conn
+	closeAll := func() {
+		closeOnce.Do(func() {
+			cancel()
+			if local != nil {
+				local.Close()
+			}
+			remote.Close()
+			e.Close()
+			connects.Add(-1)
+		})
+	}
+	pair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM|syscall.SOCK_CLOEXEC, 0)
+	if err != nil {
+		closeAll()
+		return fail("route_failed")
+	}
+	file := os.NewFile(uintptr(pair[1]), "wayd-connect")
+	local, err = net.FileConn(file)
+	file.Close()
+	if err != nil {
+		syscall.Close(pair[0])
+		closeAll()
+		return fail("route_failed")
+	}
+	var pumps sync.WaitGroup
+	pumps.Add(2)
+	go func() {
+		defer pumps.Done()
+		_, _ = io.Copy(remote, local)
+		_ = N.CloseWrite(remote)
+	}()
+	go func() {
+		defer pumps.Done()
+		_, _ = io.Copy(local, remote)
+		_ = N.CloseWrite(local)
+	}()
+	go func() { pumps.Wait(); closeAll() }()
+	go func() { <-ctx.Done(); closeAll() }()
+	v, _ := json.Marshal(map[string]any{"fd": pair[0], "route": r.Kind})
+	return v
 }
 
 func main() {}

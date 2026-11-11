@@ -23,7 +23,7 @@ class RecordViewModel @Inject constructor(
     private val controller: CaptureController,
     val recording: TrafficRecording,
     val blocking: BlockingRules,
-    val routing: com.nathanhanapps.wayd.capture.RoutingSettings,
+    private val routing: com.nathanhanapps.wayd.capture.RoutingBridge,
 ) : ViewModel() {
     val ui: StateFlow<CaptureUi> = state.ui
 

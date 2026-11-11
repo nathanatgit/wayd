@@ -24,7 +24,7 @@ WAYD holds the most sensitive data on the phone. Treat WAYD itself as a high-val
 | T3 | Captured content performs prompt injection on Gemma | `<data>` wrapping, masking, read-only tools, schema validation, evidence-ID checks, no privilege access from `ai` |
 | T4 | Malicious payload exploits WAYD parsers | Parsers in memory-safe code where possible; fuzz parsers (DNS/TLS/HTTP/AXML/DEX) in CI; size limits everywhere |
 | T5 | CA key theft enables interception | Per-install CA, encrypted key, delete on disable, short validity |
-| T6 | Root command injection | Sealed `Command` allowlist, argument validation, no string shells; dev console research-only |
+| T6 | Root command injection | Sealed `Command` allowlist, argument validation, no string shells; dev console behind Danger zone consent |
 | T7 | WAYD leaks data itself | No automatic uploads of inspection data; no analytics/uploading crash SDKs. Separate app forwarding, explicit exports and user-initiated model/DB downloads from local inspection. Planned routing must follow docs/14. |
 | T8 | Misleading report (false "clean") | Coverage panel; tiers; "unknown" verdicts; never claim completeness |
 | T9 | Root state left broken after crash | RootStateJournal + restore on start; "Restore network" button |
@@ -67,7 +67,7 @@ The captured data is masked (identifiers replaced by type tokens), wrapped in in
 | `BIND_VPN_SERVICE` (service) | Declared on `WaydVpnService`; only the system can bind. | User must accept the system VPN consent dialog. |
 | `ACCESS_NETWORK_STATE` | Read the underlying network type (Wi-Fi / cellular) and resolve connection owners. | Read-only; no data leaves the device. |
 | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SYSTEM_EXEMPTED`, `POST_NOTIFICATIONS` | Keep recording alive and show a persistent "recording" notification with a Stop action. | Notification permission is optional; recording works without it. |
-| `QUERY_ALL_PACKAGES` | Map connection UIDs to package names for every installed app. | Sideload/`research` distribution only; a store build needs a policy declaration. Package names never leave the device. |
+| `QUERY_ALL_PACKAGES` | Map connection UIDs to package names for every installed app. | Sideload distribution only; a store build needs a policy declaration. Package names never leave the device. |
 
 Native code (`capture/native`) parses no payloads; it reports only bounded prefixes (2 KB TCP per direction, DNS datagrams, first UDP datagram) to Kotlin, where parsers are size-limited and treat input as hostile.
 
@@ -129,3 +129,4 @@ Optional, off by default, requested by the user. Analysis text (hosts, IPs, app 
 - **Controls:** per-origin acknowledgement stored as `ConsentRecord("ai-external-v1:<origin>")` (changing the server revokes it); an approval dialog shows the exact prompt before every analysis and the analyzer fails closed without an approver; the dialog flags decrypted content; the API key is stored only as Keystore-AES-GCM ciphertext; redirects are never followed (no bearer replay); replies are bounded to 512 KB and still pass `SchemaValidator`, so the server cannot set severity, rules or consents.
 - **Cleartext:** `network_security_config.xml` permits cleartext platform-wide so a LAN server (Ollama) works. `ExternalAiUrl` allows `http://` only for loopback, RFC1918, CGNAT (Tailscale), link-local, `.local`/`.lan` and single-label hosts, without DNS resolution. All other WAYD downloads require `https://` in code.
 - **Not changed:** no new permission (INTERNET already present); WAYD's own sockets bypass its VPN; no analytics or automatic upload.
+- **Over Clash (D-050, `clash` variant):** when routing is on, the VPN runs and access control selects WAYD itself, the call is dialed by name through the selected node and WAYD runs TLS over it (`EngineTls`, platform trust + hostname checks). The routing library and proxy operator see only ciphertext plus the destination name/port. A rejected host or failed node ends the analysis (`ext_route`), never a Direct retry. Private/LAN servers are never routed.

@@ -22,15 +22,15 @@ android {
         (project.findProperty("appIdSuffix") as String?)?.let { applicationIdSuffix = it }
     }
 
-    flavorDimensions += "dist"
+    flavorDimensions += "routing"
     productFlavors {
-        // D-006 / D-027: `standard` has no MITM code; `research` adds it. Releases ship `research` under the plain application id
-        // (no suffix, no "-research" in the version). `-PappIdSuffix=.x` installs a build next to another one for testing.
-        create("standard") {
-            dimension = "dist"
+        // D-049: `core` has no Clash routing; `clash` adds it (app/src/clash, libwayd_route.so). Same application id and signing key, so
+        // one variant can be installed over the other. `-PappIdSuffix=.x` installs a build next to another one for testing.
+        create("core") {
+            dimension = "routing"
         }
-        create("research") {
-            dimension = "dist"
+        create("clash") {
+            dimension = "routing"
         }
     }
 
@@ -61,10 +61,10 @@ android {
     }
 
     sourceSets {
-        getByName("main").jniLibs.srcDir(rootProject.file("routing/build"))
-        // Each flavor packages its own native library: `research` includes the TLS-interception engine, `standard` does not.
-        getByName("standard").jniLibs.srcDir(rootProject.file("capture/build/native/standard"))
-        getByName("research").jniLibs.srcDir(rootProject.file("capture/build/native/research"))
+        // One capture library for every variant (built with the mitm feature, D-048); consent gates decryption at runtime.
+        getByName("main").jniLibs.srcDir(rootProject.file("capture/build/native/mitm"))
+        // Only `clash` packages the Mihomo transport (libwayd_route.so).
+        getByName("clash").jniLibs.srcDir(rootProject.file("routing/build"))
     }
 
     compileOptions {
@@ -114,10 +114,7 @@ dependencies {
 // The native libraries are produced by :capture; make sure they exist before they are merged into an APK.
 tasks.configureEach {
     if (name.startsWith("merge") && name.endsWith("JniLibFolders")) {
-          dependsOn(":capture:buildRouting")
-        when {
-            name.contains("Standard") -> dependsOn(":capture:buildNativeStandard")
-            name.contains("Research") -> dependsOn(":capture:buildNativeResearch")
-        }
+        dependsOn(":capture:buildNativeMitm")
+        if (name.contains("Clash")) dependsOn(":capture:buildRouting")
     }
 }

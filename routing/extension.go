@@ -666,6 +666,11 @@ func (x *extensionEngine) selectRoute(m Metadata) (Route, error) {
 	meta.Host = m.Host
 	_, meta.Process, _ = strings.Cut(m.Owner, ":")
 	meta.Type = C.TUN
+	return x.resolve(meta)
+}
+
+// resolve applies the mode, the ordered rules and the group selection to one connection's metadata.
+func (x *extensionEngine) resolve(meta *C.Metadata) (Route, error) {
 	target := ""
 	switch x.mode {
 	case "direct":

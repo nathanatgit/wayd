@@ -65,8 +65,9 @@ this is **not OS process isolation**. Do not describe it as a sandbox.
 Android arm64, API 29, NDK 29.0.14206865; Go 1.27.3. The Gradle
 `:capture:buildRouting` task uses `-PgoExecutable=<path>` or ignored
 `build/tools/go/bin/go[.exe]`, then PATH. No SDK bootstrap/download runs in app code.
-Both flavors package `routing/build/arm64-v8a/libwayd_route.so` alongside their
-separate standard/research Rust libraries. `-PskipNative` reuses these outputs.
+The app currently packages `routing/build/arm64-v8a/libwayd_route.so` next to the
+Rust capture library; under D-049 only the `clash` variant packages it; `core`
+ships no routing code. `-PskipNative` reuses these outputs.
 
 From this directory, `go test ./...` checks hostile profiles, metadata, matching,
 actual Mihomo HTTP CONNECT forwarding, Direct TCP/UDP, and no Direct fallback.
