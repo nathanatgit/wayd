@@ -1,25 +1,35 @@
 # Handoff
 
-_Last updated: 2026-11-11 · **v0.3.0** on `main` (versionCode 6) · decisions through D-050._
+_Last updated: 2026-11-11 · **v0.3.0** on `main` (versionCode 6) · decisions through D-052._
 
 WAYD (在干嘛, `com.nathanhanapps.wayd`) is an Android privacy monitor: a VpnService forwards traffic and applies local blocks, optional recording saves evidence locally, consent-gated decryption reads supported HTTPS, on-device Gemma (or an approved external OpenAI-compatible server) explains findings. Read [AGENTS.md](../AGENTS.md) first. Older session-by-session notes were compacted on 2026-11-11; see git history (`git log -p docs/HANDOFF.md`) for the full device logs.
 
 ## Now
 
-**D-048 + D-049 build migration is in code on `feat/d049-variants` (uncommitted).** `research` is merged into `main` (one `--features mitm` capture lib, `buildNativeMitm`, decryption still gated by the Danger zone consent); flavor dimension `routing` has `core` and `clash`. Clash UI, `RoutingSettings`, `RoutingGeoIp`/`RoutingDownloads`, resource URLs, their strings (both locales), manifest entry and `libwayd_route.so` packaging live in `app/src/clash`; `:capture:buildRouting` feeds only `clash` merge tasks. The shared `WaydVpnService`/`RecordViewModel` use `capture.RoutingBridge` (Hilt-bound to `ClashRoutingBridge` in `clash`, `NoRouting` in `core`, which never touches `no_backup/routing/`). The Rust side `dlopen`s `libwayd_route.so` lazily and fails soft, and `core` always starts with an empty routing profile, so `core` needs no native change. CI and `release.yml` build both variants (assets `wayd-vX.Y.Z.apk`, `wayd-clash-vX.Y.Z.apk`).
+_Handoff 2026-11-11 evening. Decisions through D-052._
 
-**D-050 external AI over Clash (same branch, uncommitted).** In `clash`, when routing is on, the VPN runs and access control selects WAYD itself, external AI calls to public HTTPS servers go through a Go `connect` command (`routing/connect.go` `DialName`: rules applied with WAYD as owner, dialed **by name** through the node) that returns a socketpair; WAYD runs TLS (`ai/ExternalAiStream.kt` `EngineTls`, hostname-verified) and HTTP/1.1 (`StreamHttp`) over it, so routing sees only ciphertext. Failure → `ext_route`, never Direct. The access-control picker now lists WAYD itself (its own traffic never enters the tunnel, so this only affects AI calls).
+**Branches**
+- `main` (`7fc6ef0`, local, **not pushed**): D-048 to D-050 merged: `core`/`clash` variants, research merged into common code, external AI over Clash (Nat verified on NX733J: analysis returned with WAYD's VPN + Clash on).
+- `feat/model-folder` (`286cd78`, on top of `feat/connection-labels` `c2c590b`), **not merged**: D-051 connection labels + D-052 model folder. Both variants build, both lints pass, 196 JVM tests, 0 failures (1 skipped: opt-in live AI). Merge `feat/model-folder` into `main` with `--no-ff` once the device test below passes; it carries both commits.
 
-**Verified 2026-11-11:**
-- This PC now has the full toolchain: Rust 1.99.1 (GNU host) + `aarch64-linux-android` + cargo-ndk 4.1.2, WinLibs MinGW (winget, needed for `dlltool`; add its `mingw64/bin` and `~/.cargo/bin` to PATH), Go 1.27.3 in `build/tools/go` (SHA-256 checked), NDK 29.0.14206865 unpacked into the SDK (SHA-1 checked; no `sdkmanager` here). Both native libs built from source.
-- `./gradlew :app:assembleCoreDebug :app:assembleClashDebug :app:lintCoreDebug :app:lintClashDebug test`: BUILD SUCCESSFUL, 187 tests, 0 failures, 1 skipped (live AI). `go vet` clean, all Go tests pass (3 new `DialName`). Live Gemini test over the new `EngineTls` path passed from the PC (`WAYD_EXTERNAL_ROUTED=1`).
-- NX733J, `clash` debug as `com.nathanhanapps.wayd.d049`: imported `Mixed_country_20261010.yaml` (10 nodes, 5 groups, 24 rules); **all 17 resources incl. 7.6 MB GeoIP downloaded via the first node** after one retry (FlClash was running underneath). Whitelist = WAYD, routing on, Gemini provider saved. **Nat started WAYD's VPN and ran an analysis: report returned** over the route. Without WAYD's VPN, the old direct call hung in `connectSocket` (Google unreachable directly), which is the case D-050 fixes. Earlier: `core` over `clash` hides Clash rows and leaves `no_backup/routing/` untouched; `ClashExtension.intent()` now resolves only in WAYD's own package.
+**D-051 connection labels:** every row in Traffic → Connections shows Danger / Warn / Sensitive / Ad / Normal from rules (`analysis/ConnectionLabels.kt`); the list runs the rules per shown day (cached). AI purpose guesses appear only as a separate outlined "AI: …?" hint (`ai/AiHints.kt`, re-validated against the evidence each stored answer was given). Not yet seen on the phone.
 
-**Still to do:**
-1. Commit `feat/d049-variants` when Nat agrees (no Claude co-author line), then merge per Releases.
-2. Not yet checked on device: a real profile surviving `clash` → `core` → `clash`; a failing node giving `ext_route` in the UI; blacklist mode routing WAYD; Opus review of the `RoutingBridge` wiring in `WaydVpnService`.
-3. Possible follow-up: show "via Clash" in the AI approval dialog when the call will be routed.
-4. Device testing: ask Nat to do the taps (faster than scrcpy automation). `.m1test` has a different debug key than this PC; use `-PappIdSuffix=.d049`.
+**D-052 model folder:** Settings → AI → Model folder (picker, suggested Download/WAYD, no new permission). Downloads go there; hand-copied files are found by exact name. A changed file (size/mtime) is hashed and compared with the SHA-256 the chosen source publishes now (HF / ModelScope API; pinned fallback). Mismatch → "older version" or "damaged/edited", nothing loads until the user picks Download again / Place the file myself (+ Check) / Use anyway. Pinned hashes confirmed against both APIs 2026-11-11.
+
+**Next: Nat tests on the phone** (adb was disconnected; sideload `app/build/outputs/apk/clash/debug/app-clash-debug.apk`, installs over `.d049`):
+1. Settings → AI → Model folder → pick Download/WAYD.
+2. Put `gemma-4-E2B-it.litertlm` there (copy or Download) → "Not checked yet" → check → Installed.
+3. Run an on-device analysis: **unverified risk**, folder models load via `/proc/self/fd/N`; if LiteRT-LM rejects that path, fall back to copying the file into app storage once.
+4. Optional: append a byte → expect the "damaged" warning and the three choices.
+5. Look at Traffic → Connections labels and, after an analysis, the AI hints.
+
+**Still open**
+- Push `main` when Nat agrees (commit messages carry no Claude co-author line).
+- Clash: real profile surviving `clash` → `core` → `clash`; failing node showing `ext_route`; blacklist mode routing WAYD; "via Clash" note in the AI approval dialog (idea).
+- Release signing key is not on this PC (no `keystore.properties` / `WAYD_KEYSTORE_*`); only debug APKs can be built here.
+- Device tests: ask Nat to do the taps (faster than scrcpy automation). `.m1test` has a different debug key; use `-PappIdSuffix=.d049`.
+
+**This PC's toolchain** (all verified downloads): Rust 1.99.1 GNU + `aarch64-linux-android` + cargo-ndk 4.1.2; WinLibs MinGW (winget); Go 1.27.3 in ignored `build/tools/go`; NDK 29.0.14206865 in the SDK. For native builds put `~/.cargo/bin` and WinLibs `mingw64/bin` on PATH; `JAVA_HOME` = the Gradle-provisioned JBR 21 under `~/.gradle/jdks` (Android Studio's JBR lacks `jvm.cfg`). If a build fails with a locked `classes.jar`, an orphaned Gradle/Kotlin daemon holds it: stop it and rebuild.
 
 **Leftovers from v0.3.0:** Traffic → By app and the app page's connection-history cards still use large cards and don't open the connection detail page; the app page's permission section is text-heavy; PCAP has no per-packet app attribution (PCAPNG with comments is a possible follow-up); blacklist-mode Clash save and a live routed VPN run are unverified.
 
