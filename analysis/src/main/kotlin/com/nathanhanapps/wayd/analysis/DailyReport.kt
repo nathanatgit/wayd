@@ -7,6 +7,9 @@ import com.nathanhanapps.wayd.core.model.Severity
 import com.nathanhanapps.wayd.core.model.TrackerCategory
 import com.nathanhanapps.wayd.enrich.PrivateAddr
 import com.nathanhanapps.wayd.enrich.TrackerDb
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 data class AppTraffic(val pkg: String, val flows: Int, val bytesUp: Long, val bytesDown: Long, val screenOffUp: Long, val screenOffDown: Long)
 data class CompanyRow(val company: String, val category: TrackerCategory, val apps: List<Pair<String, Long>>, val bytesUp: Long)
@@ -32,10 +35,11 @@ data class DailyReport(
     val hourlyBytes: LongArray,
     val coverage: CoverageSummary,
     val countries: List<CountryRow> = emptyList(),
+    val dailyActivity: Map<LocalDate, HourlyActivity> = emptyMap(),
 )
 
 object DailyReportBuilder {
-    fun build(ctx: RuleContext, findings: List<Finding>, engine: RuleEngine, tracker: TrackerDb): DailyReport {
+    fun build(ctx: RuleContext, findings: List<Finding>, engine: RuleEngine, tracker: TrackerDb, zone: ZoneId = ZoneId.systemDefault()): DailyReport {
         val flows = ctx.flows
         val attributed = ctx.attributed
 
@@ -55,10 +59,13 @@ object DailyReportBuilder {
             }.sortedByDescending { it.apps.sumOf { a -> a.second } }
 
         val hourly = LongArray(24)
-        val cal = java.util.Calendar.getInstance()
+        val dailyActivity = linkedMapOf<LocalDate, HourlyActivity>()
         flows.forEach {
-            cal.timeInMillis = it.startAt
-            hourly[cal.get(java.util.Calendar.HOUR_OF_DAY)] += it.bytesUp + it.bytesDown
+            val time = Instant.ofEpochMilli(it.startAt).atZone(zone)
+            hourly[time.hour] += it.bytesUp + it.bytesDown
+            val day = dailyActivity.getOrPut(time.toLocalDate()) { HourlyActivity() }
+            day.up[time.hour] += it.bytesUp
+            day.down[time.hour] += it.bytesDown
         }
 
         val trackerContacts = attributed.count { tracker.lookup(it.host)?.category in setOf(TrackerCategory.ADS, TrackerCategory.ANALYTICS, TrackerCategory.CRASH) }
@@ -92,6 +99,7 @@ object DailyReportBuilder {
                 withHostnamePct = if (measurable.isEmpty()) 0 else measurable.count { it.host != null } * 100 / measurable.size,
             ),
             countries = countries,
+            dailyActivity = dailyActivity,
         )
     }
 }

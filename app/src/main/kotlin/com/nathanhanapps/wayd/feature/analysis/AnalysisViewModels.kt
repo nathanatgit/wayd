@@ -51,7 +51,6 @@ class AppDetailViewModel @Inject constructor(
     private val analysis: AnalysisService,
     val labels: AppLabels,
     private val permissionService: PermissionHistoryService,
-    private val messageDao: com.nathanhanapps.wayd.core.db.MessageDao,
     savedState: SavedStateHandle,
 ) : ViewModel() {
     val pkg: String = savedState["pkg"] ?: ""
@@ -59,18 +58,10 @@ class AppDetailViewModel @Inject constructor(
     private val _report = MutableStateFlow<Loadable<AppReport?>>(Loadable.Loading)
     val report: StateFlow<Loadable<AppReport?>> = _report
 
-    private val _decryptedCount = MutableStateFlow(0)
-    /** How many decrypted messages exist for this app in the window (0 in the standard build). */
-    val decryptedCount: StateFlow<Int> = _decryptedCount
-
     private val _permissions = MutableStateFlow<PermissionHistory>(PermissionHistory.Loading)
     val permissions: StateFlow<PermissionHistory> = _permissions
 
     init {
-        viewModelScope.launch {
-            val (start, end) = Windows.resolve(windowKey)
-            _decryptedCount.value = withContext(kotlinx.coroutines.Dispatchers.IO) { messageDao.forApp(pkg, start, end).size }
-        }
         viewModelScope.launch { _report.value = Loadable.Ready(analysis.analyse(windowKey).apps[pkg]) }
         // The user may allow WAYD in Shizuku while this screen is open: reload whenever Shizuku's state changes.
         viewModelScope.launch { permissionService.state.collect { loadPermissions() } }

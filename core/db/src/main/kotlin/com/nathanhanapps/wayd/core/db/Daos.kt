@@ -36,6 +36,9 @@ interface SessionDao {
     suspend fun latest(): Session?
 }
 
+/** Read-only projection: list markers never load captured headers or bodies. No stored schema change. */
+data class FlowMessageSummary(val flowId: Long, val messageCount: Int, val decrypted: Boolean)
+
 @Dao
 interface MessageDao {
     @Insert
@@ -46,6 +49,12 @@ interface MessageDao {
 
     @Query("SELECT * FROM Message WHERE flowId = :flowId ORDER BY ts, id")
     suspend fun forFlow(flowId: Long): List<Message>
+
+    @Query("SELECT flowId, COUNT(*) AS messageCount, MAX(CASE WHEN tier = 'DECRYPTED' THEN 1 ELSE 0 END) AS decrypted FROM Message WHERE flowId IN (:flowIds) GROUP BY flowId")
+    fun observeFlowSummaries(flowIds: List<Long>): KFlow<List<FlowMessageSummary>>
+
+    @Query("SELECT * FROM Message WHERE flowId = :flowId ORDER BY ts, id LIMIT :limit")
+    suspend fun previewForFlow(flowId: Long, limit: Int): List<Message>
 
     /** Newest decrypted messages of one app, via its flows. Bodies included; callers should limit. */
     @Query("SELECT m.* FROM Message m JOIN Flow f ON f.id = m.flowId WHERE f.pkg = :pkg ORDER BY m.ts DESC, m.id DESC LIMIT :limit")

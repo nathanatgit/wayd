@@ -22,7 +22,7 @@ class ExternalAiEngine @Inject constructor(
 
     override suspend fun modelId() = "ext:" + settings.state.value.model
 
-    override suspend fun externalDestination(): String? = settings.state.value.host.ifEmpty { "?" }
+    override suspend fun externalDestination(): String? = settings.state.value.baseUrl.ifEmpty { "?" }
 
     override suspend fun generate(system: String, user: String, jsonSchema: String?): String {
         val endpoint = settings.usableEndpoint() ?: throw ExternalAiException("ext_not_configured")

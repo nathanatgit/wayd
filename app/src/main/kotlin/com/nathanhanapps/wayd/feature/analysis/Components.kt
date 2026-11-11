@@ -69,9 +69,17 @@ fun severityColor(s: Severity): Color = when (s) {
 
 @Composable
 fun Badge(text: String, color: Color, modifier: Modifier = Modifier) {
-    Surface(modifier, shape = RoundedCornerShape(8.dp), color = color.copy(alpha = 0.16f)) {
+    val scheme = MaterialTheme.colorScheme
+    val (container, foreground) = when (color) {
+        scheme.primary -> scheme.primaryContainer to scheme.onPrimaryContainer
+        scheme.secondary -> scheme.secondaryContainer to scheme.onSecondaryContainer
+        scheme.tertiary -> scheme.tertiaryContainer to scheme.onTertiaryContainer
+        scheme.error -> scheme.errorContainer to scheme.onErrorContainer
+        else -> scheme.surfaceContainerHighest to scheme.onSurfaceVariant
+    }
+    Surface(modifier, shape = MaterialTheme.shapes.small, color = container, contentColor = foreground) {
         Text(
-            text, Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = color,
+            text, Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall,
             maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
     }
@@ -124,10 +132,23 @@ fun insightText(i: Insight): String {
 @Composable
 fun HourlyChart(up: LongArray, down: LongArray, modifier: Modifier = Modifier) {
     val upColor = MaterialTheme.colorScheme.primary
-    val downColor = MaterialTheme.colorScheme.tertiary
+    val downColor = MaterialTheme.colorScheme.secondary
+    val gridColor = MaterialTheme.colorScheme.outlineVariant
     val max = (0 until 24).maxOf { up[it] + down[it] }.coerceAtLeast(1L)
-    Column(modifier.fillMaxWidth()) {
-        Canvas(Modifier.fillMaxWidth().height(96.dp)) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            listOf(upColor to R.string.stat_up, downColor to R.string.stat_down).forEach { (color, label) ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Canvas(Modifier.size(8.dp)) { drawCircle(color) }
+                    Text(stringResource(label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        Canvas(Modifier.fillMaxWidth().height(88.dp)) {
+            for (line in 0..2) {
+                val y = (size.height - 1.dp.toPx()) * line / 2f
+                drawLine(gridColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx())
+            }
             val slot = size.width / 24f
             val bar = slot * 0.7f
             for (h in 0 until 24) {
@@ -139,8 +160,8 @@ fun HourlyChart(up: LongArray, down: LongArray, modifier: Modifier = Modifier) {
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            listOf("0", "6", "12", "18", "23").forEach { Text(it, style = MaterialTheme.typography.labelSmall) }
+            listOf("0", "6", "12", "18", "23").forEach { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
-        Text(stringResource(R.string.chart_legend), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+        Text(stringResource(R.string.chart_legend), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

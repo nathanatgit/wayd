@@ -5,6 +5,9 @@ import com.nathanhanapps.wayd.core.db.Flow
 import com.nathanhanapps.wayd.core.model.TrackerCategory
 import com.nathanhanapps.wayd.enrich.PrivateAddr
 import com.nathanhanapps.wayd.enrich.TrackerDb
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 /** Who an app talks to: grouped by company when known, otherwise by hostname (or bare address). */
 data class Destination(
@@ -29,6 +32,8 @@ enum class InsightKind { TOP_DESTINATION, BACKGROUND_SHARE, TRACKERS, UPLOAD_HEA
 /** One structured, language-neutral statement about the app; the UI turns it into a sentence. */
 data class Insight(val kind: InsightKind, val text: String = "", val number: Long = 0, val percent: Int = 0)
 
+class HourlyActivity(val up: LongArray = LongArray(24), val down: LongArray = LongArray(24))
+
 /** Everything the app-detail screen shows: what this app did in the window. */
 class AppReport(
     val pkg: String,
@@ -43,6 +48,7 @@ class AppReport(
     val insights: List<Insight>,
     val findings: List<Finding>,
     val score: RiskScorer.Score,
+    val dailyActivity: Map<LocalDate, HourlyActivity> = emptyMap(),
 ) {
     val total get() = bytesUp + bytesDown
 }
@@ -57,17 +63,20 @@ object AppReportBuilder {
         return byApp.mapValues { (pkg, fl) -> build(pkg, fl, findingsByApp[pkg].orEmpty(), engine, tracker) }
     }
 
-    fun build(pkg: String, flows: List<Flow>, findings: List<Finding>, engine: RuleEngine, tracker: TrackerDb): AppReport {
+    fun build(pkg: String, flows: List<Flow>, findings: List<Finding>, engine: RuleEngine, tracker: TrackerDb, zone: ZoneId = ZoneId.systemDefault()): AppReport {
         val (local, remote) = flows.partition { PrivateAddr.isPrivate(it.dstIp) }
 
         val hourlyUp = LongArray(24)
         val hourlyDown = LongArray(24)
-        val cal = java.util.Calendar.getInstance()
+        val dailyActivity = linkedMapOf<LocalDate, HourlyActivity>()
         remote.forEach {
-            cal.timeInMillis = it.startAt
-            val h = cal.get(java.util.Calendar.HOUR_OF_DAY)
+            val time = Instant.ofEpochMilli(it.startAt).atZone(zone)
+            val h = time.hour
             hourlyUp[h] += it.bytesUp
             hourlyDown[h] += it.bytesDown
+            val day = dailyActivity.getOrPut(time.toLocalDate()) { HourlyActivity() }
+            day.up[h] += it.bytesUp
+            day.down[h] += it.bytesDown
         }
 
         // Named destinations are grouped by company AND purpose, so an app's ad / analytics endpoints are not
@@ -131,7 +140,7 @@ object AppReportBuilder {
         return AppReport(
             pkg = pkg, flows = flows.size, bytesUp = up, bytesDown = down, screenOffBytes = off,
             hourlyUp = hourlyUp, hourlyDown = hourlyDown, destinations = destinations, localFlows = local.size,
-            insights = insights, findings = findings, score = RiskScorer.score(findings, engine),
+            insights = insights, findings = findings, score = RiskScorer.score(findings, engine), dailyActivity = dailyActivity,
         )
     }
 }

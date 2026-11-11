@@ -1,20 +1,20 @@
 # Handoff
 
-_Last updated: 2026-11-11 · **v0.3.0** on `main` (versionCode 6) · decisions through D-053._
+_Last updated: 2026-11-11 · **v0.3.0** on `main` (versionCode 6) · decisions through D-059._
 
 WAYD (在干嘛, `com.nathanhanapps.wayd`) is an Android privacy monitor: a VpnService forwards traffic and applies local blocks, optional recording saves evidence locally, consent-gated decryption reads supported HTTPS, on-device Gemma (or an approved external OpenAI-compatible server) explains findings. Read [AGENTS.md](../AGENTS.md) first. Older session-by-session notes were compacted on 2026-11-11; see git history (`git log -p docs/HANDOFF.md`) for the full device logs.
 
 ## Now
 
-_Handoff 2026-11-11. Decisions through D-053._
+_Handoff 2026-11-11. Decisions through D-059._
 
-- `feat/model-folder` merged into `main` with `--no-ff` at Nat's request: D-051 connection labels, D-052 model folder and D-053 verified runtime-copy fix. Local only; not pushed.
-- Nat confirmed E4B download and hash check pass in Download/WAYD. USB NX733J (`320146880841`) screenshot shows `Failed to create engine: INVALID_ARGUMENT: Unsupported or unknown file format`. Root cause: LiteRT-LM rejects the extensionless `/proc/self/fd/N` path.
-- D-053 fix: stage folder models into a private `.litertlm` cache file; verify copied size and accepted SHA-256 before publication, reuse copies, clean partial/stale files. Keeps the folder original; needs an extra model-sized allocation (~3.66 GB for E4B). Original internal-storage models load as before. No new dependency, permission or network destination.
-- Validation passed: AI JVM tests (65 passed, 1 opt-in live test skipped; includes five copy/hash/truncation/cancellation regression cases), both debug builds and both lints with `-PskipNative -PappIdSuffix=.d049`.
-- Corrected Clash debug APK installed successfully over `.d049` on the USB NX733J. Nat retried the Download/WAYD E4B analysis and confirmed it worked. Model-folder loading and inference are now device-verified. Connection labels/AI hints still await Nat's review. Fix committed and merged into main; not pushed.
-- Future custom-model sideloading discussed: explicit import, runtime/format/template checks and a smoke test; not implemented here. Only catalog E2B/E4B are currently supported.
-- Still open: push main with Nat's agreement; remaining Clash device checks (variant switching, blacklist, failing node); release signing key absent locally (debug APKs only).
+- D-054–D-059 are handed off through `feat/ui-dashboard-handoff`, merged into `main` with `--no-ff`; local only, not pushed. Earlier D-051–D-053 merge: `afe0655`. E4B Download/WAYD is phone-verified with private `.litertlm` staging.
+- D-054/D-056: app-detail Material sections, collapsed connection history, directional bytes and inline decrypted text/hex. Nearby TCP pills preserve individual records; metadata loads no bodies, expanded records load at most 50 messages. No schema change.
+- D-055: optional external-AI preview suppression is scoped to exact server URL/model and revocable; Settings warning reset preserves mandatory consents and rules. Nat verified the flows.
+- D-057/D-058: compact 7×24 heatmap shared by app detail and Insights (internet/all-flow scopes respectively); HTTPS has directly visible user-CA and root-trust method cards. Existing consent and confirmations preserved. Phone-verified before this dashboard iteration.
+- D-059: ADB identified the current page as Mi Home app detail (`com.xiaomi.smarthome`, week). Recorded-traffic dashboard now has directional ring/metric cards, chart before insight tiles, destination bars/pills and finding cards. Inherited Today/Yesterday/Last 7 days pills refresh the whole window via navigation replacement; compact scan/export actions align right in the identity header, duplicate period removed. Bilingual scope/recording-gap disclosure retained. No capture/rule changes.
+- Validation: both final variants build and lint successfully (`build/dashboard-final-validation.log`); earlier AI/analysis suites: 101 passed, 1 opt-in live test skipped. As requested, stopped the `.d049` VPN on USB NX733J `320146880841`, verified network access and installed the replacement Clash debug APK with `adb install -r` (history/settings preserved). Virtual-display smoke check showed the new header, metrics and week heatmap after selecting the week pill. Nat handles further visual review; scrcpy is closed and VPN remains off. Dark mode/200% font not checked.
+- Next: Nat reviews the installed dashboard; iterate on feedback. Push only on request. Other open work: custom-model importer, remaining Clash device acceptance, release signing unavailable locally.
 
 ## Status
 
