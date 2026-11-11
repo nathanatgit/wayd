@@ -469,6 +469,21 @@ That content can include things other people sent you or that were sent about th
     <string name="connections_more">Load more</string>
     <string name="connections_blocked">Blocked</string>
     <string name="conn_label_normal">Normal</string>
+    <string name="ai_model_folder">Model folder</string>
+    <string name="ai_model_folder_none">App storage (pick Download/WAYD to keep models)</string>
+    <string name="ai_state_unchecked">Not checked yet</string>
+    <string name="ai_state_update">This is an older version: a different file is published now. Download again, put the new file in the folder yourself, or keep using this one.</string>
+    <string name="ai_state_corrupted">Does not match the published file (damaged or edited). Download again, put a correct copy in the folder yourself, or use it anyway.</string>
+    <string name="ai_state_ignored">mismatch ignored</string>
+    <string name="ai_redownload">Download again</string>
+    <string name="ai_ignore">Use anyway</string>
+    <string name="ai_more">More</string>
+    <string name="ai_manual_title">Place the file myself</string>
+    <string name="ai_manual_text">Copy the model into %1$s with exactly this name, then tap Check:
+
+%2$s</string>
+    <string name="ai_recheck">Check</string>
+    <string name="ai_model_mismatch_failed">The model file does not match the published one. Open Settings → AI to download it again or choose to use it anyway.</string>
     <string name="conn_label_ad">Ad</string>
     <string name="conn_label_sensitive">Sensitive</string>
     <string name="conn_label_warn">Warn</string>

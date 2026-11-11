@@ -36,7 +36,7 @@ class LiteRtEngine @Inject constructor(
 
     override suspend fun isReady() = models.activeModel() != null
 
-    override suspend fun modelId() = models.activeModel()?.first?.id ?: "none"
+    override suspend fun modelId() = models.activeModel()?.id ?: "none"
 
     private val prefs = context.getSharedPreferences("ai", Context.MODE_PRIVATE)
     private val _phase = kotlinx.coroutines.flow.MutableStateFlow(EnginePhase.IDLE)
@@ -44,13 +44,16 @@ class LiteRtEngine @Inject constructor(
 
     override suspend fun generate(system: String, user: String, jsonSchema: String?): String = withContext(Dispatchers.Default) {
         lock.withLock {
-            val modelId = models.activeModel()?.first?.id ?: "none"
+            val spec = models.activeModel() ?: error("no model installed")
+            val modelId = spec.id
+            // Checked (and refused on an unresolved mismatch) before any backend is tried, so a bad file is not retried on the CPU.
+            val path = models.loadPath(spec)
             val compiledKey = "compiled_$modelId"
             val firstRun = !prefs.getBoolean(compiledKey, false)
             _phase.value = if (firstRun) EnginePhase.PREPARING_FIRST_RUN else if (engine == null) EnginePhase.LOADING else EnginePhase.GENERATING
             try {
                 val text = try {
-                    run(system, user, jsonSchema, firstRun)
+                    run(path, system, user, jsonSchema, firstRun)
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (t: Throwable) {
@@ -60,7 +63,7 @@ class LiteRtEngine @Inject constructor(
                     runCatching { engine?.close() }
                     engine = null
                     loadedPath = null
-                    run(system, user, jsonSchema, firstRun)
+                    run(path, system, user, jsonSchema, firstRun)
                 }
                 prefs.edit().putBoolean(compiledKey, true).apply()
                 text
@@ -70,8 +73,8 @@ class LiteRtEngine @Inject constructor(
         }
     }
 
-    private fun run(system: String, user: String, jsonSchema: String?, firstRun: Boolean): String {
-        val eng = ensureEngine()
+    private fun run(path: String, system: String, user: String, jsonSchema: String?, firstRun: Boolean): String {
+        val eng = ensureEngine(path)
         if (!firstRun) _phase.value = EnginePhase.GENERATING
         fun conversation(constrained: Boolean) = eng.createConversation(
             ConversationConfig(
@@ -119,10 +122,10 @@ class LiteRtEngine @Inject constructor(
         runCatching { engine?.close() }
         engine = null
         loadedPath = null
+        models.closeLoaded()
     }
 
-    private fun ensureEngine(): Engine {
-        val (_, path) = models.activeModel() ?: error("no model installed")
+    private fun ensureEngine(path: String): Engine {
         engine?.let { if (loadedPath == path) return it }
         runCatching { engine?.close() }
         val cache = File(context.cacheDir, "litertlm").apply { mkdirs() }.absolutePath
