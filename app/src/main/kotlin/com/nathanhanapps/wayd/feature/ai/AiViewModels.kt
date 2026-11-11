@@ -10,6 +10,7 @@ import com.nathanhanapps.wayd.ai.ExternalAiException
 import com.nathanhanapps.wayd.ai.ExternalAiSettings
 import com.nathanhanapps.wayd.ai.ExternalAiUi
 import com.nathanhanapps.wayd.ai.LiteRtEngine
+import com.nathanhanapps.wayd.ai.ModelDownloads
 import com.nathanhanapps.wayd.ai.ModelManager
 import com.nathanhanapps.wayd.ai.ModelSpec
 import com.nathanhanapps.wayd.ai.ModelState
@@ -85,14 +86,15 @@ class AiSettingsViewModel @Inject constructor(
     val ext: StateFlow<ExternalAiUi> = external.state
     val ramGb: Double get() = models.totalRamGb()
 
-    private val _active = MutableStateFlow(models.activeModel()?.first?.id)
+    private val _active = MutableStateFlow(models.activeModel()?.id)
     val active: StateFlow<String?> = _active.asStateFlow()
     private val _source = MutableStateFlow(models.sourceIndex())
     val source: StateFlow<Int> = _source.asStateFlow()
 
     init {
         viewModelScope.launch { external.load() }
-        viewModelScope.launch { models.states.collect { _active.value = models.activeModel()?.first?.id } }
+        viewModelScope.launch { models.states.collect { _active.value = models.activeModel()?.id } }
+        viewModelScope.launch { models.refresh(); models.checkChanged() }
     }
 
     fun setProvider(p: AiProvider) = external.setProvider(p)
@@ -109,6 +111,38 @@ class AiSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             engine.release()
             models.delete(spec)
+        }
+    }
+
+    /** `Download/WAYD` style name of the model folder, or null while models are kept in app storage. */
+    fun folderName(): String? = models.folderName()
+
+    fun suggestedFolder() = models.suggestedFolder()
+
+    fun setFolder(uri: android.net.Uri) {
+        viewModelScope.launch {
+            engine.release()
+            runCatching { models.setFolder(uri) }
+            models.checkChanged()
+        }
+    }
+
+    /** Re-reads the folder and checks files that changed, e.g. after the user copied a model in by hand. */
+    fun recheck() {
+        viewModelScope.launch {
+            engine.release()
+            models.refresh()
+            models.checkChanged()
+        }
+    }
+
+    fun ignoreMismatch(spec: ModelSpec) = models.ignoreMismatch(spec)
+
+    /** Frees the engine (it may be reading the old file), then downloads the published file over the old one. */
+    fun redownload(context: android.content.Context, spec: ModelSpec) {
+        viewModelScope.launch {
+            engine.release()
+            ModelDownloads.start(context, spec, models.downloadUrl(spec))
         }
     }
 

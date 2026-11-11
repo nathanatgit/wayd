@@ -468,6 +468,27 @@
     <string name="connections_export">导出</string>
     <string name="connections_more">加载更多</string>
     <string name="connections_blocked">已阻止</string>
+    <string name="conn_label_normal">正常</string>
+    <string name="ai_model_folder">模型文件夹</string>
+    <string name="ai_model_folder_none">应用存储（选择 Download/WAYD 可保留模型）</string>
+    <string name="ai_state_unchecked">尚未校验</string>
+    <string name="ai_state_update">这是旧版本：线上已发布不同的文件。可重新下载、自行放入新文件，或继续使用。</string>
+    <string name="ai_state_corrupted">与线上发布的文件不一致（已损坏或被修改）。可重新下载、自行放入正确文件，或仍然使用。</string>
+    <string name="ai_state_ignored">已忽略不一致</string>
+    <string name="ai_redownload">重新下载</string>
+    <string name="ai_ignore">仍然使用</string>
+    <string name="ai_more">更多</string>
+    <string name="ai_manual_title">自行放入文件</string>
+    <string name="ai_manual_text">将模型复制到 %1$s，文件名必须完全一致，然后点击“校验”：
+
+%2$s</string>
+    <string name="ai_recheck">校验</string>
+    <string name="ai_model_mismatch_failed">模型文件与线上发布的不一致。请在 设置 → AI 中重新下载，或选择仍然使用。</string>
+    <string name="conn_label_ad">广告</string>
+    <string name="conn_label_sensitive">敏感</string>
+    <string name="conn_label_warn">警告</string>
+    <string name="conn_label_danger">危险</string>
+    <string name="conn_ai_hint">AI：%1$s？</string>
     <string name="rep_attention">需要关注</string>
     <string name="rep_attention_hint">%1$d 条提醒 · 共 %2$d 项</string>
     <string name="rep_show_all">显示全部 %1$d 项</string>

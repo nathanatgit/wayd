@@ -37,7 +37,7 @@ class SettingsViewModel @Inject constructor(
     /** Short summary for the AI row: the provider in use and its model. The templates take the model name as `%s`. */
     fun aiSummary(ext: ExternalAiUi, none: String, onDevice: String, external: String): String = when {
         ext.provider == AiProvider.EXTERNAL && ext.usable -> external.format(ext.model)
-        else -> models.activeModel()?.first?.let { onDevice.format(it.displayName) } ?: none
+        else -> models.activeModel()?.let { onDevice.format(it.displayName) } ?: none
     }
 
     private val _root = MutableStateFlow(rootProbe.last())

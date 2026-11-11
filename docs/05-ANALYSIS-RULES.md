@@ -83,3 +83,7 @@ Order of sections:
 8. Coverage panel.
 
 Report is a stored, versioned object so it renders instantly and can be AI-summarised later.
+
+## Connection labels (D-051)
+
+Each connection gets one label from rules: Danger (cited by a HIGH finding), Warn (MEDIUM), Sensitive (LOW/INFO finding with data types), Ad (ADS/ANALYTICS tracker host), else Normal; highest wins. AI purpose guesses appear only as a separate hint next to it.

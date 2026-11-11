@@ -1,27 +1,20 @@
 # Handoff
 
-_Last updated: 2026-11-11 · **v0.3.0** on `main` (versionCode 6) · decisions through D-050._
+_Last updated: 2026-11-11 · **v0.3.0** on `main` (versionCode 6) · decisions through D-053._
 
 WAYD (在干嘛, `com.nathanhanapps.wayd`) is an Android privacy monitor: a VpnService forwards traffic and applies local blocks, optional recording saves evidence locally, consent-gated decryption reads supported HTTPS, on-device Gemma (or an approved external OpenAI-compatible server) explains findings. Read [AGENTS.md](../AGENTS.md) first. Older session-by-session notes were compacted on 2026-11-11; see git history (`git log -p docs/HANDOFF.md`) for the full device logs.
 
 ## Now
 
-**D-048 + D-049 build migration is in code on `feat/d049-variants` (uncommitted).** `research` is merged into `main` (one `--features mitm` capture lib, `buildNativeMitm`, decryption still gated by the Danger zone consent); flavor dimension `routing` has `core` and `clash`. Clash UI, `RoutingSettings`, `RoutingGeoIp`/`RoutingDownloads`, resource URLs, their strings (both locales), manifest entry and `libwayd_route.so` packaging live in `app/src/clash`; `:capture:buildRouting` feeds only `clash` merge tasks. The shared `WaydVpnService`/`RecordViewModel` use `capture.RoutingBridge` (Hilt-bound to `ClashRoutingBridge` in `clash`, `NoRouting` in `core`, which never touches `no_backup/routing/`). The Rust side `dlopen`s `libwayd_route.so` lazily and fails soft, and `core` always starts with an empty routing profile, so `core` needs no native change. CI and `release.yml` build both variants (assets `wayd-vX.Y.Z.apk`, `wayd-clash-vX.Y.Z.apk`).
+_Handoff 2026-11-11. Decisions through D-053._
 
-**D-050 external AI over Clash (same branch, uncommitted).** In `clash`, when routing is on, the VPN runs and access control selects WAYD itself, external AI calls to public HTTPS servers go through a Go `connect` command (`routing/connect.go` `DialName`: rules applied with WAYD as owner, dialed **by name** through the node) that returns a socketpair; WAYD runs TLS (`ai/ExternalAiStream.kt` `EngineTls`, hostname-verified) and HTTP/1.1 (`StreamHttp`) over it, so routing sees only ciphertext. Failure → `ext_route`, never Direct. The access-control picker now lists WAYD itself (its own traffic never enters the tunnel, so this only affects AI calls).
-
-**Verified 2026-11-11:**
-- This PC now has the full toolchain: Rust 1.99.1 (GNU host) + `aarch64-linux-android` + cargo-ndk 4.1.2, WinLibs MinGW (winget, needed for `dlltool`; add its `mingw64/bin` and `~/.cargo/bin` to PATH), Go 1.27.3 in `build/tools/go` (SHA-256 checked), NDK 29.0.14206865 unpacked into the SDK (SHA-1 checked; no `sdkmanager` here). Both native libs built from source.
-- `./gradlew :app:assembleCoreDebug :app:assembleClashDebug :app:lintCoreDebug :app:lintClashDebug test`: BUILD SUCCESSFUL, 187 tests, 0 failures, 1 skipped (live AI). `go vet` clean, all Go tests pass (3 new `DialName`). Live Gemini test over the new `EngineTls` path passed from the PC (`WAYD_EXTERNAL_ROUTED=1`).
-- NX733J, `clash` debug as `com.nathanhanapps.wayd.d049`: imported `Mixed_country_20261010.yaml` (10 nodes, 5 groups, 24 rules); **all 17 resources incl. 7.6 MB GeoIP downloaded via the first node** after one retry (FlClash was running underneath). Whitelist = WAYD, routing on, Gemini provider saved. **Nat started WAYD's VPN and ran an analysis: report returned** over the route. Without WAYD's VPN, the old direct call hung in `connectSocket` (Google unreachable directly), which is the case D-050 fixes. Earlier: `core` over `clash` hides Clash rows and leaves `no_backup/routing/` untouched; `ClashExtension.intent()` now resolves only in WAYD's own package.
-
-**Still to do:**
-1. Commit `feat/d049-variants` when Nat agrees (no Claude co-author line), then merge per Releases.
-2. Not yet checked on device: a real profile surviving `clash` → `core` → `clash`; a failing node giving `ext_route` in the UI; blacklist mode routing WAYD; Opus review of the `RoutingBridge` wiring in `WaydVpnService`.
-3. Possible follow-up: show "via Clash" in the AI approval dialog when the call will be routed.
-4. Device testing: ask Nat to do the taps (faster than scrcpy automation). `.m1test` has a different debug key than this PC; use `-PappIdSuffix=.d049`.
-
-**Leftovers from v0.3.0:** Traffic → By app and the app page's connection-history cards still use large cards and don't open the connection detail page; the app page's permission section is text-heavy; PCAP has no per-packet app attribution (PCAPNG with comments is a possible follow-up); blacklist-mode Clash save and a live routed VPN run are unverified.
+- `feat/model-folder` merged into `main` with `--no-ff` at Nat's request: D-051 connection labels, D-052 model folder and D-053 verified runtime-copy fix. Local only; not pushed.
+- Nat confirmed E4B download and hash check pass in Download/WAYD. USB NX733J (`320146880841`) screenshot shows `Failed to create engine: INVALID_ARGUMENT: Unsupported or unknown file format`. Root cause: LiteRT-LM rejects the extensionless `/proc/self/fd/N` path.
+- D-053 fix: stage folder models into a private `.litertlm` cache file; verify copied size and accepted SHA-256 before publication, reuse copies, clean partial/stale files. Keeps the folder original; needs an extra model-sized allocation (~3.66 GB for E4B). Original internal-storage models load as before. No new dependency, permission or network destination.
+- Validation passed: AI JVM tests (65 passed, 1 opt-in live test skipped; includes five copy/hash/truncation/cancellation regression cases), both debug builds and both lints with `-PskipNative -PappIdSuffix=.d049`.
+- Corrected Clash debug APK installed successfully over `.d049` on the USB NX733J. Nat retried the Download/WAYD E4B analysis and confirmed it worked. Model-folder loading and inference are now device-verified. Connection labels/AI hints still await Nat's review. Fix committed and merged into main; not pushed.
+- Future custom-model sideloading discussed: explicit import, runtime/format/template checks and a smoke test; not implemented here. Only catalog E2B/E4B are currently supported.
+- Still open: push main with Nat's agreement; remaining Clash device checks (variant switching, blacklist, failing node); release signing key absent locally (debug APKs only).
 
 ## Status
 

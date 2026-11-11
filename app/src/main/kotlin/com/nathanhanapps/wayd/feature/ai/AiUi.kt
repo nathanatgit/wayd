@@ -102,7 +102,8 @@ fun AiOutcomeView(o: AiOutcome) {
         is AiOutcome.Unreliable -> Message(stringResource(R.string.ai_unreliable), error = true)
         AiOutcome.NoModel -> Message(stringResource(R.string.ai_no_model), error = false)
         is AiOutcome.Failed -> Message(
-            stringResource(R.string.ai_failed, if (o.message.startsWith("ext_")) externalErrorLabel(o.message) else o.message.take(120)),
+            if (o.message == "model_mismatch") stringResource(R.string.ai_model_mismatch_failed)
+            else stringResource(R.string.ai_failed, if (o.message.startsWith("ext_")) externalErrorLabel(o.message) else o.message.take(120)),
             error = true,
         )
         AiOutcome.Declined -> Message(stringResource(R.string.xg_declined), error = false)
@@ -251,7 +252,7 @@ private fun certaintyLabel(c: Certainty) = stringResource(
 )
 
 @Composable
-private fun purposeLabel(p: Purpose) = stringResource(
+internal fun purposeLabel(p: Purpose) = stringResource(
     when (p) {
         Purpose.ANALYTICS -> R.string.ai_p_analytics
         Purpose.ADS -> R.string.ai_p_ads

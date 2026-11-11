@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -59,6 +60,7 @@ import com.nathanhanapps.wayd.ai.ExternalAiUrl
 import com.nathanhanapps.wayd.ai.ModelCatalog
 import com.nathanhanapps.wayd.ai.ModelDownloads
 import com.nathanhanapps.wayd.ai.ModelSpec
+import com.nathanhanapps.wayd.ai.MismatchKind
 import com.nathanhanapps.wayd.ai.ModelState
 import com.nathanhanapps.wayd.feature.common.GroupDivider
 import com.nathanhanapps.wayd.feature.common.InsetGroup
@@ -97,7 +99,12 @@ fun AiSettingsScreen(onBack: () -> Unit, onOpenExternal: () -> Unit, vm: AiSetti
     val context = LocalContext.current
     val recommended = ModelCatalog.recommended(vm.ramGb)
     var customFor by remember { mutableStateOf<ModelSpec?>(null) }
+    var manualFor by remember { mutableStateOf<ModelSpec?>(null) }
     var sourceMenu by remember { mutableStateOf(false) }
+    var folderName by remember { mutableStateOf(vm.folderName()) }
+    val pickFolder = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) { vm.setFolder(uri); folderName = uri.let { android.provider.DocumentsContract.getTreeDocumentId(it).substringAfter(':') } }
+    }
     val sources = ModelCatalog.E2B.sources
 
     SubPage(stringResource(R.string.ai_page_title), onBack) {
@@ -134,8 +141,14 @@ fun AiSettingsScreen(onBack: () -> Unit, onOpenExternal: () -> Unit, vm: AiSetti
                         onDownload = { ModelDownloads.start(context, spec, vm.url(spec)) },
                         onCancel = { ModelDownloads.cancel(context) },
                         onDelete = { vm.delete(spec) }, onUse = { vm.use(spec) }, onCustom = { customFor = spec },
+                        onRedownload = { vm.redownload(context, spec) }, onIgnore = { vm.ignoreMismatch(spec) }, onManual = { manualFor = spec },
                     )
                 }
+                GroupDivider()
+                NavRow(
+                    Icons.AutoMirrored.Filled.List, stringResource(R.string.ai_model_folder),
+                    folderName ?: stringResource(R.string.ai_model_folder_none), onClick = { pickFolder.launch(vm.suggestedFolder()) },
+                )
             }
         }
 
@@ -145,6 +158,16 @@ fun AiSettingsScreen(onBack: () -> Unit, onOpenExternal: () -> Unit, vm: AiSetti
                 if (ext.configured) ext.host + " · " + ext.model else stringResource(R.string.xai_not_set), onClick = onOpenExternal,
             )
         }
+    }
+
+    manualFor?.let { spec ->
+        AlertDialog(
+            onDismissRequest = { manualFor = null },
+            title = { Text(stringResource(R.string.ai_manual_title)) },
+            text = { Text(stringResource(R.string.ai_manual_text, folderName ?: stringResource(R.string.ai_model_folder_none), spec.fileName)) },
+            confirmButton = { TextButton(onClick = { vm.recheck(); manualFor = null }) { Text(stringResource(R.string.ai_recheck)) } },
+            dismissButton = { TextButton(onClick = { manualFor = null }) { Text(stringResource(R.string.ai_cancel)) } },
+        )
     }
 
     customFor?.let { spec ->
@@ -164,6 +187,7 @@ fun AiSettingsScreen(onBack: () -> Unit, onOpenExternal: () -> Unit, vm: AiSetti
 private fun ModelRow(
     spec: ModelSpec, state: ModelState, inUse: Boolean, running: Boolean, recommended: Boolean, custom: Boolean,
     onDownload: () -> Unit, onCancel: () -> Unit, onDelete: () -> Unit, onUse: () -> Unit, onCustom: () -> Unit,
+    onRedownload: () -> Unit, onIgnore: () -> Unit, onManual: () -> Unit,
 ) {
     val context = LocalContext.current
     var menu by remember { mutableStateOf(false) }
@@ -186,9 +210,14 @@ private fun ModelRow(
                     )
                 }
                 ModelState.Verifying -> Text(stringResource(R.string.ai_state_verifying), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ModelState.Unchecked -> Text(stringResource(R.string.ai_state_unchecked), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                is ModelState.Mismatch -> Text(
+                    stringResource(if (state.kind == MismatchKind.UPDATE_AVAILABLE) R.string.ai_state_update else R.string.ai_state_corrupted),
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error, maxLines = 3, overflow = TextOverflow.Ellipsis,
+                )
                 is ModelState.Failed -> Text(stringResource(R.string.ai_state_failed, state.reason), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 is ModelState.Ready -> Text(
-                    stringResource(if (inUse) R.string.ai_state_active else R.string.ai_state_installed),
+                    stringResource(if (inUse) R.string.ai_state_active else R.string.ai_state_installed) + if (state.ignored) " · " + stringResource(R.string.ai_state_ignored) else "",
                     style = MaterialTheme.typography.labelMedium, color = if (inUse) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 ModelState.NotInstalled -> if (custom) Text(stringResource(R.string.ai_custom_address), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -211,7 +240,18 @@ private fun ModelRow(
                 IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.ai_delete)) }
             }
             ModelState.Verifying -> CircularProgressIndicator(Modifier.padding(end = 12.dp).size(20.dp), strokeWidth = 2.dp)
-            is ModelState.Ready -> {
+            is ModelState.Mismatch -> {
+                FilledTonalButton(onClick = onRedownload) { Text(stringResource(R.string.ai_redownload)) }
+                Column {
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.ai_more)) }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.ai_manual_title)) }, onClick = { menu = false; onManual() })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.ai_ignore)) }, onClick = { menu = false; onIgnore() })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.ai_delete)) }, onClick = { menu = false; onDelete() })
+                    }
+                }
+            }
+            ModelState.Unchecked, is ModelState.Ready -> {
                 if (!inUse) TextButton(onClick = onUse) { Text(stringResource(R.string.ai_use)) } else Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 8.dp))
                 IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.ai_delete)) }
             }
