@@ -122,7 +122,6 @@ class LiteRtEngine @Inject constructor(
         runCatching { engine?.close() }
         engine = null
         loadedPath = null
-        models.closeLoaded()
     }
 
     private fun ensureEngine(path: String): Engine {

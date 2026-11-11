@@ -1,37 +1,20 @@
 # Handoff
 
-_Last updated: 2026-11-11 · **v0.3.0** on `main` (versionCode 6) · decisions through D-052._
+_Last updated: 2026-11-11 · **v0.3.0** on `main` (versionCode 6) · decisions through D-053._
 
 WAYD (在干嘛, `com.nathanhanapps.wayd`) is an Android privacy monitor: a VpnService forwards traffic and applies local blocks, optional recording saves evidence locally, consent-gated decryption reads supported HTTPS, on-device Gemma (or an approved external OpenAI-compatible server) explains findings. Read [AGENTS.md](../AGENTS.md) first. Older session-by-session notes were compacted on 2026-11-11; see git history (`git log -p docs/HANDOFF.md`) for the full device logs.
 
 ## Now
 
-_Handoff 2026-11-11 evening. Decisions through D-052._
+_Handoff 2026-11-11. Decisions through D-053._
 
-**Branches**
-- `main` (`7fc6ef0`, local, **not pushed**): D-048 to D-050 merged: `core`/`clash` variants, research merged into common code, external AI over Clash (Nat verified on NX733J: analysis returned with WAYD's VPN + Clash on).
-- `feat/model-folder` (`286cd78`, on top of `feat/connection-labels` `c2c590b`), **not merged**: D-051 connection labels + D-052 model folder. Both variants build, both lints pass, 196 JVM tests, 0 failures (1 skipped: opt-in live AI). Merge `feat/model-folder` into `main` with `--no-ff` once the device test below passes; it carries both commits.
-
-**D-051 connection labels:** every row in Traffic → Connections shows Danger / Warn / Sensitive / Ad / Normal from rules (`analysis/ConnectionLabels.kt`); the list runs the rules per shown day (cached). AI purpose guesses appear only as a separate outlined "AI: …?" hint (`ai/AiHints.kt`, re-validated against the evidence each stored answer was given). Not yet seen on the phone.
-
-**D-052 model folder:** Settings → AI → Model folder (picker, suggested Download/WAYD, no new permission). Downloads go there; hand-copied files are found by exact name. A changed file (size/mtime) is hashed and compared with the SHA-256 the chosen source publishes now (HF / ModelScope API; pinned fallback). Mismatch → "older version" or "damaged/edited", nothing loads until the user picks Download again / Place the file myself (+ Check) / Use anyway. Pinned hashes confirmed against both APIs 2026-11-11.
-
-**Next: Nat tests on the phone** (adb was disconnected; sideload `app/build/outputs/apk/clash/debug/app-clash-debug.apk`, installs over `.d049`):
-1. Settings → AI → Model folder → pick Download/WAYD.
-2. Put `gemma-4-E2B-it.litertlm` there (copy or Download) → "Not checked yet" → check → Installed.
-3. Run an on-device analysis: **unverified risk**, folder models load via `/proc/self/fd/N`; if LiteRT-LM rejects that path, fall back to copying the file into app storage once.
-4. Optional: append a byte → expect the "damaged" warning and the three choices.
-5. Look at Traffic → Connections labels and, after an analysis, the AI hints.
-
-**Still open**
-- Push `main` when Nat agrees (commit messages carry no Claude co-author line).
-- Clash: real profile surviving `clash` → `core` → `clash`; failing node showing `ext_route`; blacklist mode routing WAYD; "via Clash" note in the AI approval dialog (idea).
-- Release signing key is not on this PC (no `keystore.properties` / `WAYD_KEYSTORE_*`); only debug APKs can be built here.
-- Device tests: ask Nat to do the taps (faster than scrcpy automation). `.m1test` has a different debug key; use `-PappIdSuffix=.d049`.
-
-**This PC's toolchain** (all verified downloads): Rust 1.99.1 GNU + `aarch64-linux-android` + cargo-ndk 4.1.2; WinLibs MinGW (winget); Go 1.27.3 in ignored `build/tools/go`; NDK 29.0.14206865 in the SDK. For native builds put `~/.cargo/bin` and WinLibs `mingw64/bin` on PATH; `JAVA_HOME` = the Gradle-provisioned JBR 21 under `~/.gradle/jdks` (Android Studio's JBR lacks `jvm.cfg`). If a build fails with a locked `classes.jar`, an orphaned Gradle/Kotlin daemon holds it: stop it and rebuild.
-
-**Leftovers from v0.3.0:** Traffic → By app and the app page's connection-history cards still use large cards and don't open the connection detail page; the app page's permission section is text-heavy; PCAP has no per-packet app attribution (PCAPNG with comments is a possible follow-up); blacklist-mode Clash save and a live routed VPN run are unverified.
+- `feat/model-folder` merged into `main` with `--no-ff` at Nat's request: D-051 connection labels, D-052 model folder and D-053 verified runtime-copy fix. Local only; not pushed.
+- Nat confirmed E4B download and hash check pass in Download/WAYD. USB NX733J (`320146880841`) screenshot shows `Failed to create engine: INVALID_ARGUMENT: Unsupported or unknown file format`. Root cause: LiteRT-LM rejects the extensionless `/proc/self/fd/N` path.
+- D-053 fix: stage folder models into a private `.litertlm` cache file; verify copied size and accepted SHA-256 before publication, reuse copies, clean partial/stale files. Keeps the folder original; needs an extra model-sized allocation (~3.66 GB for E4B). Original internal-storage models load as before. No new dependency, permission or network destination.
+- Validation passed: AI JVM tests (65 passed, 1 opt-in live test skipped; includes five copy/hash/truncation/cancellation regression cases), both debug builds and both lints with `-PskipNative -PappIdSuffix=.d049`.
+- Corrected Clash debug APK installed successfully over `.d049` on the USB NX733J. Nat retried the Download/WAYD E4B analysis and confirmed it worked. Model-folder loading and inference are now device-verified. Connection labels/AI hints still await Nat's review. Fix committed and merged into main; not pushed.
+- Future custom-model sideloading discussed: explicit import, runtime/format/template checks and a smoke test; not implemented here. Only catalog E2B/E4B are currently supported.
+- Still open: push main with Nat's agreement; remaining Clash device checks (variant switching, blacklist, failing node); release signing key absent locally (debug APKs only).
 
 ## Status
 

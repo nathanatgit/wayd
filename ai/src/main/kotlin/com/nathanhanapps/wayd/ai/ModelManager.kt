@@ -10,6 +10,7 @@ import android.os.StatFs
 import android.provider.DocumentsContract
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -119,8 +120,7 @@ class ModelManager @Inject constructor(@ApplicationContext private val context: 
     private val _states = MutableStateFlow(ModelCatalog.all.associate { it.id to ModelState.NotInstalled as ModelState })
     val states: StateFlow<Map<String, ModelState>> = _states.asStateFlow()
 
-    /** Descriptors kept open while the engine may read a folder model through `/proc/self/fd`. */
-    private val open = HashMap<String, Pair<String, ParcelFileDescriptor>>()
+    private val loadDir = File(context.cacheDir, "model-load")
 
     init { refresh() }
 
@@ -266,7 +266,7 @@ class ModelManager @Inject constructor(@ApplicationContext private val context: 
             val published = onlineSha(spec) ?: spec.sha256
             val state = when {
                 local.equals(published, ignoreCase = true) -> {
-                    prefs.edit().putString(KEY_OK + spec.id, loc.fingerprint).remove(KEY_IGNORED + spec.id).apply()
+                    prefs.edit().putString(KEY_OK + spec.id, loc.fingerprint).putString(KEY_SEEN + spec.id, loc.fingerprint + "#" + local).remove(KEY_IGNORED + spec.id).apply()
                     ModelState.Ready(loc.size)
                 }
                 local.equals(spec.sha256, ignoreCase = true) -> ModelState.Mismatch(MismatchKind.UPDATE_AVAILABLE)
@@ -293,10 +293,15 @@ class ModelManager @Inject constructor(@ApplicationContext private val context: 
     }
 
     /**
-     * The path the engine loads: checked first if it changed, refused on an unresolved mismatch. A folder model is loaded through
-     * `/proc/self/fd` of a descriptor WAYD keeps open, so the file read is the one that was checked.
+     * LiteRT-LM dispatches by filename extension and rejects `/proc/self/fd/N`. Stage folder models in private cache under a
+     * `.litertlm` name, verifying the copied bytes against the accepted hash before publishing the path. Never copy an unresolved mismatch.
      */
     suspend fun loadPath(spec: ModelSpec): String = withContext(Dispatchers.IO) {
+        // Versions before D-053 remembered the fingerprint but not the accepted hash of a successful check.
+        val before = locate(spec)
+        if (before?.uri != null && prefs.getString(KEY_SEEN + spec.id, null)?.substringBeforeLast('#') != before.fingerprint) {
+            prefs.edit().remove(KEY_OK + spec.id).apply()
+        }
         when (val s = check(spec)) {
             is ModelState.Ready -> Unit
             is ModelState.Mismatch -> throw ModelMismatchException(s.kind)
@@ -304,18 +309,10 @@ class ModelManager @Inject constructor(@ApplicationContext private val context: 
         }
         val loc = locate(spec) ?: error("model not available")
         loc.file?.let { return@withContext it.absolutePath }
-        synchronized(open) {
-            open[spec.id]?.let { (fp, pfd) -> if (fp == loc.fingerprint) return@withContext "/proc/self/fd/${pfd.fd}" else runCatching { pfd.close() } }
-            val pfd = resolver.openFileDescriptor(loc.uri!!, "r") ?: error("cannot open model file")
-            open[spec.id] = loc.fingerprint to pfd
-            "/proc/self/fd/${pfd.fd}"
-        }
-    }
-
-    /** Closes descriptors kept for the engine; call after the engine is released. */
-    fun closeLoaded() = synchronized(open) {
-        open.values.forEach { runCatching { it.second.close() } }
-        open.clear()
+        val seen = prefs.getString(KEY_SEEN + spec.id, null) ?: error("model not available")
+        check(seen.substringBeforeLast('#') == loc.fingerprint) { "model changed during check" }
+        val job = coroutineContext
+        ModelLoadCopy.prepare(loadDir, spec.fileName, loc.size, seen.substringAfterLast('#'), { openRead(loc) }) { job.ensureActive() }.absolutePath
     }
 
     private fun openRead(loc: Located): InputStream =
@@ -347,7 +344,7 @@ class ModelManager @Inject constructor(@ApplicationContext private val context: 
     // ---- download and delete --------------------------------------------------------------------------------------------
 
     fun delete(spec: ModelSpec) {
-        closeLoaded()
+        loadDir.listFiles()?.filter { it.name.endsWith(spec.fileName) || it.name.endsWith(spec.fileName + PART) }?.forEach { it.delete() }
         folder()?.let { _ ->
             listOf(spec.fileName, spec.fileName + PART).forEach { n -> inFolder(n)?.let { runCatching { DocumentsContract.deleteDocument(resolver, it.uri) } } }
         }
@@ -362,7 +359,7 @@ class ModelManager @Inject constructor(@ApplicationContext private val context: 
      * against the pinned value. Cancel by cancelling the caller's coroutine; the partial file is kept so the next attempt resumes.
      */
     suspend fun download(spec: ModelSpec, url: String) = withContext(Dispatchers.IO) {
-        // The caller releases the engine first: a descriptor the engine reads is never closed here.
+        // The caller releases the engine first.
         val tree = folder()
         if (tree == null) dir.mkdirs()
         val have = partSize(spec)
@@ -386,7 +383,7 @@ class ModelManager @Inject constructor(@ApplicationContext private val context: 
             }
             part.finish(spec.fileName)
             val loc = locate(spec) ?: error("could not move the file into place")
-            prefs.edit().putString(KEY_OK + spec.id, loc.fingerprint).remove(KEY_IGNORED + spec.id).remove(KEY_SEEN + spec.id).apply()
+            prefs.edit().putString(KEY_OK + spec.id, loc.fingerprint).putString(KEY_SEEN + spec.id, loc.fingerprint + "#" + sum).remove(KEY_IGNORED + spec.id).apply()
             set(spec, ModelState.Ready(loc.size))
         } catch (e: kotlinx.coroutines.CancellationException) {
             set(spec, quickState(spec))
@@ -501,6 +498,46 @@ class ModelManager @Inject constructor(@ApplicationContext private val context: 
         const val EXTERNAL_STORAGE = "com.android.externalstorage.documents"
         const val FREE_MARGIN = 300L * 1024 * 1024
         const val MAX_LISTING = 4 * 1024 * 1024
+    }
+}
+
+/** Private, content-addressed runtime copies. A failed/interrupted copy is never offered to the engine. */
+internal object ModelLoadCopy {
+    fun prepare(dir: File, name: String, size: Long, sha: String, read: () -> InputStream, checkpoint: () -> Unit = {}): File {
+        require(name.endsWith(".litertlm") && File(name).name == name)
+        require(sha.length == 64 && sha.all { it in '0'..'9' || it in 'a'..'f' })
+        check(dir.isDirectory || dir.mkdirs()) { "cannot create model cache" }
+        val target = File(dir, "$sha-$name")
+        if (target.isFile && target.length() == size) return target
+        // Discard stale copies of this model before allocating another multi-GB file.
+        dir.listFiles()?.filter { it.name.endsWith(name) || it.name.endsWith("$name.part") }?.forEach { it.delete() }
+        val part = File(dir, "$sha-$name.part")
+        try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            var copied = 0L
+            read().use { input ->
+                FileOutputStream(part).use { output ->
+                    val buf = ByteArray(1024 * 1024)
+                    while (true) {
+                        checkpoint()
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        copied += n
+                        check(copied <= size) { "model changed during copy" }
+                        digest.update(buf, 0, n)
+                        output.write(buf, 0, n)
+                    }
+                    output.fd.sync()
+                }
+            }
+            val actual = digest.digest().joinToString("") { "%02x".format(it) }
+            check(copied == size && actual == sha) { "model changed during copy" }
+            checkpoint()
+            check(part.renameTo(target)) { "cannot publish model cache" }
+            return target
+        } finally {
+            part.delete()
+        }
     }
 }
 
