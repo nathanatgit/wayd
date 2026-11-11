@@ -55,14 +55,13 @@ import javax.inject.Inject
 @HiltViewModel
 class DangerZoneViewModel @Inject constructor(val controller: MitmController) : ViewModel()
 
-/** Settings section for HTTPS decryption (research build only). Collapsed by default, as docs/08 requires. */
+/** HTTPS decryption page: shared consent/app controls and two directly visible certificate-trust methods. */
 @Composable
 fun DangerZone(vm: DangerZoneViewModel = hiltViewModel()) {
     val c = vm.controller
     val st by c.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
-    var expanded by rememberSaveable { mutableStateOf(false) }
     var step by rememberSaveable { mutableStateOf(0) } // 1 warning, 2 statement
     var confirmSystem by rememberSaveable { mutableStateOf(false) }
     var confirmRemove by rememberSaveable { mutableStateOf(false) }
@@ -82,61 +81,57 @@ fun DangerZone(vm: DangerZoneViewModel = hiltViewModel()) {
         }
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.dz_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = { expanded = !expanded }) {
-                    Text(stringResource(if (expanded) R.string.dz_collapse else R.string.dz_expand))
-                }
+    val canManageCa = st.consented && st.caReady && !st.busy
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text(stringResource(R.string.dz_warn_title), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
+        Text(stringResource(R.string.dz_intro), style = MaterialTheme.typography.bodyMedium)
+        SwitchRow(stringResource(R.string.dz_decrypt), st.enabled && st.consented, enabled = !st.busy) { on ->
+            if (!st.consented) { if (on) step = 1 } else scope.launch { c.setEnabled(on) }
+        }
+        if (failed) Text(stringResource(R.string.dz_ca_failed), color = MaterialTheme.colorScheme.error)
+        if (st.consented && st.caReady) {
+            Text(stringResource(R.string.dz_apply_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Button(onClick = { picker = true }, enabled = !st.busy) {
+                Text(stringResource(R.string.dz_pick_apps, st.apps.size))
             }
-            if (expanded) {
-                Text(stringResource(R.string.dz_intro), style = MaterialTheme.typography.bodyMedium)
-                SwitchRow(stringResource(R.string.dz_decrypt), st.enabled && st.consented) { on ->
-                    if (!st.consented) { if (on) step = 1 } else scope.launch { c.setEnabled(on) }
-                }
-                if (failed) Text(stringResource(R.string.dz_ca_failed), color = MaterialTheme.colorScheme.error)
-                if (st.consented && st.caReady) {
-                    Text(stringResource(R.string.dz_apply_hint), style = MaterialTheme.typography.bodySmall)
-                    Button(onClick = { picker = true }, enabled = !st.busy) {
-                        Text(stringResource(R.string.dz_pick_apps, st.apps.size))
-                    }
-                    Text(stringResource(R.string.dz_ca_title), style = MaterialTheme.typography.titleSmall)
-                    Text(stringResource(R.string.dz_ca_body), style = MaterialTheme.typography.bodySmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { openSettingsAfter = true; certPicker.launch(c.certificateFileName()) }) {
-                            Text(stringResource(R.string.dz_install_user))
-                        }
-                        OutlinedButton(onClick = { openSettingsAfter = false; certPicker.launch(c.certificateFileName()) }) {
-                            Text(stringResource(R.string.dz_export))
-                        }
-                    }
-                    certStatus?.let { Text(stringResource(it), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) }
-                    SwitchRow(stringResource(R.string.dz_system_ca), st.systemCa, enabled = !st.busy) { on ->
-                        if (on) confirmSystem = true else scope.launch { c.removeSystemCa() }
-                    }
-                    Text(stringResource(R.string.dz_system_ca_note), style = MaterialTheme.typography.bodySmall)
-                    st.message?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                    OutlinedButton(onClick = { scope.launch { c.deleteCapturedContent() } }) {
-                        Text(stringResource(R.string.dz_delete_content))
-                    }
-                }
-                if (st.consented || st.caReady) {
-                    Button(
-                        onClick = { confirmRemove = true },
-                        enabled = !st.busy,
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    ) { Text(stringResource(R.string.dz_remove)) }
-                }
+        } else {
+            Text(stringResource(R.string.dz_method_prerequisite), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.dz_manual_method), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.dz_ca_body), style = MaterialTheme.typography.bodyMedium)
+                OutlinedButton(
+                    onClick = { openSettingsAfter = true; certPicker.launch(c.certificateFileName()) },
+                    enabled = canManageCa, modifier = Modifier.fillMaxWidth(),
+                ) { Text(stringResource(R.string.dz_install_user)) }
+                OutlinedButton(
+                    onClick = { openSettingsAfter = false; certPicker.launch(c.certificateFileName()) },
+                    enabled = canManageCa, modifier = Modifier.fillMaxWidth(),
+                ) { Text(stringResource(R.string.dz_export)) }
+                certStatus?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
             }
+        }
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.dz_root_method), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.dz_system_ca_note), style = MaterialTheme.typography.bodyMedium)
+                SwitchRow(stringResource(R.string.dz_system_ca), st.systemCa, enabled = canManageCa) { on ->
+                    if (on) confirmSystem = true else scope.launch { c.removeSystemCa() }
+                }
+                st.message?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            }
+        }
+        if (st.consented && st.caReady) {
+            OutlinedButton(onClick = { scope.launch { c.deleteCapturedContent() } }, enabled = !st.busy) {
+                Text(stringResource(R.string.dz_delete_content))
+            }
+        }
+        if (st.consented || st.caReady) {
+            Button(
+                onClick = { confirmRemove = true }, enabled = !st.busy,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+            ) { Text(stringResource(R.string.dz_remove)) }
         }
     }
 

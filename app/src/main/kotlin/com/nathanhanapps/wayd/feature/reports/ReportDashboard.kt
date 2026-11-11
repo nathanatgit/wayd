@@ -50,6 +50,8 @@ import com.nathanhanapps.wayd.feature.analysis.findingTitle
 import com.nathanhanapps.wayd.feature.analysis.fmtBytes
 import com.nathanhanapps.wayd.feature.analysis.severityColor
 import com.nathanhanapps.wayd.feature.analysis.severityLabel
+import com.nathanhanapps.wayd.feature.analysis.Windows
+import com.nathanhanapps.wayd.feature.analysis.ActivityHeatmap
 
 /**
  * The report for one window, ordered by what a person acts on first: the summary, what needs attention, when it happened,
@@ -66,7 +68,7 @@ fun LazyListScope.insightsBody(
 ) {
     item(key = "summary") { SummaryCard(r) }
     item(key = "attention") { AttentionCard(r, labels, window, onOpenApp) }
-    item(key = "activity") { ActivityCard(r) }
+    item(key = "activity") { ActivityCard(r, window) }
     item(key = "apps") { TopAppsCard(r, labels, window, onOpenApp) }
     item(key = "destinations") { DestinationsCard(r, window, onOpenCompany) }
     item(key = "background") { BackgroundCard(r, labels, window, onOpenApp) }
@@ -156,7 +158,11 @@ private fun AttentionCard(r: DailyReport, labels: AppLabels, window: String, onO
 }
 
 @Composable
-private fun ActivityCard(r: DailyReport) {
+private fun ActivityCard(r: DailyReport, window: String) {
+    if (window == Windows.WEEK) {
+        SectionCard(stringResource(R.string.heatmap_title)) { ActivityHeatmap(r.dailyActivity, internetOnly = false) }
+        return
+    }
     val max = r.hourlyBytes.maxOrNull() ?: 0L
     val peak = if (max > 0) r.hourlyBytes.indexOfFirst { it == max } else -1
     val ctx = LocalContext.current

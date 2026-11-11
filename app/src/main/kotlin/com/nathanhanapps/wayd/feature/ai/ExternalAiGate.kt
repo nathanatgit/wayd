@@ -1,8 +1,10 @@
 package com.nathanhanapps.wayd.feature.ai
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -10,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -19,6 +22,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -28,8 +33,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nathanhanapps.wayd.R
 import com.nathanhanapps.wayd.ai.ExternalSend
+import com.nathanhanapps.wayd.ai.ExternalAiSettings
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,20 +49,30 @@ import javax.inject.Singleton
  * away, the question disappears with it and nothing is sent.
  */
 @Singleton
-class ExternalAiGate @Inject constructor() {
+class ExternalAiGate @Inject constructor(private val settings: ExternalAiSettings) {
     private val _pending = MutableStateFlow<ExternalSend?>(null)
     val pending: StateFlow<ExternalSend?> = _pending.asStateFlow()
-    private var answer: CompletableDeferred<Boolean>? = null
+    private data class Answer(val approved: Boolean, val remember: Boolean = false)
+    private var answer: CompletableDeferred<Answer>? = null
 
     suspend fun ask(send: ExternalSend): Boolean {
-        val mine = CompletableDeferred<Boolean>()
-        synchronized(this) {
-            answer?.complete(false)
-            answer = mine
-            _pending.value = send
-        }
+        val mine = CompletableDeferred<Answer>()
         try {
-            return mine.await()
+            val scope = settings.warningScope(send) ?: return false
+            if (settings.skipsWarning(scope)) return true
+            synchronized(this) {
+                answer?.complete(Answer(false))
+                answer = mine
+                _pending.value = send
+            }
+            val response = mine.await()
+            if (!response.approved || settings.warningScope(send) != scope) return false
+            if (response.remember) settings.rememberWarning(scope)
+            return true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return false
         } finally {
             synchronized(this) {
                 if (answer === mine) { answer = null; _pending.value = null }
@@ -63,7 +80,10 @@ class ExternalAiGate @Inject constructor() {
         }
     }
 
-    fun answer(send: Boolean) = synchronized(this) { answer?.complete(send); Unit }
+    fun answer(request: ExternalSend, approved: Boolean, remember: Boolean = false) = synchronized(this) {
+        if (_pending.value === request) answer?.complete(Answer(approved, approved && remember))
+        Unit
+    }
 }
 
 @HiltViewModel
@@ -74,8 +94,9 @@ fun ExternalAiGateDialog(holder: ExternalAiGateHolder = hiltViewModel()) {
     val send by holder.gate.pending.collectAsStateWithLifecycle()
     val s = send ?: return
     var showText by remember(s) { mutableStateOf(false) }
+    var neverAsk by remember(s) { mutableStateOf(false) }
     AlertDialog(
-        onDismissRequest = { holder.gate.answer(false) },
+        onDismissRequest = { holder.gate.answer(s, false) },
         title = { Text(stringResource(R.string.xg_title)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -91,9 +112,17 @@ fun ExternalAiGateDialog(holder: ExternalAiGateHolder = hiltViewModel()) {
                         .verticalScroll(rememberScrollState()).padding(10.dp),
                     style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace,
                 )
+                Row(
+                    Modifier.fillMaxWidth().toggleable(value = neverAsk, role = Role.Checkbox, onValueChange = { neverAsk = it }),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(checked = neverAsk, onCheckedChange = null)
+                    Text(stringResource(R.string.xg_never_ask), style = MaterialTheme.typography.bodyMedium)
+                }
+                if (neverAsk) Text(stringResource(R.string.xg_never_ask_detail), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
-        confirmButton = { TextButton(onClick = { holder.gate.answer(true) }) { Text(stringResource(R.string.xg_send)) } },
-        dismissButton = { TextButton(onClick = { holder.gate.answer(false) }) { Text(stringResource(android.R.string.cancel)) } },
+        confirmButton = { TextButton(onClick = { holder.gate.answer(s, true, neverAsk) }) { Text(stringResource(R.string.xg_send)) } },
+        dismissButton = { TextButton(onClick = { holder.gate.answer(s, false) }) { Text(stringResource(android.R.string.cancel)) } },
     )
 }

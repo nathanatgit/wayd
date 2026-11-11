@@ -212,7 +212,7 @@ private fun utf8OrNull(b: ByteArray): String? = runCatching {
 
 /** One decrypted request or response: a summary line that expands to headers and the body as text or hex. */
 @Composable
-private fun MessageItem(m: Message) {
+internal fun MessageItem(m: Message) {
     val context = LocalContext.current
     var open by remember { mutableStateOf(false) }
     val body = m.body ?: ByteArray(0)
@@ -220,7 +220,7 @@ private fun MessageItem(m: Message) {
     var hex by remember(m.id) { mutableStateOf(text == null && body.isNotEmpty()) }
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainer)) {
         Row(Modifier.fillMaxWidth().clickable { open = !open }.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(if (m.dir == Dir.UP) "↑" else "↓", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Text(if (m.dir == Dir.UP) "↑" else "↓", style = MaterialTheme.typography.titleMedium, color = if (m.dir == Dir.UP) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary)
             Column(Modifier.weight(1f)) {
                 Text(
                     if (m.dir == Dir.UP) (m.method.orEmpty() + " " + (m.url.orEmpty().substringAfter("://").substringAfter('/', "").let { "/$it" })).trim() else "HTTP ${m.status ?: ""}".trim(),

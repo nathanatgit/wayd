@@ -38,6 +38,8 @@ fun SettingsScreen(onOpenAi: () -> Unit, onOpenAccess: () -> Unit, onOpenResearc
     val root by vm.root.collectAsStateWithLifecycle()
     val shizuku by vm.shizuku.collectAsStateWithLifecycle()
     val ai by vm.ai.collectAsStateWithLifecycle()
+    val resettingWarnings by vm.resettingWarnings.collectAsStateWithLifecycle()
+    val warningsReset by vm.warningsReset.collectAsStateWithLifecycle()
     val aiValue = vm.aiSummary(ai, stringResource(R.string.settings_ai_none), stringResource(R.string.settings_ai_device), stringResource(R.string.settings_ai_external))
     val access = when {
         root == RootState.AVAILABLE -> stringResource(R.string.settings_privilege_root)
@@ -68,6 +70,13 @@ fun SettingsScreen(onOpenAi: () -> Unit, onOpenAccess: () -> Unit, onOpenResearc
             InfoRow(Icons.Filled.Info, stringResource(R.string.settings_about), BuildConfig.VERSION_NAME)
         }
         Text(stringResource(R.string.settings_local_only), Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        FilledTonalButton(onClick = vm::reenableAllWarnings, enabled = !resettingWarnings) {
+            Text(stringResource(R.string.settings_reenable_warnings))
+        }
+        Text(
+            stringResource(if (warningsReset) R.string.settings_warnings_reset else R.string.settings_warnings_detail),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

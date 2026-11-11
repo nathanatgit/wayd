@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -52,6 +53,7 @@ class ExternalAiSettings @Inject constructor(
     private val secrets = context.getSharedPreferences("ai_secret", Context.MODE_PRIVATE)
     private val _state = MutableStateFlow(read(false))
     val state: StateFlow<ExternalAiUi> = _state.asStateFlow()
+    private val warnings = ExternalWarningPolicy(records::consent, consents::upsert, { consents.observeAll().first() })
 
     /** Re-reads stored values and the consent record (call when a settings screen opens). */
     suspend fun load() = withContext(Dispatchers.IO) { _state.value = read(isAcknowledged(prefs.getString(KEY_URL, "").orEmpty())) }
@@ -63,6 +65,7 @@ class ExternalAiSettings @Inject constructor(
     suspend fun save(baseUrl: String, model: String, apiKey: String?): Boolean = withContext(Dispatchers.IO) {
         val url = ExternalAiUrl.normalise(baseUrl) ?: return@withContext false
         val oldOrigin = ExternalAiUrl.origin(prefs.getString(KEY_URL, "").orEmpty())
+        if (url != prefs.getString(KEY_URL, "") || model.trim().take(200) != prefs.getString(KEY_MODEL, "")) warnings.reset()
         if (oldOrigin.isNotEmpty() && oldOrigin != ExternalAiUrl.origin(url)) revoke(oldOrigin)
         prefs.edit().putString(KEY_URL, url).putString(KEY_MODEL, model.trim().take(200)).apply()
         when {
@@ -83,6 +86,7 @@ class ExternalAiSettings @Inject constructor(
         if (on) consents.upsert(ConsentRecord(feature(origin), STATEMENT, System.currentTimeMillis(), null))
         else {
             revoke(origin)
+            warnings.reset()
             prefs.edit().putString(KEY_PROVIDER, AiProvider.ON_DEVICE.name).apply()
         }
         _state.value = read(on)
@@ -96,6 +100,7 @@ class ExternalAiSettings @Inject constructor(
 
     /** Forgets the server, the key and the acknowledgement. */
     suspend fun clear() = withContext(Dispatchers.IO) {
+        warnings.reset()
         val origin = ExternalAiUrl.origin(prefs.getString(KEY_URL, "").orEmpty())
         if (origin.isNotEmpty()) revoke(origin)
         prefs.edit().remove(KEY_URL).remove(KEY_MODEL).remove(KEY_PROVIDER).apply()
@@ -110,6 +115,23 @@ class ExternalAiSettings @Inject constructor(
         if (model.isBlank() || !isAcknowledged(url)) return@withContext null
         ExternalEndpoint(url, model, apiKey())
     }
+
+    /** Current scope only: a remembered preview can never substitute for a live server acknowledgement. */
+    suspend fun warningScope(send: ExternalSend): ExternalWarningScope? = withContext(Dispatchers.IO) {
+        val url = ExternalAiUrl.normalise(prefs.getString(KEY_URL, "").orEmpty()) ?: return@withContext null
+        val model = prefs.getString(KEY_MODEL, "").orEmpty()
+        if (prefs.getString(KEY_PROVIDER, "") != AiProvider.EXTERNAL.name || model != send.model ||
+            url != send.destination || !isAcknowledged(url)
+        ) return@withContext null
+        ExternalWarningScope(url, model)
+    }
+
+    suspend fun skipsWarning(scope: ExternalWarningScope): Boolean = withContext(Dispatchers.IO) { warnings.skips(scope) }
+
+    suspend fun rememberWarning(scope: ExternalWarningScope) = withContext(Dispatchers.IO) { warnings.remember(scope) }
+
+    /** Restores every optional preview, without touching provider configuration, keys or dangerous-feature consents. */
+    suspend fun reenableAllWarnings() = withContext(Dispatchers.IO) { warnings.reset() }
 
     /**
      * For listing models / "Test connection" before anything is acknowledged. A key the user typed goes only to the address they

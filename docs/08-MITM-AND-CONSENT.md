@@ -4,14 +4,14 @@ Applies to: MITM (CA-based) and root plaintext capture (eBPF/hooks). Both are "c
 
 ## UX flow
 
-1. Settings → **Danger zone** (red section, collapsed by default).
+1. Tools / Settings → **HTTPS decryption**. The page is directly visible, with a shared risk notice and two trust-method cards: manual user-CA installation and system-wide trust requiring root (D-058).
 2. Toggle "Decrypt HTTPS content" → full-screen warning (cannot be dismissed by back/scrim tap).
 3. Privacy statement screen (scroll to end required) → checkbox "I understand" → **Agree and continue** (destructive-styled) / **Cancel**.
 4. CA generation → system dialog to install the user CA (or Magisk module on root).
 5. **Per-app picker** — empty by default. Banking, payment, government, and password-manager apps are excluded and can't be added (list maintained in code).
 6. Record `ConsentRecord(feature="MITM", statementVersion, acceptedAt)`.
 
-Revoke at any time: "Disable and remove CA" button always visible in Danger zone and in the recording notification menu when MITM is active.
+Revoke at any time: "Disable and remove CA" is directly visible on the HTTPS decryption page when configured, and in the recording notification menu when MITM is active. The method cards are visible before consent, but certificate actions remain disabled until consent and CA creation succeed. Opening the page never installs a certificate, enables decryption or requests root.
 
 ## Warning text (draft, EN)
 

@@ -28,11 +28,26 @@ class SettingsViewModel @Inject constructor(
     private val health: DbHealth,
     private val rootProbe: RootProbe,
     private val models: ModelManager,
-    external: ExternalAiSettings,
+    private val external: ExternalAiSettings,
     permissions: PermissionHistoryService,
 ) : ViewModel() {
     val shizuku: StateFlow<ShizukuState> = permissions.state
     val ai: StateFlow<ExternalAiUi> = external.state
+    val resettingWarnings = MutableStateFlow(false)
+    val warningsReset = MutableStateFlow(false)
+
+    fun reenableAllWarnings() {
+        if (resettingWarnings.value) return
+        resettingWarnings.value = true
+        viewModelScope.launch {
+            try {
+                external.reenableAllWarnings()
+                warningsReset.value = true
+            } finally {
+                resettingWarnings.value = false
+            }
+        }
+    }
 
     /** Short summary for the AI row: the provider in use and its model. The templates take the model name as `%s`. */
     fun aiSummary(ext: ExternalAiUi, none: String, onDevice: String, external: String): String = when {

@@ -109,3 +109,7 @@ Question: {optional}
 ```
 
 Mask raw identifier values to their type tokens before prompting; the model needs "this is an Android ID", not the value.
+
+## Optional external provider previews (D-046, D-055)
+
+The external provider remains off by default, with recorded consent for the chosen server origin. User-started analysis shows its destination, model, decrypted-content warning and an optional exact masked-text preview. The initially unchecked Don't ask again checkbox takes effect only when Send is pressed. It records a revocable ConsentRecord for the full server URL and model and discloses that later selected decrypted content may also be sent without preview. Changing the URL/model or withdrawing server consent restores previews. Settings → Re-enable all warnings resets these optional preview choices, leaving configuration, credentials and other feature consents intact. The analyzer's default approver still refuses all external sends; model output remains schema-validated and cannot decide severity or actions.

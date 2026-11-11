@@ -114,7 +114,17 @@ fun WaydNavHost() {
                 com.nathanhanapps.wayd.feature.apps.ApkScanScreen(onBack = { nav.popBackStack() })
             }
             composable("app/{pkg}/{win}", listOf(navArgument("pkg") { type = NavType.StringType }, navArgument("win") { type = NavType.StringType })) {
-                AppDetailScreen(onBack = { nav.popBackStack() }, onOpenMessages = { pkg, win -> nav.navigate("messages/$pkg/$win") }, onOpenScanner = { nav.navigate("scanner?pkg=${android.net.Uri.encode(it)}") })
+                AppDetailScreen(
+                    onBack = { nav.popBackStack() },
+                    onOpenMessages = { pkg, win -> nav.navigate("messages/$pkg/$win") },
+                    onOpenScanner = { nav.navigate("scanner?pkg=${android.net.Uri.encode(it)}") },
+                    onSelectWindow = { win ->
+                        val pkg = nav.currentBackStackEntry?.arguments?.getString("pkg").orEmpty()
+                        nav.navigate("app/${android.net.Uri.encode(pkg)}/$win") {
+                            popUpTo("app/{pkg}/{win}") { inclusive = true }
+                        }
+                    },
+                )
             }
             composable("messages/{pkg}/{win}", listOf(navArgument("pkg") { type = NavType.StringType }, navArgument("win") { type = NavType.StringType })) {
                 InspectorScreen(onBack = { nav.popBackStack() })

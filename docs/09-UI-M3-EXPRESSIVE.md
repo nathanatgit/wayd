@@ -91,7 +91,7 @@ AI entry points are contextual (selection action bar, finding card, app detail),
 
 ### Settings
 - Privilege; AI model manager (download size, device check, delete); retention; export; wipe.
-- **Danger zone** (collapsed, red outline): MITM, root plaintext capture, developer console.
+- **HTTPS decryption** (D-058): directly visible risk notice and shared enable/app controls, followed by manual user-CA installation and root system-wide trust as separate method cards. No extra Danger zone disclosure; consent and operation confirmations stay mandatory.
 
 ## Motion
 
