@@ -251,7 +251,7 @@ private fun certaintyLabel(c: Certainty) = stringResource(
 )
 
 @Composable
-private fun purposeLabel(p: Purpose) = stringResource(
+internal fun purposeLabel(p: Purpose) = stringResource(
     when (p) {
         Purpose.ANALYTICS -> R.string.ai_p_analytics
         Purpose.ADS -> R.string.ai_p_ads

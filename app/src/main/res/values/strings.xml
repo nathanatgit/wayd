@@ -468,6 +468,12 @@ That content can include things other people sent you or that were sent about th
     <string name="connections_export">Export</string>
     <string name="connections_more">Load more</string>
     <string name="connections_blocked">Blocked</string>
+    <string name="conn_label_normal">Normal</string>
+    <string name="conn_label_ad">Ad</string>
+    <string name="conn_label_sensitive">Sensitive</string>
+    <string name="conn_label_warn">Warn</string>
+    <string name="conn_label_danger">Danger</string>
+    <string name="conn_ai_hint">AI: %1$s?</string>
     <string name="rep_attention">Needs attention</string>
     <string name="rep_attention_hint">%1$d alerts · %2$d total</string>
     <string name="rep_show_all">Show all %1$d</string>

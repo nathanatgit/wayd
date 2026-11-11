@@ -468,6 +468,12 @@
     <string name="connections_export">导出</string>
     <string name="connections_more">加载更多</string>
     <string name="connections_blocked">已阻止</string>
+    <string name="conn_label_normal">正常</string>
+    <string name="conn_label_ad">广告</string>
+    <string name="conn_label_sensitive">敏感</string>
+    <string name="conn_label_warn">警告</string>
+    <string name="conn_label_danger">危险</string>
+    <string name="conn_ai_hint">AI：%1$s？</string>
     <string name="rep_attention">需要关注</string>
     <string name="rep_attention_hint">%1$d 条提醒 · 共 %2$d 项</string>
     <string name="rep_show_all">显示全部 %1$d 项</string>
