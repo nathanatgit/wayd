@@ -102,7 +102,7 @@ jobs:
           {
             echo "WAYD ${VERSION}"
             echo
-            echo "Two builds (arm64 phones, Android 10+), same application id and signing key; install either one over the other to switch, keeping your data. Local-only: no data leaves the phone except model downloads you start."
+            echo "Two builds (arm64 phones, Android 10+), same application id and signing key; install either one over the other to switch, keeping your data. Inspection and analysis stay on device by default. Model/database downloads and exports are user initiated. Optional external AI sends selected evidence only to your chosen server after recorded consent and approval; you can explicitly remember approval for an exact server address and model, then revoke it in Settings."
             echo
             echo "- \`${APK}\`: core. Traffic recording, blocking, analysis and consent-gated HTTPS decryption."
             echo "- \`${APK_CLASH}\`: everything in core plus optional Clash (Mihomo) routing and its screens."
@@ -111,5 +111,7 @@ jobs:
             echo "APK SHA-256: see the \`.sha256\` file next to each APK."
             echo
             echo "HTTPS decryption is included in both builds, off by default, and only starts after you accept the Danger zone consent in Settings."
+            echo
+            echo "Highlights: recorded-traffic dashboards and activity heatmaps; inline decrypted-message inspection and nearby TCP record pills; clearer HTTPS trust methods; external-AI preview preferences with warning reset; verified folder-model loading."
           } > notes.md
           gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" "$APK_CLASH" "$APK_CLASH.sha256" --title "WAYD ${VERSION}" --notes-file notes.md --generate-notes

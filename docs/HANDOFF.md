@@ -1,6 +1,6 @@
 # Handoff
 
-_Last updated: 2026-11-11 · **v0.3.0** on `main` (versionCode 6) · decisions through D-059._
+_Last updated: 2026-11-11 · **v0.4.0** on `main` (versionCode 7) · decisions through D-059._
 
 WAYD (在干嘛, `com.nathanhanapps.wayd`) is an Android privacy monitor: a VpnService forwards traffic and applies local blocks, optional recording saves evidence locally, consent-gated decryption reads supported HTTPS, on-device Gemma (or an approved external OpenAI-compatible server) explains findings. Read [AGENTS.md](../AGENTS.md) first. Older session-by-session notes were compacted on 2026-11-11; see git history (`git log -p docs/HANDOFF.md`) for the full device logs.
 
@@ -8,13 +8,13 @@ WAYD (在干嘛, `com.nathanhanapps.wayd`) is an Android privacy monitor: a VpnS
 
 _Handoff 2026-11-11. Decisions through D-059._
 
-- D-054–D-059 are handed off through `feat/ui-dashboard-handoff`, merged into `main` with `--no-ff`; local only, not pushed. Earlier D-051–D-053 merge: `afe0655`. E4B Download/WAYD is phone-verified with private `.litertlm` staging.
+- D-054–D-059 merged into `main` with `--no-ff` (`0d7c470`); earlier D-051–D-053 merge: `afe0655`. Nat requested release `v0.4.0`: versionCode 7, annotated tag and main pushed together to trigger signed Core/Clash release CI. Release notes now disclose optional external-AI sends and list dashboard/inspection/model-loading highlights. E4B Download/WAYD is phone-verified with private `.litertlm` staging.
 - D-054/D-056: app-detail Material sections, collapsed connection history, directional bytes and inline decrypted text/hex. Nearby TCP pills preserve individual records; metadata loads no bodies, expanded records load at most 50 messages. No schema change.
 - D-055: optional external-AI preview suppression is scoped to exact server URL/model and revocable; Settings warning reset preserves mandatory consents and rules. Nat verified the flows.
 - D-057/D-058: compact 7×24 heatmap shared by app detail and Insights (internet/all-flow scopes respectively); HTTPS has directly visible user-CA and root-trust method cards. Existing consent and confirmations preserved. Phone-verified before this dashboard iteration.
 - D-059: ADB identified the current page as Mi Home app detail (`com.xiaomi.smarthome`, week). Recorded-traffic dashboard now has directional ring/metric cards, chart before insight tiles, destination bars/pills and finding cards. Inherited Today/Yesterday/Last 7 days pills refresh the whole window via navigation replacement; compact scan/export actions align right in the identity header, duplicate period removed. Bilingual scope/recording-gap disclosure retained. No capture/rule changes.
 - Validation: both final variants build and lint successfully (`build/dashboard-final-validation.log`); earlier AI/analysis suites: 101 passed, 1 opt-in live test skipped. As requested, stopped the `.d049` VPN on USB NX733J `320146880841`, verified network access and installed the replacement Clash debug APK with `adb install -r` (history/settings preserved). Virtual-display smoke check showed the new header, metrics and week heatmap after selecting the week pill. Nat handles further visual review; scrcpy is closed and VPN remains off. Dark mode/200% font not checked.
-- Next: Nat reviews the installed dashboard; iterate on feedback. Push only on request. Other open work: custom-model importer, remaining Clash device acceptance, release signing unavailable locally.
+- Next: check `v0.4.0` release CI and signed APK publication; Nat reviews the installed dashboard. Other open work: custom-model importer, remaining Clash device acceptance, release signing unavailable locally.
 
 ## Status
 
