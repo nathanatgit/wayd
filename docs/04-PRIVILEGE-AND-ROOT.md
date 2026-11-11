@@ -41,7 +41,7 @@ sealed interface Command {
 **Rules**
 - Commands are rendered to argv by a single `CommandRenderer` with strict validation (package names match `^[a-zA-Z0-9_.]+$`, UIDs are ints).
 - No free-form shell strings anywhere in production code paths.
-- The developer console (from AppDualZuku) exists only in the `research` flavor, behind its own warning.
+- The developer console (from AppDualZuku) sits in the Danger zone behind its own warning.
 - The `ai` module has **no** dependency on `privilege`.
 
 Reuse AppDualZuku's `ShellClient` / Shizuku UserService implementation inside `ShizukuShell`.
@@ -58,7 +58,7 @@ Reuse AppDualZuku's `ShellClient` / Shizuku UserService implementation inside `S
 
 Parsers must be tolerant: output format varies by Android version and OEM. Keep sample outputs from real devices in `collectors/src/test/resources/`.
 
-## Root features (research flavor)
+## Root features (Danger zone, consent-gated)
 
 | Feature | Approach | Notes |
 |---|---|---|

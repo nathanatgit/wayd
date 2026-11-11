@@ -35,7 +35,7 @@ Revoke at any time: "Disable and remove CA" button always visible in Danger zone
 
 1. What WAYD collects (traffic metadata, cleartext/decrypted content for chosen apps, permission usage, APK facts).
 2. Where it is stored (this device only, encrypted; excluded from backup).
-3. Distinguish local inspection copies from forwarded app traffic. No automatic uploads of captures, reports or AI analysis; explicit exports and user-initiated model/database downloads use user-chosen destinations. Planned optional proxy routing sends selected app traffic to the configured proxy; explain operator visibility and fallback consent (see 14-OPTIONAL-ROUTING.md).
+3. Distinguish local inspection copies from forwarded app traffic. No automatic uploads of captures, reports or AI analysis; explicit exports and user-initiated model/database downloads use user-chosen destinations. Clash routing (`clash` variant) sends selected apps' traffic to the configured proxy; explain operator visibility (see 14-OPTIONAL-ROUTING.md).
 4. Retention defaults and how to change them.
 5. How to export and how to wipe.
 6. Third-party data: traffic may contain other people's information (messages); user is responsible for lawful use.
@@ -49,17 +49,15 @@ Statement versions are integers; changing text → bump version → re-consent r
 - Leaf certs generated on demand, cached in memory (LRU).
 - On handshake failure → passthrough that host, add to `PinnedHostCache`, mark flows METADATA.
 - Never MITM: hosts on an exclusion list (banking, OS update, Play/vendor store, WAYD's own downloads).
-- `research` flavor only.
+- Ships in the single build (D-048); inert until this consent is recorded.
 - Turning off: remove leaf cache, delete CA key, prompt user to remove the installed CA (link to settings), remove Magisk module on root.
 
 ## Legal note (non-binding)
 
 This is not legal advice. Review PIPL (个人信息保护法) and local rules before public distribution; keep all processing on-device and avoid collecting anything about the developer side.
 
-## Combined HTTPS inspection and optional routing (2026-11-10)
+## Decryption over routed flows
 
-The integrated Clash extension uses WAYD's VPN; running a separate Clash/FlClash Android VPN replaces WAYD's VPN and is not a supported coexistence setup. Within WAYD, local blocks gate forwarding, routing chooses the upstream stream, and research MITM performs server-authenticated TLS over that same stream. Successful optional routing does not bypass interception. TLS fallback keeps the original selected routing metadata and does not silently switch a failed proxy to Direct.
+A separate Clash/FlClash VPN replaces WAYD's and is not supported. With Clash routing, local blocks gate forwarding, the routing transport carries the upstream stream, and WAYD performs server-authenticated TLS over it; TLS fallback keeps the original route and never switches a failed proxy to Direct.
 
-Decrypted messages require the research build, active decryption consent, explicit app selection and app trust in the local CA. Saved inspection additionally requires Record traffic on. A Proxied outcome, captured SNI/bytes or a successful Google request alone is not evidence of decryption: require TLS_INTERCEPTED plus MESSAGE events for plaintext request and response. The current MITM parser negotiates HTTP/1.1 over TCP; QUIC/HTTP3, certificate pinning, rejected user CA and existing exclusion/IPv6 gaps must remain visible as coverage limits.
-
-Android-native combined regression android_mihomo_routing_and_https_decryption_capture_both_messages exercises the actual relay, a Mihomo HTTP CONNECT adapter, a TLS origin, explicit flow approval and both captured plaintext messages. Optional ignored android_live_google_via_mihomo_is_decrypted accepts an explicitly supplied private profile and live Google IPv4:443 fixture. It requests only public www.google.com/robots.txt without account/cookies, validates upstream TLS against public roots, asserts Proxied with no Direct outcome, TLS_INTERCEPTED, captured request and Google response body. This is bounded native engine evidence; it does not replace installed VpnService/CA/ConsentRecord/Room acceptance.
+Decrypted messages need: active decryption consent, the app selected, the app trusting the local CA, and Record traffic on to save them. A Proxied outcome, SNI or a working page is not proof: require `TLS_INTERCEPTED` plus MESSAGE events for request and response. The parser negotiates HTTP/1.1 over TCP; QUIC/HTTP3, pinning, rejected user CA, exclusions and IPv6 gaps stay visible as coverage limits. Native regression and live Google tests: [12-TESTING.md](12-TESTING.md).

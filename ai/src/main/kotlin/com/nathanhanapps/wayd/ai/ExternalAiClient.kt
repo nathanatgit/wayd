@@ -3,6 +3,10 @@ package com.nathanhanapps.wayd.ai
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -74,6 +78,12 @@ object ExternalAiUrl {
  */
 class OpenAiCompatibleClient(
     private val open: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
+    /** Carries HTTPS calls to public hosts over the user's proxy route when it applies (D-050); private hosts never use it. */
+    private val connector: ExternalConnector = ExternalConnector.NONE,
+    /** Wraps a routed stream in TLS; tests replace it to talk plain HTTP to a local server. */
+    private val secure: (ExternalStream, String, Int) -> Pair<java.io.InputStream, java.io.OutputStream> = { s, host, port ->
+        EngineTls(host, port, s.input, s.output).run { handshake(); input to output }
+    },
 ) {
     /** Request dialects, most capable first. A server that rejects one (HTTP 400/422) is retried with the next and remembered. */
     private enum class Format { SCHEMA_NO_THINKING, JSON_SCHEMA, JSON_OBJECT, NONE }
@@ -152,9 +162,61 @@ class OpenAiCompatibleClient(
         },
     )
 
-    private suspend fun post(url: URL, key: String?, body: String) = call(url, key) { it.requestMethod = "POST"; it.doOutput = true; it.setRequestProperty("Content-Type", "application/json"); it.outputStream.use { o -> o.write(body.toByteArray()) } }
+    private suspend fun post(url: URL, key: String?, body: String) =
+        routedOr(url, key, "POST", body.toByteArray()) { call(url, key) { it.requestMethod = "POST"; it.doOutput = true; it.setRequestProperty("Content-Type", "application/json"); it.outputStream.use { o -> o.write(body.toByteArray()) } } }
 
-    private suspend fun get(url: URL, key: String?) = call(url, key) { it.requestMethod = "GET" }
+    private suspend fun get(url: URL, key: String?) = routedOr(url, key, "GET", null) { call(url, key) { it.requestMethod = "GET" } }
+
+    /**
+     * HTTPS to a public host goes through [connector] when it applies; otherwise [direct]. A connector that applies but fails ends
+     * the call (`ext_route`): the evidence is never sent around the user's chosen route.
+     */
+    private suspend fun routedOr(url: URL, key: String?, method: String, body: ByteArray?, direct: suspend () -> Pair<Int, String>): Pair<Int, String> {
+        val host = url.host.lowercase()
+        if (url.protocol != "https" || ExternalAiUrl.isPrivateHost(host)) return direct()
+        val port = if (url.port == -1) 443 else url.port
+        val stream = try {
+            connector.open(host, port)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw ExternalAiException("ext_route", e)
+        } ?: return direct()
+        return overStream(stream, url, host, port, key, method, body)
+    }
+
+    /** One request over a routed stream. A timer closes the stream after the read timeout; cancelling the call closes it too. */
+    private suspend fun overStream(s: ExternalStream, url: URL, host: String, port: Int, key: String?, method: String, body: ByteArray?): Pair<Int, String> =
+        withContext(Dispatchers.IO) {
+            coroutineScope {
+                var timedOut = false
+                val timer = launch {
+                    try { delay(READ_TIMEOUT_MS.toLong()); timedOut = true } finally { s.close() }
+                }
+                try {
+                    val (input, output) = secure(s, host, port)
+                    val headers = buildList {
+                        add("Accept" to "application/json")
+                        add("User-Agent" to "WAYD-ai")
+                        if (body != null) add("Content-Type" to "application/json")
+                        if (!key.isNullOrBlank()) add("Authorization" to "Bearer $key")
+                    }
+                    val authority = if (port == 443) host else "$host:$port"
+                    val path = url.path + (url.query?.let { "?$it" } ?: "")
+                    StreamHttp.exchange(input, output, method, authority, path, headers, body, MAX_REPLY)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: ExternalAiException) {
+                    throw e
+                } catch (e: Exception) {
+                    if (!isActive) throw CancellationException("cancelled")
+                    throw ExternalAiException(if (timedOut) "ext_timeout" else classify(e), e)
+                } finally {
+                    timer.cancel()
+                    s.close()
+                }
+            }
+        }
 
     /** One bounded request. Cancelling the coroutine closes the socket, so a stuck LAN model never holds a thread. */
     private suspend fun call(url: URL, key: String?, send: (HttpURLConnection) -> Unit): Pair<Int, String> = withContext(Dispatchers.IO) {
@@ -166,7 +228,7 @@ class OpenAiCompatibleClient(
             conn = c
             c.instanceFollowRedirects = false // never replay a bearer token to a redirect target
             c.connectTimeout = 15_000
-            c.readTimeout = 300_000 // a cold local model can take minutes to answer the first call
+            c.readTimeout = READ_TIMEOUT_MS // a cold local model can take minutes to answer the first call
             c.setRequestProperty("Accept", "application/json")
             c.setRequestProperty("User-Agent", "WAYD-ai")
             if (!key.isNullOrBlank()) c.setRequestProperty("Authorization", "Bearer $key")
@@ -210,5 +272,6 @@ class OpenAiCompatibleClient(
 
     private companion object {
         const val MAX_REPLY = 512 * 1024
+        const val READ_TIMEOUT_MS = 300_000
     }
 }

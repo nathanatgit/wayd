@@ -1,81 +1,48 @@
 # 12 · Testing
 
-## M5 static scanner regression and device checks
-
-Run `:apkscan:testDebugUnitTest :privilege:testDebugUnitTest :apkscan:lintDebug`, then build both app flavors. Parser tests cover UTF-8/UTF-16 XML pools, typed attributes, every truncated fixture prefix, invalid offsets/counts, defined versus referenced SDK classes, unsupported DEX versions, string/endpoint caps, host-only normalization and bounded stream reads. Package inventory tests reject malformed/injected names and oversized replies/counts. As of 2026-11-10: 13 scanner + 8 privilege tests pass; scanner lint has 0 errors and one merged-permission visibility warning.
-
-Device smoke: scan discoverable apps, reopen a result from Apps and from an app-detail link, verify signer subjects/fingerprints and static coverage limits, then repeat to check cache hits. An APK update must invalidate its result. Verify cancel retains completed packages and does not alter VPN state. Formal M5 acceptance additionally requires comparing discovery against the current-user package inventory and timing a cold full scan; a fast visible-only sample is insufficient. NX733J evidence: 22 discoverable apps / 42 s, repeat 22 cache hits / 1 s; shell inventory 535. Final test-app update: 1 rescan + 21 cached / 5 s. Full-inventory/Shizuku app authorization remains open.
+Commands and device rules: [HANDOFF.md](HANDOFF.md#build-and-test-windows). Latest counts live there, not here.
 
 ## Pyramid
 
 | Level | What | Tools |
 |---|---|---|
-| Unit | Parsers, rules, scoring, schema validator, command renderer | JUnit5, Kotest, fixtures |
-| Fuzz | DNS/TLS/HTTP/AXML/DEX parsers | Jazzer (JVM) / cargo-fuzz (if Rust) |
-| Integration | Room DAOs, retention, collectors with recorded `dumpsys` outputs | Robolectric / instrumented |
+| Unit | Parsers, rules, scoring, schema validator, command renderer, policy, portable JSON | JUnit5, Kotest, fixtures |
+| Fuzz | DNS/TLS/HTTP/AXML/DEX parsers, Clash profiles | Jazzer / cargo-fuzz / `go test -fuzz=FuzzProfile` |
+| Native | Relay, blocking, lifecycle, MITM, routing C ABI | `cargo test`, Android-native executables on device |
+| Integration | Room DAOs, migrations, collectors with recorded `dumpsys` | Robolectric / instrumented |
 | Device | Capture correctness, OEM survival, performance | Real devices |
-| AI | Schema compliance, evidence validity, injection resistance | Golden fixtures run on device |
+| AI | Schema compliance, evidence validity, injection resistance | Golden fixtures on device; opt-in live Ollama test |
 
 ## Ground-truth capture (most important)
 
-Verify WAYD against an external capture:
-
 1. Linux laptop as Wi-Fi AP (hostapd) or a router with tcpdump.
 2. Phone on that AP, WAYD recording, Always-on + lockdown on.
-3. Run a scripted 30-min usage session.
-4. Compare: every (dst IP, port, approx time) in the router pcap must map to a WAYD flow, or be explained as known bypass (connectivity check, NTP…).
-5. Store the diff report in `testing/ground-truth/<device>-<date>.md`.
+3. Scripted 30-min usage session.
+4. Every (dst IP, port, approx time) in the router pcap must map to a WAYD flow or a known bypass (connectivity check, NTP…).
+5. Store the diff in `testing/ground-truth/<device>-<date>.md`. Repeat per family: Pixel, HyperOS, ColorOS, OriginOS, Nubia/ZTE, Huawei.
 
-Repeat per device family: Pixel (AOSP), Xiaomi HyperOS, OPPO/OnePlus ColorOS, vivo OriginOS, Nubia/ZTE, Huawei (if available).
+Not done yet: no router capture has been supplied, and the test Wi-Fi had no IPv6 route.
 
-### Local capture measurement
+**Local measurement:** after the user chooses to export a capture JSON, `powershell -File scripts/Measure-Capture.ps1 -Path captures/session.json`. It prints aggregates only (package names vs UID-only/unknown, panel denominator and all TCP); still treat output as private and keep raw files in ignored `captures/` or `build/`. The in-app coverage panel aggregates all stored flows, so it is not a per-session result.
 
-After the user chooses to export a capture JSON, run `powershell -File scripts/Measure-Capture.ps1 -Path captures/session.json` from the repository root. Keep raw files in ignored `captures/` or `build/`; do not commit them. The analyzer separates package names from UID-only/unknown attribution and reports the existing coverage-panel denominator alongside all TCP flows. It does not emit destinations or payloads; package/port groups still describe app activity, so treat its output as private. A session's timestamp duration alone does not prove continuous recording or successful app use. Router comparison remains separate.
+## Area checks
+
+- **Recording toggle:** JVM tests prove policy callbacks run without persistence while off, flows spanning a toggle are excluded, new flows resume. Device: forwarding and blocking with recording off, session rule survives toggles and expires at VPN stop (verified). Still open: DB row counts not growing while off, spanning-flow exclusion on device.
+- **Blocking:** local TCP/UDP servers verify no pre-dial contact, fragmented host gating, live-flow closure with byte counts kept. Device: disposable `.blockprobe` against a PC fixture (server count stops while blocked, resumes after Undo). Lifecycle regression `engine::lifecycle_tests::stopping_blocked_tcp_releases_tun_duplicate` (12 cycles × 32 TCP opens, Stop racing pending/blocked flows, no leftover descriptor or `wayd-net` worker). After every installed-app stop: TUN descriptors 0, no VPN in `dumpsys connectivity`.
+- **APK scanner:** `:apkscan:testDebugUnitTest :privilege:testDebugUnitTest :apkscan:lintDebug`. Device: scan, reopen from Apps and app detail, repeat for cache hits, APK update invalidates, cancel keeps completed packages. Formal acceptance needs comparison against the current-user inventory (shell saw 535, app discovered 22) and a cold full scan time.
+- **Clash routing:** `go test ./...` (hostile profiles, metadata, Mihomo HTTP CONNECT/SOCKS5, no Direct fallback) and the profile fuzzer. Android-native Rust tests cover the real C ABI/socketpair, TCP/UDP (incl. IPv4-mapped source normalisation), half-close, pending-dial cancellation, block precedence, no Direct after proxy errors, frozen route metadata across late-host fallback. After D-049 add: `core` has no `libwayd_route.so` or Clash classes (inspect the APK), and `core` installed over `clash` starts with routing off.
+- **Routing + decryption:** `android_mihomo_routing_and_https_decryption_capture_both_messages` (relay → Mihomo → TLS origin, both MESSAGE events, `TLS_INTERCEPTED`, Proxied). Opt-in `android_live_google_via_mihomo_is_decrypted` (`--ignored`): set `WAYD_LIVE_ROUTING_PROFILE` (private bundle) and `WAYD_LIVE_GOOGLE_DESTINATION` (fresh Google IPv4:443); requests public `/robots.txt` only. Private fixtures via `WAYD_PRIVATE_LIVE_NODE_DIR`, `WAYD_PRIVATE_PROFILE`, `WAYD_PRIVATE_BUNDLE`, `WAYD_PRIVATE_GEOIP`. Never commit or print them; delete credential bundles from the device afterwards. Passed natively on NX733J with the full user profile; installed-app acceptance still open.
+- **Exports:** PCAP checked for magic/version/linktype 101, SYN + RST/ACK for blocked flows, valid IP/TCP checksums.
 
 ## Fixtures
 
 - `fixtures/sessions/*.json` — synthetic sessions for rule tests.
 - `fixtures/dumpsys/<oem>-<android>/{appops,alarm,netstats,package}.txt` — real outputs (anonymised).
-- `fixtures/http/*.http` — cleartext requests containing identifiers in plain, URL-encoded, base64, hashed forms.
+- `fixtures/http/*.http` — cleartext requests with identifiers in plain, URL-encoded, base64, hashed forms.
 - `fixtures/injection/*.txt` — payloads attempting to instruct the model.
-
-## Test apps
-
-- `testapps/leaky` — sends Android ID in cleartext, app list over HTTPS, location after Wi-Fi scan, periodic beacon. Used for end-to-end acceptance.
-
-## Dashboard / recording boundary (2026-11-10)
-
-Latest JVM capture suite: 35 tests passed (FlowTracker 19, parsers 13, block targets 3). New recording tests prove owner/visible-host policy callbacks continue with no flow/DNS persistence while off, connections spanning recording changes are excluded, new connections resume recording, repeated same-mode setting does not invalidate a window, and decrypted messages from an invalidated window are not stored. These are JVM boundary tests, not an end-to-end Android enforcement acceptance claim.
-
-Both standard/research debug APKs and app lint pass, plus capture lint. Evidence: ignored `build/dashboard-final-validation.log`; final accessibility labels/Home icon: `build/dashboard-ui-final.log`. On NX733J isolated `.m1test`, installed and checked dashboard cards, recording off→on→off, disabled/off Clash and navigation to saved rules. Final polish reinstalled successfully; final label recheck encountered secure keyguard. No VPN was started during dashboard smoke tests.
-
-Next controlled device test: start WAYD with recording off, confirm probe forwarding and exact-host blocking while retained flow/DNS/message counts do not grow; toggle recording on and verify only newly opened/completed flows save; toggle off/on while a flow is open and ensure it stays excluded. A session rule must survive recording toggles and disappear on VPN stop; durable user rules must remain. Check VPN/TUN/worker cleanup after Stop. Existing session start/end metadata is expected even with traffic recording off. Use the disposable probe, preserve retained history and user rules, and recheck which app owns the VPN before switching. User performs the overnight soak manually; no new soak or battery result is claimed.
+- `testapps/leaky` — sends Android ID in cleartext, app list over HTTPS, location after Wi-Fi scan, periodic beacon.
 
 ## Performance
 
 - Macrobenchmark: report open time, app list scroll.
-- Throughput: iperf3 over the tunnel; record CPU and battery for 1 h idle + 1 h streaming.
-
-## 2026-11-10 Nubia M7 live fixture result
-
-On NX733J, the isolated research debug app blocked the disposable probe's exact HTTP Host using a session rule created from app history. The local server count stayed at 23 during blocked attempts, then rose to 39 after Undo. Reapplying the rule and stopping capture removed the session rule and preserved BLOCKED history. Android nevertheless retained a connected VPN, one TUN descriptor and native workers after Stop. Shutdown acceptance FAILED; clean-process reproduction is pending an unlocked/open app because Nubia rejected the background launch. Force-stopping the test app released its VPN. Probe traffic and the PC fixture were stopped. This run does not establish durable/whole-app enforcement, profile/reinstall handling, battery cost, or full M7 acceptance.
-
-### VPN lifecycle regression fixed (2026-11-10)
-
-The prior shutdown failure is fixed by D-035. engine::lifecycle_tests::stopping_blocked_tcp_releases_tun_duplicate runs on Linux/Android and uses synthetic Unix datagrams, never upstream networking. Each of 12 cycles asserts 32 actual TCP opens, races Stop with pending or blocked flows, then requires the native descriptor duplicate and all wayd-net workers to disappear. It failed before the fix and passed afterward in both Android feature builds. NX733J native totals: standard 11/11, research 26/26. Both installed research-app service cycles also had TUN descriptors 2 before / 0 after, native/poll threads 0 after, VPN connections 0 after. Broader M7 device cases remain open.
-
-Cross-compile the native test executable with cargo ndk -t arm64-v8a -P 29 test --lib --no-run (also --features mitm), push the generated executable from target/aarch64-linux-android/debug/deps to the device and chmod 700 after every push. Run from a dedicated writable directory under /data/local/tmp: the existing CA hash test writes relative target/mitm-test fixtures. A writable TMPDIR alone does not change that relative working directory. Remove test executables/fixtures afterward. Capture tests/lint and both fresh-native APK builds passed in build/m7-shutdown-build.log. No repeat of the manually owned overnight soak was needed or claimed.
-
-### Initial rule transfer and routing verification (2026-11-10)
-
-Capture JVM: 46 passing tests including strict portable JSON, unconditional import review gating, route-event bounds and outcome separation. Both fresh-native app flavors and lint pass. Go: 8 named tests plus two fuzz seeds; actual Mihomo HTTP CONNECT and SOCKS5 TCP/UDP fixtures, no Direct retry, hostile YAML and metadata validation. Parser fuzz: 71,744 inputs in the bounded 10-second run, no failure.
-
-NX733J native suites: standard 16/16, research 31/31. Load libwayd_route.so via LD_LIBRARY_PATH from the dedicated writable test directory; chmod 700 binaries after each adb push. New regressions cover the real C ABI/socketpair, TCP/UDP replies (including IPv4-mapped source normalization), proxy half-close, pending-dial cancellation, local blocks before proxy dispatch, no Direct after proxy errors and frozen route metadata across late-host fallback. Existing native lifecycle and research interception tests still pass. Go ELF segments are aligned to 16 KiB. This is loopback shell/native evidence, not installed-VPN, UI, DNS-leak, encrypted-storage or power acceptance. Updated isolated research APK installed successfully; phone stayed locked. Installed-app transfer/consent/Keystore/VPN acceptance remains next.
-
-### Combined routing and HTTPS regression
-
-On Android with research features, android_mihomo_routing_and_https_decryption_capture_both_messages covers the actual relay -> Mihomo adapter -> upstream TLS path and confirms both decrypted MESSAGE events, captured TLS prefix, TLS_INTERCEPTED and Proxied (no Direct). The controlled origin has a fixture CA and the app trusts only the ephemeral WAYD CA. Existing pinning/refusal and proxy-error/block tests remain required.
-
-The ignored android_live_google_via_mihomo_is_decrypted test is explicit opt-in: set WAYD_LIVE_ROUTING_PROFILE to a private extension bundle and WAYD_LIVE_GOOGLE_DESTINATION to a freshly resolved public Google IPv4:443. Run the research Android executable with that test filter and --ignored. The fixture must never be committed or printed. Test uses public /robots.txt with no cookies/account and verifies server certificate, observed routing and captured plaintext. A minimal private-node fixture can be generated only by explicitly setting WAYD_PRIVATE_LIVE_NODE_DIR and WAYD_PRIVATE_PROFILE for TestExportPrivateLiveNodeFixtures. The full downloaded profile can be supplied using the existing opt-in private-resource compilation test and WAYD_PRIVATE_BUNDLE. Remove credential-bearing device test fixtures afterward.
-
-2026-11-10 NX733J evidence: controlled combined regression passed; Google passed with both the first imported node and the complete Mixed_country_20261010.yaml bundle (10 nodes, 5 groups, 17 resources, 24 rules). Research native suite: 33 pass, 1 intentionally ignored live-network test; that live test was run separately and passed. Both app flavors build/lint and 47 capture JVM tests pass. Logs: build/https-routing-{combined-test,live-google-01,live-google-full,research-regression,validation}.log. Native proof is distinct from installed VPN/history acceptance.
+- Throughput: iperf3 over the tunnel; CPU and battery for 1 h idle + 1 h streaming. No battery claim has been measured yet.

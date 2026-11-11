@@ -43,7 +43,6 @@ data class RoutingUi(
     val apps: Set<String> = emptySet(),
     val damaged: Boolean = false,
 )
-data class RoutingSnapshot(val profile: ByteArray = byteArrayOf(), val owners: String = "")
 data class RoutingApp(val pkg: String, val label: String, val system: Boolean = false)
 data class RoutingProfile(val id: String, val name: String, val updated: Long, val selected: Boolean)
 
@@ -80,10 +79,13 @@ class RoutingSettings @Inject constructor(
         runCatching { index() }.onSuccess { publish(it) }.onFailure { _state.value = RoutingUi(damaged = true) }
     } }
 
-    /** Installed single-package apps of this user (shared UIDs cannot be attributed to one app). */
+    /**
+     * Installed single-package apps of this user (shared UIDs cannot be attributed to one app). WAYD itself is listed too: its own
+     * traffic never enters the tunnel, so selecting it only routes its external AI calls (D-050).
+     */
     suspend fun apps(): List<RoutingApp> = withContext(Dispatchers.IO) {
         pm.getInstalledApplications(0).asSequence()
-            .filter { it.packageName != context.packageName && pm.getPackagesForUid(it.uid)?.size == 1 }
+            .filter { pm.getPackagesForUid(it.uid)?.size == 1 }
             .map { RoutingApp(it.packageName, it.loadLabel(pm).toString(), it.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0) }
             .sortedBy { it.label.lowercase() }.toList()
     }
@@ -156,7 +158,7 @@ class RoutingSettings @Inject constructor(
      */
     suspend fun setAccess(mode: RoutingMode, packages: Set<String>) = withContext(Dispatchers.IO) { mutex.withLock {
         requireStopped()
-        require(packages.size <= 1000 && packages.all { it != context.packageName && BlockTargets.packageName(it) })
+        require(packages.size <= 1000 && packages.all { BlockTargets.packageName(it) })
         val value = index() ?: empty()
         val now = System.currentTimeMillis()
         revokeAll(now)
@@ -245,7 +247,7 @@ class RoutingSettings @Inject constructor(
     }
 
     private fun identity(pkg: String): String? = runCatching {
-        require(pkg != context.packageName && BlockTargets.packageName(pkg))
+        require(BlockTargets.packageName(pkg))
         val info = pm.getPackageInfo(pkg, PackageManager.GET_SIGNING_CERTIFICATES)
         val uid = requireNotNull(info.applicationInfo).uid
         require(uid / 100_000 == userId && pm.getPackagesForUid(uid)?.size == 1)

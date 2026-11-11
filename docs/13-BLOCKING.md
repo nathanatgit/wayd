@@ -85,7 +85,7 @@ Proposed initial budgets: 1,000 enabled rules; regex source <=2 KiB plus compile
 
 First rewrite version: complete identity-encoded HTTP/1.1 only, correctly framed fixed/chunked input, no conflicting lengths. Recompute generated Content-Length, remove stale validators/digests/range metadata and use no-store. Respect HEAD/1xx/204/304: 204 has no body or Content-Length. Reject CR/LF header injection and framing-header edits. Compression, range responses and signed bodies need later explicit support. If selected enforcement exceeds limits, times out or encounters unsupported encoding/malformed framing, terminate visibly; never quietly deliver the original and claim success. Preview works on a copy. Keep original evidence and a bounded action summary, not a second unlimited payload store.
 
-Per-app consent revocation disables its content controls and releases interception resources. Standard flavor implements app/host/IP only and never references research MITM implementation. No script VM, AI call or new privileged shell API is required.
+Per-app consent revocation disables its content controls and releases interception resources. Without decryption consent only app/host/IP rules apply; content rules never start interception implicitly. No script VM, AI call or new privileged shell API is required.
 
 ## Rule backup and restore
 
@@ -122,12 +122,12 @@ Populate signing identity from verified installed-package metadata before activa
 
 Mihomo supports Android package matching and typed host/IP rules, but routing YAML cannot express WAYD consent, temporary lifetimes or response edits. Keep lossless backups in WAYD JSON. A future compatibility exporter lists exact translations and omissions. Never flatten app AND host into two broad OR rules or export global REJECT for a per-app block. Unsupported features stay visible, never silently disappear.
 
-1. Canonical app/host/IP policy, native matcher/shared fixtures, DAO/migration, per-app consent, atomic activation, session expiry, active-flow termination and disposition evidence. Both flavors. No working-looking buttons before enforcement exists.
+1. Canonical app/host/IP policy, native matcher/shared fixtures, DAO/migration, per-app consent, atomic activation, session expiry, active-flow termination and disposition evidence. No working-looking buttons before enforcement exists.
 2. History controls and rules manager, bilingual strings, Undo, preview against retained history and explicit JSON backup/import. Missing evidence stays unknown.
 3. Research request-time local replies, then bounded response replacement and revocation/error tests. Passive capture remains unchanged for unaffected flows.
 4. Routing adapter/Clash integration: pin/review engine licensing/API, Android package metadata, stream handoff, DNS and IPv6 before release. **GeoIP follows Clash integration**, per Nat.
 
-Acceptance: blocked pre-dial app/IP and visible-host TCP/UDP fixtures never reach a local test server. Cover fragmented SNI, unknown names/owners, shared UID/IP, IPv6, active flows, restart/profile reload, session vs durable lifetime, snapshot rejection and import conflicts/identities/no grants. HTTP tests cover framing/HEAD/204, unsupported encoding, budgets, pipelining, evidence retention and fail-closed content rules. Both flavors build without standard-to-MITM dependencies. Compare idle/typical capture/block/local-reply/rewrite CPU, memory, wakeups and battery on device before energy claims; do not disrupt Nat's main VPN during unattended tests.
+Acceptance: blocked pre-dial app/IP and visible-host TCP/UDP fixtures never reach a local test server. Cover fragmented SNI, unknown names/owners, shared UID/IP, IPv6, active flows, restart/profile reload, session vs durable lifetime, snapshot rejection and import conflicts/identities/no grants. HTTP tests cover framing/HEAD/204, unsupported encoding, budgets, pipelining, evidence retention and fail-closed content rules.  Compare idle/typical capture/block/local-reply/rewrite CPU, memory, wakeups and battery on device before energy claims; do not disrupt Nat's main VPN during unattended tests.
 
 ## Technical sources
 

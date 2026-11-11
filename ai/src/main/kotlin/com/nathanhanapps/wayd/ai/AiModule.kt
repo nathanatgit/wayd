@@ -36,7 +36,12 @@ object AiModule {
 
     @Provides
     @Singleton
-    fun externalClient(): OpenAiCompatibleClient = OpenAiCompatibleClient()
+    fun externalClient(connector: ExternalConnector): OpenAiCompatibleClient {
+        val verifier = javax.net.ssl.HttpsURLConnection.getDefaultHostnameVerifier()
+        return OpenAiCompatibleClient(connector = connector, secure = { s, host, port ->
+            EngineTls(host, port, s.input, s.output, verifier = verifier).run { handshake(); input to output }
+        })
+    }
 
     @Provides
     @Singleton

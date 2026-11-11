@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="dz_title">Danger zone · research build</string>
+    <string name="dz_title">Danger zone</string>
     <string name="dz_expand">Show</string>
     <string name="dz_collapse">Hide</string>
     <string name="dz_intro">Decrypting HTTPS lets WAYD read what the apps you choose send and receive. Off by default. Everything stays on this phone.</string>

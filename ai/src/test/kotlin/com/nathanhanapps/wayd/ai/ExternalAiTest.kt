@@ -153,13 +153,19 @@ class OpenAiCompatibleClientTest {
         assertEquals("/v1/models", seen.single().first)
     }
 
-    /** Opt-in: `WAYD_OLLAMA_URL=http://localhost:11434/v1 WAYD_OLLAMA_MODEL=gemma4:e2b ./gradlew :ai:testDebugUnitTest`. */
+    /** Opt-in: `WAYD_OLLAMA_URL=http://localhost:11434/v1 WAYD_OLLAMA_MODEL=gemma4:e2b ./gradlew :ai:testDebugUnitTest`; add `WAYD_EXTERNAL_KEY` for a hosted server. */
     @Test fun liveOllamaAnswersTheRealAnalysisPrompt() = runBlocking {
         val url = System.getenv("WAYD_OLLAMA_URL")
         val model = System.getenv("WAYD_OLLAMA_MODEL")
         assumeTrue("set WAYD_OLLAMA_URL and WAYD_OLLAMA_MODEL to run", !url.isNullOrBlank() && !model.isNullOrBlank())
-        val ep = ExternalEndpoint(url!!, model!!, null)
-        val client = OpenAiCompatibleClient()
+        val ep = ExternalEndpoint(url!!, model!!, System.getenv("WAYD_EXTERNAL_KEY")?.takeIf { it.isNotBlank() })
+        // WAYD_EXTERNAL_ROUTED=1 sends the calls over a socket stream with EngineTls, the path a Clash route uses (D-050).
+        val client = if (System.getenv("WAYD_EXTERNAL_ROUTED") == "1") {
+            OpenAiCompatibleClient(open = { error("must use the stream path") }, connector = { host, port ->
+                val socket = java.net.Socket(host, port)
+                ExternalStream(socket.getInputStream(), socket.getOutputStream(), "Direct") { socket.close() }
+            })
+        } else OpenAiCompatibleClient()
         assertTrue(model in client.models(ep))
         val engine = object : AiEngine {
             override suspend fun isReady() = true
