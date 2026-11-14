@@ -110,7 +110,10 @@ async fn tcp_inner<S: AsyncRead + AsyncWrite + Unpin + Send>(id: u64, mut client
         return;
     }
     let mut pre = Vec::new();
-    if shared.blocking.needs_host(id) || shared.routing_needs_host(id) {
+    // A global block list makes every client-speaks-first TCP connection worth the bounded hostname wait; protocols where the
+    // server speaks first never show a hostname, so waiting would only delay them.
+    let list_gate = shared.blocking.list_active() && !matches!(dst.port(), 21 | 22 | 25 | 110 | 143 | 587 | 3306 | 5432);
+    if shared.blocking.needs_host(id) || list_gate || shared.routing_needs_host(id) {
         // Reuse Kotlin's bounded, stream-aware SNI/HTTP parser. DATA arrives before any upstream dial.
         let _ = timeout(Duration::from_millis(600), async {
             let mut buf = [0u8; 4096];

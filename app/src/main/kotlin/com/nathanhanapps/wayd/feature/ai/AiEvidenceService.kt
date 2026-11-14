@@ -93,7 +93,7 @@ class AiEvidenceService @Inject constructor(
             "net=${f.netType} company=${f.company ?: "?"} category=${f.category ?: "?"} at=${time(f.startAt)}"
 
     private fun permText(p: PermEvent) =
-        "permission-use op=${p.op} count=${p.count} ${if (p.background) "background" else "foreground"} source=${p.source} at=${time(p.ts)}"
+        "permission-use op=${p.op} count=${p.count} context=${p.source} bucket=${time(p.ts)}..${time(p.bucketEnd)}; background=${p.background}; false does not establish foreground; current grant unknown"
 
     private fun messageText(m: Message): String {
         val body = m.body?.let { utf8OrNull(it) }?.take(BODY_CHARS)

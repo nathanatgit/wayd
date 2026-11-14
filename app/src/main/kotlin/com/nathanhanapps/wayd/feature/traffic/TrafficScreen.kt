@@ -51,10 +51,16 @@ import androidx.lifecycle.viewModelScope
 import com.nathanhanapps.wayd.R
 import com.nathanhanapps.wayd.ai.AiHints
 import com.nathanhanapps.wayd.ai.Purpose
-import com.nathanhanapps.wayd.analysis.ConnectionLabel
-import com.nathanhanapps.wayd.analysis.ConnectionLabels
+import com.nathanhanapps.wayd.ai.LabelAnswerIndex
+import com.nathanhanapps.wayd.ai.LabelContract
+import com.nathanhanapps.wayd.ai.LabelRequest
+import com.nathanhanapps.wayd.analysis.LabelRules
+import com.nathanhanapps.wayd.core.model.ConnectionRole
 import com.nathanhanapps.wayd.core.db.AiAnalysisDao
-import com.nathanhanapps.wayd.core.db.FindingDao
+import com.nathanhanapps.wayd.core.db.ApkScanDao
+import com.nathanhanapps.wayd.feature.analysis.knownApk
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.nathanhanapps.wayd.core.db.Flow
 import com.nathanhanapps.wayd.core.db.FlowDao
 import com.nathanhanapps.wayd.feature.analysis.AppIcon
@@ -101,13 +107,14 @@ class ConnectionsViewModel @Inject constructor(
     private val flows: FlowDao,
     val labels: AppLabels,
     private val analysis: AnalysisService,
-    private val findings: FindingDao,
     private val aiAnalyses: AiAnalysisDao,
+    private val apks: ApkScanDao,
+    private val evidenceService: com.nathanhanapps.wayd.feature.ai.AiEvidenceService,
 ) : ViewModel() {
     val items = MutableStateFlow<List<Flow>>(emptyList())
 
-    /** Rule label per connection (D-051); every loaded connection has one. */
-    val marks = MutableStateFlow<Map<Long, ConnectionLabel>>(emptyMap())
+    /** Saved per-record AI role, always shown with its AI prefix. No severity labels on connection rows. */
+    val labelRoles = MutableStateFlow<Map<Long, ConnectionRole>>(emptyMap())
 
     /** What stored AI analyses guessed a connection is for; a hint next to the label, never the label itself. */
     val hints = MutableStateFlow<Map<Long, Purpose>>(emptyMap())
@@ -121,7 +128,8 @@ class ConnectionsViewModel @Inject constructor(
     fun refreshIfChanged() {
         viewModelScope.launch {
             val id = flows.maxId()
-            if (id != seenMaxId) { seenMaxId = id; reload() }
+            // Nothing new: only re-read saved AI roles (cheap); rule analysis runs when records change.
+            if (id != seenMaxId) { seenMaxId = id; reload() } else relabel(analyse = false)
         }
     }
 
@@ -139,20 +147,34 @@ class ConnectionsViewModel @Inject constructor(
     }
 
     /**
-     * Runs the rules for every day the loaded connections span (cached per day, the same findings Insights shows), then labels
-     * each connection from those findings and its tracker category, and reads the AI hints from stored analyses.
+     * Keeps rule findings current for detail views (only when records changed) and reads evidence-bound AI roles. Roles are saved
+     * per host, so every record of a labelled host shows it. Roles never replace findings.
      */
-    private fun relabel() {
+    private fun relabel(analyse: Boolean = true) {
         labelJob?.cancel()
         labelJob = viewModelScope.launch {
             val list = items.value
-            if (list.isEmpty()) { marks.value = emptyMap(); hints.value = emptyMap(); return@launch }
-            val zone = ZoneId.systemDefault()
-            val days = list.map { Instant.ofEpochMilli(it.startAt).atZone(zone).toLocalDate() }.toSortedSet()
-            for (day in days) runCatching { analysis.analyse(day.toString()) }
-            val start = Windows.resolve(days.first().toString()).first
-            val end = Windows.resolve(days.last().toString()).second
-            marks.value = ConnectionLabels.of(list, findings.between(start, end))
+            if (list.isEmpty()) { labelRoles.value = emptyMap(); hints.value = emptyMap(); return@launch }
+            if (analyse) {
+                val zone = ZoneId.systemDefault()
+                val days = list.map { Instant.ofEpochMilli(it.startAt).atZone(zone).toLocalDate() }.toSortedSet()
+                for (day in days) runCatching { analysis.analyse(day.toString()) }
+            }
+            val locale = evidenceService.uiLocale()
+            labelRoles.value = withContext(Dispatchers.Default) {
+                val rows = aiAnalyses.labels(LabelContract.ROW_PREFIX, LabelContract.VERSION, 500)
+                if (rows.isEmpty()) return@withContext emptyMap()
+                val labelled = rows.map { it.inputRefsJson.substringBefore('|', "") + "|" + it.inputRefsJson.substringAfter('|').substringBefore('|') + "|" }.toSet()
+                list.groupBy { it.pkg }.filterKeys { LabelRequest.prefix(it) in labelled }.flatMap { (pkg, records) ->
+                    // Same APK revalidation as detail views: a rescan that removed a linked fact hides the answer here too.
+                    val index = LabelAnswerIndex(rows, locale, knownApk(apks.facts(pkg)))
+                    val hosts = LabelRules.hostSummaries(records)
+                    records.mapNotNull { f ->
+                        val subject = LabelRules.subject(f)
+                        index.get(pkg, subject, hosts[subject]?.domainBlockAvailable == true)?.role?.takeUnless { it == ConnectionRole.UNKNOWN }?.let { f.id to it }
+                    }
+                }.toMap()
+            }
             hints.value = AiHints.flowPurposes(aiAnalyses.recent(200))
         }
     }
@@ -178,7 +200,7 @@ class ConnectionsViewModel @Inject constructor(
 private fun ConnectionsList(onOpenConnection: (Long) -> Unit, vm: ConnectionsViewModel = hiltViewModel()) {
     val items by vm.items.collectAsStateWithLifecycle()
     val end by vm.end.collectAsStateWithLifecycle()
-    val marks by vm.marks.collectAsStateWithLifecycle()
+    val labelRoles by vm.labelRoles.collectAsStateWithLifecycle()
     val hints by vm.hints.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var query by rememberSaveable { mutableStateOf("") }
@@ -220,14 +242,14 @@ private fun ConnectionsList(onOpenConnection: (Long) -> Unit, vm: ConnectionsVie
                 lastDay = day
                 item(key = "d$day") { Text(day, Modifier.padding(top = 12.dp, bottom = 4.dp), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary) }
             }
-            item(key = f.id) { ConnectionRow(f, vm.labels, timeFormat.format(Date(f.startAt)), marks[f.id], hints[f.id]) { onOpenConnection(f.id) } }
+            item(key = f.id) { ConnectionRow(f, vm.labels, timeFormat.format(Date(f.startAt)), labelRoles[f.id], hints[f.id]) { onOpenConnection(f.id) } }
             if (index == shown.lastIndex && !end) item { TextButton(onClick = vm::more, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.connections_more)) } }
         }
     }
 }
 
 @Composable
-private fun ConnectionRow(f: Flow, labels: AppLabels, time: String, mark: ConnectionLabel?, hint: Purpose?, onClick: () -> Unit) {
+private fun ConnectionRow(f: Flow, labels: AppLabels, time: String, aiRole: ConnectionRole?, hint: Purpose?, onClick: () -> Unit) {
     val context = LocalContext.current
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp),
@@ -238,8 +260,14 @@ private fun ConnectionRow(f: Flow, labels: AppLabels, time: String, mark: Connec
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(f.host ?: f.dstIp.let { if (':' in it) "[$it]" else it }, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (mark != null) Badge(connectionLabelText(mark), connectionLabelColor(mark))
-                if (hint != null) AiHintBadge(hint)
+                val role = androidx.compose.runtime.remember(f.host, f.category) { LabelRules.role(f.host, f.category) }
+                // Same convention as the detail markers: the local role stays primary; the AI either agrees or adds its own role.
+                Badge(com.nathanhanapps.wayd.feature.analysis.roleText(role), MaterialTheme.colorScheme.secondary)
+                if (aiRole != null) Badge(
+                    if (aiRole == role) stringResource(R.string.labels_ai_agrees) else stringResource(R.string.labels_ai, com.nathanhanapps.wayd.feature.analysis.roleText(aiRole)),
+                    MaterialTheme.colorScheme.outline,
+                )
+                else if (hint != null) AiHintBadge(hint)
             }
             Text(
                 listOfNotNull(labels.label(f.pkg), "${f.proto.name} ${f.dstPort}", f.country, f.policyOutcome?.takeIf { it == "BLOCKED" }?.let { blocked }).joinToString(" · "),
@@ -251,27 +279,6 @@ private fun ConnectionRow(f: Flow, labels: AppLabels, time: String, mark: Connec
             Text("↑${fmtBytes(context, f.bytesUp)} ↓${fmtBytes(context, f.bytesDown)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
-}
-
-@Composable
-fun connectionLabelText(l: ConnectionLabel): String = stringResource(
-    when (l) {
-        ConnectionLabel.DANGER -> R.string.conn_label_danger
-        ConnectionLabel.WARN -> R.string.conn_label_warn
-        ConnectionLabel.SENSITIVE -> R.string.conn_label_sensitive
-        ConnectionLabel.AD -> R.string.conn_label_ad
-        ConnectionLabel.NORMAL -> R.string.conn_label_normal
-    },
-)
-
-/** Colour is never the only signal: the badge always carries its text. */
-@Composable
-fun connectionLabelColor(l: ConnectionLabel) = when (l) {
-    ConnectionLabel.DANGER -> MaterialTheme.colorScheme.error
-    ConnectionLabel.WARN -> MaterialTheme.colorScheme.tertiary
-    ConnectionLabel.SENSITIVE -> MaterialTheme.colorScheme.primary
-    ConnectionLabel.AD -> MaterialTheme.colorScheme.secondary
-    ConnectionLabel.NORMAL -> MaterialTheme.colorScheme.outline
 }
 
 /** The AI's guess, drawn outlined and neutral so it never reads as a verdict (AGENTS.md rule 2). */

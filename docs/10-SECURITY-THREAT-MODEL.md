@@ -59,6 +59,14 @@ No location, contacts, SMS or storage permissions. WAYD reads device identifiers
 
 The captured data is masked (identifiers replaced by type tokens), wrapped in inert `<data>` blocks and size-bounded before it reaches the model; model output is schema- and evidence-validated and can never change rules, blocks, consents or privileges.
 
+## Permission added with the Insights chat (2026-11-12, D-062)
+
+| Permission | Why | Risk / mitigation |
+|---|---|---|
+| `RECORD_AUDIO` | Push-to-talk voice questions in the Insights AI chat. | Requested only at the first microphone tap, never at start-up; denial leaves text and file attachments working. Recording runs only while the user holds it (tap to start/stop, 30 s cap), never in the background, and the 16 kHz clip stays in memory for that chat, never written to disk or the database. Clips (like photos and video frames) go only to the selected provider; an external send always shows the preview listing attachments, even when "Don't ask again" was set for text. Attachments are untrusted model input and are not WAYD evidence. |
+
+Photos, video and audio files come from the system photo picker / document picker, so no storage or media permission is added. Video is reduced to a few still frames; its sound track is not sent.
+
 ## Permissions added in M1 (2026-11-09)
 
 | Permission | Why | Risk / mitigation |

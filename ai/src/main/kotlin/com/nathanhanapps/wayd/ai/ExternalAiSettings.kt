@@ -22,6 +22,9 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** A saved external server + model. The key is stored separately as Keystore-encrypted ciphertext. */
+data class ExternalProfile(val id: String, val name: String, val baseUrl: String, val model: String, val hasKey: Boolean)
+
 /** Which engine answers "Analyse with AI". The external one only ever runs when the user chose it and acknowledged the risk. */
 enum class AiProvider { ON_DEVICE, EXTERNAL }
 
@@ -66,7 +69,8 @@ class ExternalAiSettings @Inject constructor(
         val url = ExternalAiUrl.normalise(baseUrl) ?: return@withContext false
         val oldOrigin = ExternalAiUrl.origin(prefs.getString(KEY_URL, "").orEmpty())
         if (url != prefs.getString(KEY_URL, "") || model.trim().take(200) != prefs.getString(KEY_MODEL, "")) warnings.reset()
-        if (oldOrigin.isNotEmpty() && oldOrigin != ExternalAiUrl.origin(url)) revoke(oldOrigin)
+        // A server kept as a saved profile keeps its acknowledgement, so switching back to it does not ask again.
+        if (oldOrigin.isNotEmpty() && oldOrigin != ExternalAiUrl.origin(url) && readProfiles().none { ExternalAiUrl.origin(it.baseUrl) == oldOrigin }) revoke(oldOrigin)
         prefs.edit().putString(KEY_URL, url).putString(KEY_MODEL, model.trim().take(200)).apply()
         when {
             apiKey == null -> Unit
@@ -104,7 +108,7 @@ class ExternalAiSettings @Inject constructor(
         val origin = ExternalAiUrl.origin(prefs.getString(KEY_URL, "").orEmpty())
         if (origin.isNotEmpty()) revoke(origin)
         prefs.edit().remove(KEY_URL).remove(KEY_MODEL).remove(KEY_PROVIDER).apply()
-        secrets.edit().clear().apply()
+        secrets.edit().remove(KEY_SECRET).apply() // saved profiles keep their own keys
         _state.value = ExternalAiUi()
     }
 
@@ -141,6 +145,65 @@ class ExternalAiSettings @Inject constructor(
         val url = ExternalAiUrl.normalise(baseUrl) ?: return null
         val key = ExternalAiUrl.keyFor(url, prefs.getString(KEY_URL, "").orEmpty(), typedKey, apiKey())
         return ExternalEndpoint(url, model.trim(), key)
+    }
+
+
+    // ---- Saved profiles (D-063): several servers/models the user can switch between. ----
+
+    private val _profiles = MutableStateFlow(readProfiles())
+    val profiles: StateFlow<List<ExternalProfile>> = _profiles.asStateFlow()
+
+    private fun readProfiles(): List<ExternalProfile> = runCatching {
+        val a = org.json.JSONArray(prefs.getString(KEY_PROFILES, "[]"))
+        (0 until a.length()).map { a.getJSONObject(it) }.map {
+            ExternalProfile(it.getString("id"), it.getString("name"), it.getString("url"), it.getString("model"), secrets.contains(KEY_SECRET + "_" + it.getString("id")))
+        }
+    }.getOrDefault(emptyList())
+
+    private fun writeProfiles(list: List<ExternalProfile>) {
+        val a = org.json.JSONArray()
+        list.forEach { a.put(org.json.JSONObject().put("id", it.id).put("name", it.name).put("url", it.baseUrl).put("model", it.model)) }
+        prefs.edit().putString(KEY_PROFILES, a.toString()).apply()
+        _profiles.value = readProfiles()
+    }
+
+    /** Saves the current server, model and stored key under [name] (replacing a profile of the same name). */
+    suspend fun saveProfile(name: String): Boolean = withContext(Dispatchers.IO) {
+        val url = ExternalAiUrl.normalise(prefs.getString(KEY_URL, "").orEmpty()) ?: return@withContext false
+        val model = prefs.getString(KEY_MODEL, "").orEmpty().ifBlank { return@withContext false }
+        val label = name.trim().take(40).ifBlank { ExternalAiUrl.host(url) + " · " + model.take(24) }
+        val existing = readProfiles()
+        if (existing.none { it.name == label } && existing.size >= MAX_PROFILES) return@withContext false
+        val id = existing.firstOrNull { it.name == label }?.id ?: java.util.UUID.randomUUID().toString().take(8)
+        secrets.getString(KEY_SECRET, null).let { cipher ->
+            if (cipher == null) secrets.edit().remove(KEY_SECRET + "_" + id).apply() else secrets.edit().putString(KEY_SECRET + "_" + id, cipher).apply()
+        }
+        writeProfiles(existing.filterNot { it.id == id } + ExternalProfile(id, label, url, model, false))
+        true
+    }
+
+    /**
+     * Makes a saved profile the current server. Each origin keeps its own acknowledgement record, so a server the user already
+     * acknowledged is usable at once and a new one must be acknowledged first (the provider falls back to on-device until then).
+     * The per-send preview choice is reset, as for any address/model change.
+     */
+    suspend fun useProfile(id: String): Boolean = withContext(Dispatchers.IO) {
+        val p = readProfiles().firstOrNull { it.id == id } ?: return@withContext false
+        val url = ExternalAiUrl.normalise(p.baseUrl) ?: return@withContext false
+        warnings.reset()
+        prefs.edit().putString(KEY_URL, url).putString(KEY_MODEL, p.model).apply()
+        secrets.getString(KEY_SECRET + "_" + id, null).let { cipher ->
+            if (cipher == null) secrets.edit().remove(KEY_SECRET).apply() else secrets.edit().putString(KEY_SECRET, cipher).apply()
+        }
+        val ack = isAcknowledged(url)
+        if (!ack) prefs.edit().putString(KEY_PROVIDER, AiProvider.ON_DEVICE.name).apply()
+        _state.value = read(ack)
+        true
+    }
+
+    suspend fun deleteProfile(id: String) = withContext(Dispatchers.IO) {
+        secrets.edit().remove(KEY_SECRET + "_" + id).apply()
+        writeProfiles(readProfiles().filterNot { it.id == id })
     }
 
     private fun apiKey(): String? = secrets.getString(KEY_SECRET, null)?.let { runCatching { decrypt(it) }.getOrNull() }
@@ -190,6 +253,8 @@ class ExternalAiSettings @Inject constructor(
         const val KEY_MODEL = "ext_model"
         const val KEY_PROVIDER = "provider"
         const val KEY_SECRET = "ext_key"
+        const val KEY_PROFILES = "ext_profiles"
+        const val MAX_PROFILES = 12
         const val ALIAS = "wayd-ai-external-v1"
         const val GCM = "AES/GCM/NoPadding"
         /** Version of the warning text the user acknowledged. Bump when the wording changes materially. */

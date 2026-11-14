@@ -226,7 +226,8 @@ pub fn native_poll<'l>(
 // ---- MITM controls (research flavor; stubs in the standard build) ----
 
 #[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
-pub fn native_policy_version<'l>(_env: EnvUnowned<'l>, _this: JObject<'l>) -> jint { 2 }
+/// 3 adds global block lists (`native_set_block_list`); Kotlin accepts 2 (no lists) or 3.
+pub fn native_policy_version<'l>(_env: EnvUnowned<'l>, _this: JObject<'l>) -> jint { 3 }
 
 #[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
 pub fn native_has_mitm<'l>(_env: EnvUnowned<'l>, _this: JObject<'l>) -> jni::sys::jboolean {
@@ -408,5 +409,15 @@ pub fn native_routing_command<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, p
         let bytes=env.convert_byte_array(&profile)?;
         let request=env.convert_byte_array(&request)?;
         env.byte_array_from_slice(&crate::routing::command(&bytes,&request))
+    }).resolve::<jni::errors::LogErrorAndDefault>()
+}
+
+#[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
+pub fn native_set_block_list<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, handle: jlong, path: jni::objects::JString<'l>) -> jlong {
+    if handle == 0 { return -1; }
+    // SAFETY: BlockingRules serializes all bridge calls with engine destruction.
+    let engine = unsafe { &*(handle as *const Engine) };
+    env.with_env(|env| -> jni::errors::Result<jlong> {
+        Ok(engine.shared.blocking.install_list(&path.try_to_string(env)?))
     }).resolve::<jni::errors::LogErrorAndDefault>()
 }

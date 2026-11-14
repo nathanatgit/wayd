@@ -2,6 +2,7 @@ package com.nathanhanapps.wayd.feature.ai
 
 import android.text.format.Formatter
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -152,6 +153,9 @@ fun AiSettingsScreen(onBack: () -> Unit, onOpenExternal: () -> Unit, vm: AiSetti
             }
         }
 
+        val localDepth by vm.depths.local.collectAsStateWithLifecycle()
+        AiDepthPanel(localDepth, external = false) { vm.depths.set(external = false, depth = it) }
+
         InsetGroup {
             NavRow(
                 Icons.AutoMirrored.Filled.Send, stringResource(R.string.xai_title),
@@ -287,6 +291,37 @@ fun ExternalAiScreen(onBack: () -> Unit, vm: ExternalAiViewModel = hiltViewModel
             Text(stringResource(R.string.xai_warning), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
         }
 
+        // Saved profiles: tap to switch server + model; each server keeps its own acknowledgement.
+        val profiles by vm.profiles.collectAsStateWithLifecycle()
+        var naming by remember { mutableStateOf(false) }
+        // A switch replaces the stored server, so the form follows it.
+        androidx.compose.runtime.LaunchedEffect(ui.baseUrl, ui.model) { url = ui.baseUrl; model = ui.model; key = "" }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(stringResource(R.string.xai_profiles), style = MaterialTheme.typography.labelLarge)
+            if (profiles.isEmpty()) Text(stringResource(R.string.xai_profiles_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(profiles, key = { it.id }) { p ->
+                    androidx.compose.material3.InputChip(
+                        selected = p.baseUrl == ui.baseUrl && p.model == ui.model, onClick = { vm.useProfile(p.id) }, label = { Text(p.name, maxLines = 1) },
+                        trailingIcon = {
+                            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.xai_profile_delete), Modifier.size(18.dp).clickable { vm.deleteProfile(p.id) })
+                        },
+                    )
+                }
+            }
+            TextButton(onClick = { naming = true }, enabled = ui.configured && !dirty) { Text(stringResource(R.string.xai_profile_save)) }
+        }
+        if (naming) {
+            var name by remember { mutableStateOf("") }
+            AlertDialog(
+                onDismissRequest = { naming = false },
+                title = { Text(stringResource(R.string.xai_profile_save)) },
+                text = { OutlinedTextField(name, { name = it.take(40) }, label = { Text(stringResource(R.string.xai_profile_name)) }, placeholder = { Text(ui.host + " · " + ui.model.take(24)) }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
+                confirmButton = { TextButton(onClick = { vm.saveProfile(name) { naming = false } }) { Text(stringResource(R.string.cx_save)) } },
+                dismissButton = { TextButton(onClick = { naming = false }) { Text(stringResource(R.string.ai_cancel)) } },
+            )
+        }
+
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(
                 url, { url = it; failed = false }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.xai_url)) },
@@ -322,10 +357,53 @@ fun ExternalAiScreen(onBack: () -> Unit, vm: ExternalAiViewModel = hiltViewModel
             SwitchRow(Icons.Filled.Warning, stringResource(R.string.xai_ack), ui.acknowledged, enabled = ui.configured && !dirty) { vm.acknowledge(it) }
         }
 
+        // Same panel as on-device, separate values: an external server is often a larger model that benefits from more context.
+        val externalDepth by vm.depths.external.collectAsStateWithLifecycle()
+        AiDepthPanel(externalDepth, external = true) { vm.depths.set(external = true, depth = it) }
+
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(onClick = { vm.save(url, model, key) { ok -> failed = !ok; if (ok) key = "" } }, enabled = validUrl && model.isNotBlank() && dirty) { Text(stringResource(R.string.cx_save)) }
             if (ui.configured) TextButton(onClick = { vm.remove(); url = ""; model = ""; key = "" }) { Text(stringResource(R.string.xai_remove), color = MaterialTheme.colorScheme.error) }
             if (failed) Text(stringResource(R.string.xai_err_url), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
         }
+    }
+}
+
+/** Context size and effort for one provider. Shared by the on-device and external pages so both read the same way. */
+@Composable
+internal fun AiDepthPanel(depth: com.nathanhanapps.wayd.ai.AiDepth, external: Boolean, onChange: (com.nathanhanapps.wayd.ai.AiDepth) -> Unit) {
+    // On-device Gemma is scaled on its own (D-063): two real sizes, the compact prompts written for it, and no effort levels.
+    val sizes = listOfNotNull(
+        com.nathanhanapps.wayd.ai.ContextSize.AUTO to R.string.ai_depth_auto, com.nathanhanapps.wayd.ai.ContextSize.SMALL to R.string.ai_depth_small,
+        com.nathanhanapps.wayd.ai.ContextSize.MEDIUM to R.string.ai_depth_medium,
+        if (external) com.nathanhanapps.wayd.ai.ContextSize.LARGE to R.string.ai_depth_large else null,
+    )
+    val efforts = listOf(
+        com.nathanhanapps.wayd.ai.AiEffort.LOW to R.string.ai_effort_low, com.nathanhanapps.wayd.ai.AiEffort.STANDARD to R.string.ai_effort_standard,
+        com.nathanhanapps.wayd.ai.AiEffort.HIGH to R.string.ai_effort_high,
+    )
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainer).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.ai_depth_title), style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.ai_depth_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.ai_depth_context), style = MaterialTheme.typography.labelLarge)
+        val current = if (!external && depth.context == com.nathanhanapps.wayd.ai.ContextSize.LARGE) com.nathanhanapps.wayd.ai.ContextSize.MEDIUM else depth.context
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            sizes.forEachIndexed { i, (size, label) ->
+                SegmentedButton(selected = current == size, onClick = { onChange(depth.copy(context = size)) }, shape = SegmentedButtonDefaults.itemShape(i, sizes.size)) {
+                    Text(stringResource(label), maxLines = 1)
+                }
+            }
+        }
+        Text(stringResource(if (external) R.string.ai_depth_auto_note_external else R.string.ai_depth_auto_note_local), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (!external) return@Column
+        Text(stringResource(R.string.ai_depth_effort), style = MaterialTheme.typography.labelLarge)
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            efforts.forEachIndexed { i, (effort, label) ->
+                SegmentedButton(selected = depth.effort == effort, onClick = { onChange(depth.copy(effort = effort)) }, shape = SegmentedButtonDefaults.itemShape(i, efforts.size)) {
+                    Text(stringResource(label), maxLines = 1)
+                }
+            }
+        }
+        Text(stringResource(R.string.ai_effort_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

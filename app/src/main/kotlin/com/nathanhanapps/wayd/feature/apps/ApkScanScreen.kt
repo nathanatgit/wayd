@@ -16,8 +16,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -29,18 +31,26 @@ import androidx.work.WorkInfo
 import com.nathanhanapps.wayd.R
 import com.nathanhanapps.wayd.core.db.ApkFact
 import com.nathanhanapps.wayd.core.model.ApkFactKind
+import com.nathanhanapps.wayd.feature.analysis.LabelViewModel
+import com.nathanhanapps.wayd.feature.analysis.LabelContext
+import com.nathanhanapps.wayd.feature.analysis.ItemLabelMarkers
+import com.nathanhanapps.wayd.feature.analysis.ItemLabelDetails
+import com.nathanhanapps.wayd.feature.analysis.Windows
 import java.text.DateFormat
 import java.util.Date
 
 @Composable
-fun ApkScanScreen(onBack: () -> Unit, vm: ApkScanViewModel = hiltViewModel()) {
+fun ApkScanScreen(onBack: () -> Unit, vm: ApkScanViewModel = hiltViewModel(), labelVm: LabelViewModel = hiltViewModel()) {
     val apps by vm.apps.collectAsStateWithLifecycle()
     val limited by vm.limited.collectAsStateWithLifecycle()
     val selected by vm.selected.collectAsStateWithLifecycle()
+    val labelContext by labelVm.context.collectAsStateWithLifecycle()
+    LaunchedEffect(selected) { labelVm.select(selected, Windows.TODAY) }
     val evidence by vm.evidence.collectAsStateWithLifecycle()
     val work by vm.work.collectAsStateWithLifecycle()
     val busy = work?.state?.isFinished == false
     var query by rememberSaveable { mutableStateOf("") }
+    var openKinds by remember(selected) { mutableStateOf(emptySet<ApkFactKind>()) }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(onClick = { if (selected.isNotEmpty()) vm.select("") else onBack() }) { Text(stringResource(R.string.back)) }
@@ -90,37 +100,16 @@ fun ApkScanScreen(onBack: () -> Unit, vm: ApkScanViewModel = hiltViewModel()) {
             else LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 e.app?.lastScanned?.let { time -> item { Text(stringResource(R.string.apk_scanned_at, DateFormat.getDateTimeInstance().format(Date(time)))) } }
                 item { Text(stringResource(R.string.apk_signer_note), style = MaterialTheme.typography.bodySmall) }
-                item { EvidenceSummary(e) }
-                ApkFactKind.entries.forEach { kind ->
-                    val facts = e.facts.filter { it.kind == kind && it.key != "cache" }
-                    if (facts.isNotEmpty()) {
-                        item { Text(stringResource(kindLabel(kind), facts.size), style = MaterialTheme.typography.titleMedium) }
-                        items(facts, key = { it.id }) { fact -> FactRow(fact, fact.kind == ApkFactKind.ENDPOINT && fact.key in e.hosts) }
-                    }
-                }
+                item { Text(stringResource(R.string.labels_current_snapshot), style = MaterialTheme.typography.bodySmall) }
+                apkDashboard(e, labelContext, labelVm, openKinds) { k -> openKinds = if (k in openKinds) openKinds - k else openKinds + k }
             }
         }
     }
 }
 
 @Composable
-private fun EvidenceSummary(e: StaticEvidence) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(R.string.apk_declared to e.facts.count { it.kind != ApkFactKind.COVERAGE }, R.string.apk_used to e.ops.size, R.string.apk_sent to e.hosts.size).forEach { (label, count) ->
-                    Column(Modifier.weight(1f)) { Text(stringResource(label)); Text(count.toString(), style = MaterialTheme.typography.titleLarge) }
-                }
-            }
-            Text(stringResource(R.string.apk_link_note), style = MaterialTheme.typography.bodySmall)
-            Text(stringResource(R.string.apk_observed_ops, e.ops.joinToString(", ").ifEmpty { "—" }), style = MaterialTheme.typography.bodySmall)
-            Text(stringResource(R.string.apk_observed_hosts, e.hosts.joinToString(", ").ifEmpty { "—" }), style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
-
-@Composable
-private fun FactRow(fact: ApkFact, contacted: Boolean) {
+internal fun FactRow(fact: ApkFact, contacted: Boolean, labels: LabelContext?, vm: LabelViewModel) {
+    var expanded by remember(fact.id) { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
         if (fact.kind == ApkFactKind.COVERAGE) {
             val label = when {
@@ -134,10 +123,19 @@ private fun FactRow(fact: ApkFact, contacted: Boolean) {
         fact.value?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         fact.evidence?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
         if (contacted) Text(stringResource(R.string.apk_contacted), color = MaterialTheme.colorScheme.primary)
+        labels?.relatedHosts?.get(fact.id)?.takeIf { it.isNotEmpty() }?.let { hosts ->
+            Text(stringResource(R.string.apk_related_hosts, hosts.size, hosts.take(3).joinToString(", ") { it.summary.host.orEmpty() }), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
+        }
+        if (fact.kind in setOf(ApkFactKind.PERMISSION, ApkFactKind.ACTIVITY, ApkFactKind.SERVICE, ApkFactKind.RECEIVER, ApkFactKind.PROVIDER, ApkFactKind.ENDPOINT, ApkFactKind.SDK)) {
+            ItemLabelMarkers(labels, "a:${fact.id}")
+            TextButton(onClick = { expanded = !expanded }) { Text(stringResource(R.string.labels_details)) }
+            if (expanded) ItemLabelDetails(labels, "a:${fact.id}", vm)
+        }
     }
 }
 
-private fun kindLabel(kind: ApkFactKind): Int = when (kind) {
+internal fun kindLabel(kind: ApkFactKind): Int = when (kind) {
+    ApkFactKind.ACTIVITY -> R.string.apk_activities
     ApkFactKind.PERMISSION -> R.string.apk_permissions
     ApkFactKind.RECEIVER -> R.string.apk_receivers
     ApkFactKind.SERVICE -> R.string.apk_services

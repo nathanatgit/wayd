@@ -13,6 +13,9 @@ class NativeNet {
 
     external fun nativeSetPolicy(handle: Long, policy: String): Boolean
 
+    /** Policy version 3+: loads the compiled global block lists from [path] ("" clears). Returns the entry count, or -1 if rejected. */
+    external fun nativeSetBlockList(handle: Long, path: String): Long
+
     external fun nativeFlowInfo(handle: Long, flowId: Long, value: String, host: Boolean)
 
     /** Stops the stack. Call exactly once, after polling has stopped. */

@@ -2,19 +2,17 @@ package com.nathanhanapps.wayd.feature.apps
 
 import android.content.Context
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -37,7 +35,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -59,7 +56,6 @@ import com.nathanhanapps.wayd.feature.analysis.HourlyChart
 import com.nathanhanapps.wayd.feature.analysis.ActivityHeatmap
 import com.nathanhanapps.wayd.feature.analysis.Loadable
 import com.nathanhanapps.wayd.feature.analysis.Windows
-import com.nathanhanapps.wayd.feature.analysis.categoryColor
 import com.nathanhanapps.wayd.feature.analysis.categoryLabel
 import com.nathanhanapps.wayd.feature.analysis.destinationLabel
 import com.nathanhanapps.wayd.feature.analysis.findingTitle
@@ -69,6 +65,18 @@ import com.nathanhanapps.wayd.feature.analysis.severityColor
 import com.nathanhanapps.wayd.feature.analysis.severityLabel
 import com.nathanhanapps.wayd.feature.export.ExportButton
 import com.nathanhanapps.wayd.feature.export.ExportScope
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import com.nathanhanapps.wayd.feature.analysis.DashboardHero
+import com.nathanhanapps.wayd.feature.analysis.DashboardPanel
+import com.nathanhanapps.wayd.feature.analysis.Dot
+import com.nathanhanapps.wayd.feature.analysis.LegendItem
+import com.nathanhanapps.wayd.feature.analysis.RankedBarRow
+import com.nathanhanapps.wayd.feature.analysis.ShareBar
+import com.nathanhanapps.wayd.feature.analysis.StatGrid
+import com.nathanhanapps.wayd.feature.analysis.StatTile
+import com.nathanhanapps.wayd.feature.analysis.categoryShareColor
 import java.text.DateFormat
 import java.util.Date
 
@@ -105,6 +113,8 @@ fun AppDetailScreen(onBack: () -> Unit, onOpenMessages: (pkg: String, window: St
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+                // AI assistance leads the page so it reads as the guide to the evidence below; rules still decide severity.
+                if (vm.pkg != UNKNOWN_PKG) item(key = "ai") { com.nathanhanapps.wayd.feature.ai.AiSection() }
                 item {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(Windows.TODAY to R.string.window_today, Windows.YESTERDAY to R.string.window_yesterday, Windows.WEEK to R.string.window_week).forEach { (key, label) ->
@@ -120,28 +130,15 @@ fun AppDetailScreen(onBack: () -> Unit, onOpenMessages: (pkg: String, window: St
                         else {
                             item { Summary(r, context) }
                             item {
-                                DetailPanel {
-                                    if (vm.windowKey == Windows.WEEK) {
-                                        SectionTitle(stringResource(R.string.heatmap_title))
-                                        ActivityHeatmap(r.dailyActivity)
-                                    } else {
-                                        SectionTitle(stringResource(R.string.section_activity))
-                                        HourlyChart(r.hourlyUp, r.hourlyDown)
-                                    }
+                                val week = vm.windowKey == Windows.WEEK
+                                DashboardPanel(stringResource(if (week) R.string.heatmap_title else R.string.section_activity)) {
+                                    if (week) ActivityHeatmap(r.dailyActivity) else HourlyChart(r.hourlyUp, r.hourlyDown)
                                 }
                             }
                             item { TrafficInsights(r) }
+                            item { Destinations(r, context) }
                             item {
-                                DetailPanel {
-                                    SectionTitle(stringResource(R.string.section_destinations))
-                                    r.destinations.take(30).forEach { d ->
-                                        DestinationRow(d, context, r.total)
-                                    }
-                                }
-                            }
-                            item {
-                                DetailPanel {
-                                    SectionTitle(stringResource(R.string.section_findings))
+                                DashboardPanel(stringResource(R.string.section_findings), r.findings.size.takeIf { it > 0 }?.toString()) {
                                     if (r.findings.isEmpty()) Text(stringResource(R.string.no_findings), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     r.findings.forEach { f ->
                                         FindingRow(f, vm, context)
@@ -150,7 +147,6 @@ fun AppDetailScreen(onBack: () -> Unit, onOpenMessages: (pkg: String, window: St
                             }
                             item { DetailPanel { PermissionSection(vm) } }
                             item { AppBlockingSection() }
-                            item { DetailPanel { com.nathanhanapps.wayd.feature.ai.AiSection() } }
                         }
                     }
                 }
@@ -160,133 +156,122 @@ fun AppDetailScreen(onBack: () -> Unit, onOpenMessages: (pkg: String, window: St
 }
 
 @Composable
-private fun DetailPanel(content: @Composable ColumnScope.() -> Unit) {
-    Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow, contentColor = MaterialTheme.colorScheme.onSurface) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
-    }
-}
-
-@Composable
-private fun SectionTitle(title: String) {
-    Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-}
+private fun DetailPanel(content: @Composable ColumnScope.() -> Unit) = DashboardPanel(content = content)
 
 @Composable
 private fun Summary(r: AppReport, context: Context) {
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(stringResource(R.string.detail_dashboard_title), style = MaterialTheme.typography.titleMedium)
-                        Text(fmtBytes(context, r.total), style = MaterialTheme.typography.displaySmall)
-                    }
-                    val upColor = MaterialTheme.colorScheme.primary
-                    val downColor = MaterialTheme.colorScheme.tertiary
-                    val emptyColor = MaterialTheme.colorScheme.outlineVariant
-                    Canvas(Modifier.size(72.dp)) {
-                        val stroke = Stroke(width = 10.dp.toPx())
-                        drawArc(emptyColor, 0f, 360f, false, style = stroke)
-                        if (r.total > 0) {
-                            val sentAngle = 360f * (r.bytesUp.toDouble() / r.total).toFloat()
-                            drawArc(upColor, -90f, sentAngle, false, style = stroke)
-                            drawArc(downColor, -90f + sentAngle, 360f - sentAngle, false, style = stroke)
-                        }
-                    }
-                }
-                Text(stringResource(R.string.detail_dashboard_scope), style = MaterialTheme.typography.bodySmall)
-                listOf(
-                    listOf(R.string.stat_up to "↑ ${fmtBytes(context, r.bytesUp)}", R.string.stat_down to "↓ ${fmtBytes(context, r.bytesDown)}"),
-                    listOf(R.string.stat_flows to r.flows.toString(), R.string.detail_dashboard_destinations to r.destinations.size.toString()),
-                ).forEach { metrics ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        metrics.forEach { (label, value) ->
-                            Surface(Modifier.weight(1f), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLowest) {
-                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text(value, style = MaterialTheme.typography.titleLarge, color = when (label) {
-                                        R.string.stat_up -> MaterialTheme.colorScheme.primary
-                                        R.string.stat_down -> MaterialTheme.colorScheme.tertiary
-                                        else -> MaterialTheme.colorScheme.onSurface
-                                    })
-                                    Text(stringResource(label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    DashboardHero(
+        title = stringResource(R.string.detail_dashboard_title),
+        total = fmtBytes(context, r.total),
+        up = r.bytesUp, down = r.bytesDown,
+        upText = "${stringResource(R.string.stat_up)} ${fmtBytes(context, r.bytesUp)}",
+        downText = "${stringResource(R.string.stat_down)} ${fmtBytes(context, r.bytesDown)}",
+        note = stringResource(R.string.detail_dashboard_scope),
+    ) {
+        StatGrid(
+            listOf(
+                StatTile(r.flows.toString(), stringResource(R.string.stat_flows)),
+                StatTile(r.destinations.size.toString(), stringResource(R.string.detail_dashboard_destinations)),
+                StatTile(
+                    fmtBytes(context, r.screenOffBytes), stringResource(R.string.stat_screen_off),
+                    progress = if (r.total > 0) r.screenOffBytes.toFloat() / r.total else 0f,
+                ),
+            ),
+        )
     }
 }
 
+/** "What it did": each traffic insight becomes one number tile; the full sentence stays available to screen readers. */
 @Composable
 private fun TrafficInsights(r: AppReport) {
-    if (r.insights.isEmpty()) DetailPanel { Text(stringResource(R.string.detail_quiet), style = MaterialTheme.typography.bodyMedium) }
-    else DetailPanel {
-        SectionTitle(stringResource(R.string.detail_summary_title))
-        r.insights.forEach { insight ->
-            Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLowest) {
-                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(insightText(insight), style = MaterialTheme.typography.bodyMedium)
-                    if (insight.kind in setOf(InsightKind.TOP_DESTINATION, InsightKind.BACKGROUND_SHARE, InsightKind.UPLOAD_HEAVY)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            LinearProgressIndicator(progress = { (insight.percent / 100f).coerceIn(0f, 1f) }, modifier = Modifier.weight(1f))
-                            DashboardPill(stringResource(R.string.detail_dashboard_percent, insight.percent))
-                        }
-                    }
-                }
-            }
+    if (r.insights.isEmpty()) {
+        DetailPanel { Text(stringResource(R.string.detail_quiet), style = MaterialTheme.typography.bodyMedium) }
+        return
+    }
+    val ctx = LocalContext.current
+    val scheme = MaterialTheme.colorScheme
+    val tiles = r.insights.map { i ->
+        val pct = (i.percent / 100f).coerceIn(0f, 1f)
+        val full = insightText(i)
+        when (i.kind) {
+            InsightKind.TOP_DESTINATION -> StatTile("${i.percent}%", stringResource(R.string.ins_tile_top, i.text), scheme.primary, pct, full)
+            InsightKind.BACKGROUND_SHARE -> StatTile("${i.percent}%", stringResource(R.string.ins_tile_background, fmtBytes(ctx, i.number)), scheme.secondary, pct, full)
+            InsightKind.TRACKERS -> StatTile(fmtBytes(ctx, i.number), stringResource(R.string.ins_tile_trackers, i.percent), scheme.error, null, full)
+            InsightKind.UPLOAD_HEAVY -> StatTile("${i.percent}%", stringResource(R.string.ins_tile_upload, fmtBytes(ctx, i.number)), scheme.primary, pct, full)
+            InsightKind.UNNAMED_DESTINATIONS -> StatTile(i.number.toString(), stringResource(R.string.ins_tile_unnamed, i.percent), null, null, full)
+            InsightKind.LOCAL_NETWORK -> StatTile(i.number.toString(), stringResource(R.string.ins_tile_local, i.percent), null, null, full)
+        }
+    }
+    DashboardPanel(stringResource(R.string.detail_summary_title)) { StatGrid(tiles, columns = 2) }
+}
+
+/** "Who it talks to": category share bar, then ranked rows with a sent/received bar scaled to the largest destination. */
+@Composable
+private fun Destinations(r: AppReport, context: Context) {
+    var all by remember { mutableStateOf(false) }
+    DashboardPanel(stringResource(R.string.section_destinations), stringResource(R.string.detail_dashboard_groups, r.destinations.size)) {
+        if (r.destinations.isEmpty()) {
+            Text(stringResource(R.string.detail_quiet), style = MaterialTheme.typography.bodyMedium)
+            return@DashboardPanel
+        }
+        val byCat = r.destinations.groupBy { it.category?.takeIf { c -> c != com.nathanhanapps.wayd.core.model.TrackerCategory.UNKNOWN } }
+            .mapValues { (_, v) -> v.sumOf { it.total } }.filter { it.value > 0 }.entries.sortedByDescending { it.value }
+        if (byCat.isNotEmpty()) {
+            val other = stringResource(R.string.rep_cat_other)
+            ShareBar(byCat.map { (categoryLabel(it.key) ?: other) to it.value }, byCat.map { categoryShareColor(it.key) })
+        }
+        val max = r.destinations.maxOf { it.total }.coerceAtLeast(1L)
+        val shown = if (all) r.destinations.take(30) else r.destinations.take(8)
+        shown.forEach { d -> DestinationRow(d, context, r.total, max) }
+        if (r.destinations.size > 8) TextButton(onClick = { all = !all }) {
+            Text(if (all) stringResource(R.string.rep_show_less) else stringResource(R.string.rep_show_all, minOf(r.destinations.size, 30)))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            LegendItem(MaterialTheme.colorScheme.primary, stringResource(R.string.stat_up))
+            LegendItem(MaterialTheme.colorScheme.tertiary, stringResource(R.string.stat_down))
         }
     }
 }
 
 @Composable
-private fun DashboardPill(text: String) {
-    Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer) {
-        Text(text, Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelMedium)
-    }
-}
-
-@Composable
-@OptIn(ExperimentalLayoutApi::class)
-private fun DestinationRow(d: Destination, context: Context, total: Long) {
+private fun DestinationRow(d: Destination, context: Context, total: Long, max: Long) {
     var open by remember(d.label, d.category) { mutableStateOf(false) }
-    Surface(
-        modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { open = !open },
-        shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLowest,
-    ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(destinationLabel(d), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Icon(if (open) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                LinearProgressIndicator(progress = { if (total > 0) (d.total.toFloat() / total).coerceIn(0f, 1f) else 0f }, modifier = Modifier.weight(1f))
-                Text(fmtBytes(context, d.total), style = MaterialTheme.typography.titleSmall)
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                categoryLabel(d.category)?.let { Badge(it, categoryColor(d.category)) }
-                DashboardPill("↑ ${fmtBytes(context, d.bytesUp)}")
-                DashboardPill("↓ ${fmtBytes(context, d.bytesDown)}")
-                DashboardPill(stringResource(R.string.detail_dashboard_connections, d.flows))
-                if (d.screenOffBytes > 0) DashboardPill(stringResource(R.string.dest_screen_off, fmtBytes(context, d.screenOffBytes)))
-            }
-            if (open) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    d.hosts.forEach { DashboardPill(it) }
-                }
+    val scheme = MaterialTheme.colorScheme
+    val share = if (total > 0) (d.total * 100 / total).toInt() else 0
+    val caption = listOfNotNull(
+        stringResource(R.string.detail_dashboard_percent, share),
+        categoryLabel(d.category),
+        "↑${fmtBytes(context, d.bytesUp)} ↓${fmtBytes(context, d.bytesDown)}",
+        stringResource(R.string.detail_dashboard_connections, d.flows),
+        if (d.screenOffBytes > 0) stringResource(R.string.dest_screen_off, fmtBytes(context, d.screenOffBytes)) else null,
+    ).joinToString(" · ")
+    val up = d.bytesUp.toFloat() / max
+    val down = d.bytesDown.toFloat() / max
+    val hosts: (@Composable ColumnScope.() -> Unit)? = if (open && d.hosts.isNotEmpty()) {
+        {
+            d.hosts.forEach { h ->
+                Text(h, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-    }
+    } else null
+    RankedBarRow(
+        title = destinationLabel(d),
+        value = fmtBytes(context, d.total),
+        parts = listOf(up, down, (1f - up - down).coerceAtLeast(0f)),
+        colors = listOf(scheme.primary, scheme.tertiary, Color.Transparent),
+        caption = caption,
+        leading = { Dot(categoryShareColor(d.category)) },
+        onClick = { open = !open },
+        extra = hosts,
+    )
 }
-
 
 /** Findings retain the exact evidence and rule severity within individual disclosure cards. */
 @Composable
 private fun FindingRow(f: Finding, vm: AppDetailViewModel, context: Context) {
     var open by remember(f.evidenceJson) { mutableStateOf(false) }
-    Surface(Modifier.fillMaxWidth().clickable(role = Role.Button) { open = !open }, shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLowest) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button) { open = !open }.padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        run {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Badge(severityLabel(f.severity), severityColor(f.severity))
                 Text(findingTitle(f), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))

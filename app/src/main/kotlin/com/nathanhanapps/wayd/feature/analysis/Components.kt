@@ -103,8 +103,11 @@ fun categoryColor(c: TrackerCategory?): Color = when (c) {
 @Composable
 fun AppIcon(labels: AppLabels, pkg: String, size: Int = 40) {
     // Decoding an icon is a package-manager call plus a bitmap render: keep it off the main thread.
-    val icon by androidx.compose.runtime.produceState(labels.cachedIcon(pkg), pkg) {
-        if (value == null) value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { labels.icon(pkg) }
+    val icon = androidx.compose.runtime.key(labels, pkg) {
+        val result by androidx.compose.runtime.produceState(labels.cachedIcon(pkg), labels, pkg) {
+            if (value == null) value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { labels.icon(pkg) }
+        }
+        result
     }
     val bitmap = icon
     if (bitmap != null) {
@@ -165,3 +168,23 @@ fun HourlyChart(up: LongArray, down: LongArray, modifier: Modifier = Modifier) {
         Text(stringResource(R.string.chart_legend), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
+
+/**
+ * Country or region name with its flag, for a two-letter code; anything else is returned unchanged. Taiwan, Hong Kong and
+ * Macao are named as regions of China (中国台湾 / 中国香港 / 中国澳门, Taiwan, China …) and Taiwan gets no flag of its own.
+ */
+@Composable
+fun regionTitle(code: String): String {
+    val c = code.uppercase()
+    if (c.length != 2 || !c.all { it in 'A'..'Z' }) return code
+    val name = when (c) {
+        "TW" -> stringResource(R.string.region_tw)
+        "HK" -> stringResource(R.string.region_hk)
+        "MO" -> stringResource(R.string.region_mo)
+        else -> java.util.Locale.Builder().setRegion(c).build()
+            .getDisplayCountry(androidx.compose.ui.platform.LocalLocale.current.platformLocale).ifBlank { c }
+    }
+    return if (c == "TW") name else "${flagEmoji(c)} $name"
+}
+
+private fun flagEmoji(code: String): String = code.map { String(Character.toChars(0x1F1E6 + (it - 'A'))) }.joinToString("")

@@ -56,6 +56,7 @@ fun ReportsScreen(
     val fmt = remember { DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM) }
     val older = days.map { it.day }.filter { it != today.toString() && it != today.minusDays(1).toString() }
 
+    androidx.compose.material3.Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, modifier = Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().padding(top = 12.dp)) {
         Text(stringResource(R.string.tab_insights), Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.headlineMedium)
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -71,17 +72,18 @@ fun ReportsScreen(
             Loadable.Loading -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
             is Loadable.Ready -> {
                 val r = s.value
-                if (r.appTraffic.isEmpty() && r.alerts.isEmpty() && r.others.isEmpty()) {
-                    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                        Text(stringResource(R.string.apps_empty_window), style = MaterialTheme.typography.bodyLarge)
-                    }
-                } else {
-                    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        insightsBody(r, vm.labels, window, onOpenApp, onOpenCompany, countries)
-                    }
+                LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    // AI chat leads the tab, below the title and window, in the same AI card as app analysis.
+                    item(key = "chat") { com.nathanhanapps.wayd.feature.ai.InsightsChatCard(window) }
+                    if (r.appTraffic.isEmpty() && r.alerts.isEmpty() && r.others.isEmpty()) item {
+                        Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                            Text(stringResource(R.string.apps_empty_window), style = MaterialTheme.typography.bodyLarge)
+                        }
+                    } else insightsBody(r, vm.labels, window, onOpenApp, onOpenCompany, countries)
                 }
             }
         }
+    }
     }
 }
 
@@ -102,7 +104,7 @@ fun ReportDetailScreen(
         }
         when (val s = state) {
             Loadable.Loading -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
-            is Loadable.Ready -> LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            is Loadable.Ready -> LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 insightsBody(s.value, vm.labels, vm.windowKey, onOpenApp, onOpenCompany, countries)
             }
         }

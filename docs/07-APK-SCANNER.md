@@ -10,6 +10,14 @@ Bounds per package: 64 APK paths, 50,000 ZIP entries per path, 4 MiB manifest, 6
 
 The original extraction table below remains the broader specification. Not implemented: root odex/VDEX extraction, non-ASCII endpoint extraction, hidden-API call-site analysis, complete licensed tracker signatures, automatic NSC/MITM feasibility verdicts or AI component explanation. The Declared/Used/Sent panel shows independent observations over retained history, with up to 100 operation types / 200 hosts; only exact static/observed host matches are highlighted. No three-way causal claim is made. All-app performance and carrier/vendor signer identification require device acceptance evidence.
 
+## Descriptive markers (D-061, 2026-11-12)
+
+The scanner now also reads declared Android Activities (`GET_ACTIVITIES`) into `ApkFactKind.ACTIVITY`; this is an additional value in the existing TEXT-backed fact kind, not a Room table/column change. Cache v2 invalidates the earlier scanner cache. Existing snapshots need a user-started rescan to show Activities. Activities, services, receivers, providers and SDKs can be explained as possible features; static presence is not execution evidence or proof of which component initiated a connection.
+
+Each eligible fact has Labels and evidence → Explain labels with AI. Permissions get a built-in capability explanation and an optional AI explanation. Endpoints get a controlled role and optional AI permission/feature relationships. AI relationships use exact fact IDs, are marked possible associations, and open the referenced APK evidence. Connections in app history/details use the same markers and separate neutral algorithm/AI blocking suggestions. No model output changes severity, consent or policy. Inference is explicit per item, not an automatic whole-APK batch; its context is a disclosed bounded selection. See docs/06-AI-GEMMA.md.
+
+JSON exports retain the 400-fact bound but select across fact kinds so endpoint-heavy APKs cannot omit all permission/SDK/component evidence. Each app includes `apkFactCount` and `apkFactsTruncated`; selected facts include `id`, `versionCode`, `kind`, `key`, `value` and `evidence`. Truncation is not a negative scan result. APK links describe the latest stored scan; historical APK-version identity remains unknown.
+
 ## Inputs
 
 When Shizuku is already authorized, discovery also reuses its fixed read-only current-user package inventory (`Command.ListPackages`). No automatic Shizuku permission request or root APK access is added. Ordinary PackageManager lookups still determine which APK paths can be read. Discovery does not guarantee access to a hidden package.

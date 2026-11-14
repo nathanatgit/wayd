@@ -8,6 +8,7 @@
 
 pub mod events;
 pub mod blocking;
+pub mod hostlist;
 #[cfg(unix)]
 mod routing;
 

@@ -51,6 +51,7 @@ data class PolicyImportPlan(
 class BlockingRules @Inject constructor(
     @ApplicationContext private val context: Context,
     private val db: WaydDatabase,
+    private val lists: BlockListStore,
 ) {
     private val mutex = Mutex()
     private val bridge = Any()
@@ -60,6 +61,10 @@ class BlockingRules @Inject constructor(
     private var nextSessionId = -1L
     private var temporary = emptyList<BlockRule>()
     private var installed = emptyList<BlockRule>()
+    private var listsSupported = false
+    private val _listEntries = MutableStateFlow<Long?>(null)
+    /** Entries the running engine loaded from the enabled block lists; null when the VPN is off or the engine predates lists. */
+    val listEntries = _listEntries.asStateFlow()
     private val _state = MutableStateFlow(BlockingState())
     val state = _state.asStateFlow()
     private val dao get() = db.blockRuleDao()
@@ -78,14 +83,24 @@ class BlockingRules @Inject constructor(
         val valid = validRules(all)
         val h = synchronized(bridge) {
             check(handle == 0L)
-            check(engine.nativePolicyVersion() == 2) { "Incompatible native policy engine" }
+            val version = engine.nativePolicyVersion()
+            check(version in 2..3) { "Incompatible native policy engine" }
+            listsSupported = version >= 3
             engine.nativeStart(fd, mtu, wire(valid), routingProfile, routingOwners).also {
-                if (it != 0L) { net = engine; handle = it; installed = valid }
+                if (it != 0L) { net = engine; handle = it; installed = valid; pushLists() }
             }
         }
         publish(all, if (h != 0L) valid else emptyList())
         h
     } }
+
+    /** Caller holds [bridge]. A rejected file (-1) leaves the engine without lists rather than with a partial one. */
+    private fun pushLists() {
+        _listEntries.value = if (handle != 0L && listsSupported) net?.nativeSetBlockList(handle, lists.activePath()) else null
+    }
+
+    /** Call after enabling, disabling, importing or deleting a block list. */
+    suspend fun reloadLists() = withContext(Dispatchers.IO) { mutex.withLock { synchronized(bridge) { pushLists() } } }
 
     /** Called on the polling thread only after its final poll. Serialized with UI JNI calls. */
     suspend fun stopEngine() = withContext(Dispatchers.IO) { mutex.withLock {
@@ -93,6 +108,7 @@ class BlockingRules @Inject constructor(
             if (handle != 0L) net?.nativeStop(handle)
             handle = 0L
             net = null
+            _listEntries.value = null
         }
         val expired = temporary
         temporary = emptyList()

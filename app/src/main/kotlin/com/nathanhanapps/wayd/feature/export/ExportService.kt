@@ -26,6 +26,7 @@ import com.nathanhanapps.wayd.core.model.Dir
 import com.nathanhanapps.wayd.core.model.HostSource
 import com.nathanhanapps.wayd.core.model.Proto
 import com.nathanhanapps.wayd.feature.analysis.AppLabels
+import com.nathanhanapps.wayd.analysis.LabelRules
 import com.nathanhanapps.wayd.feature.analysis.Windows
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -267,13 +268,17 @@ class ExportService @Inject constructor(
         w.name("apps").beginArray()
         for ((pkg, s) in stats) {
             val info = apps.app(pkg)
+            val allFacts = if (info != null) apps.facts(pkg) else emptyList()
+            val selectedFacts = LabelRules.exportFacts(allFacts, MAX_FACTS)
             w.beginObject().name("pkg").value(pkg).name("label").value(labels.label(pkg)).name("system").bool(info?.isSystem)
                 .name("versionName").value(info?.versionName).name("installer").value(info?.installer)
                 .name("signerSha256").value(info?.signerSha256).name("firstSeen").value(info?.firstSeen).name("lastScanned").value(info?.lastScanned)
                 .name("flows").value(s.flows.toLong()).name("bytesUp").value(s.up).name("bytesDown").value(s.down)
+            w.name("apkFactCount").value(allFacts.size.toLong()).name("apkFactsTruncated").value(selectedFacts.size < allFacts.size)
             w.name("apkFacts").beginArray()
-            if (info != null) apps.facts(pkg).take(MAX_FACTS).forEach {
-                w.beginObject().name("kind").value(it.kind.name).name("key").value(it.key).name("value").value(it.value).endObject()
+            selectedFacts.forEach {
+                w.beginObject().name("id").value(it.id).name("versionCode").value(it.versionCode)
+                    .name("kind").value(it.kind.name).name("key").value(it.key).name("value").value(it.value).name("evidence").value(it.evidence).endObject()
             }
             w.endArray().endObject()
         }

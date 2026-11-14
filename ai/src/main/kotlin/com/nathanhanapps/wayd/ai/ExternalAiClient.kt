@@ -90,14 +90,15 @@ class OpenAiCompatibleClient(
 
     private val known = java.util.concurrent.ConcurrentHashMap<String, Format>()
 
-    suspend fun chat(ep: ExternalEndpoint, system: String, user: String, jsonSchema: String?): String {
+    /** [reasoning] is the OpenAI-compatible `reasoning_effort` from the user's effort setting; "none" by default. */
+    suspend fun chat(ep: ExternalEndpoint, system: String, user: String, jsonSchema: String?, reasoning: String = "none", media: List<AiMedia> = emptyList()): String {
         val base = ExternalAiUrl.normalise(ep.baseUrl) ?: throw ExternalAiException("ext_url")
         require(ep.model.isNotBlank())
         val key = base + "|" + ep.model
         val start = if (jsonSchema == null) Format.NONE else known[key] ?: Format.SCHEMA_NO_THINKING
         var level = start
         while (true) {
-            val body = request(ep.model, system, user, jsonSchema, level)
+            val body = request(ep.model, system, user, jsonSchema, level, reasoning, media)
             val (status, text) = post(URL("$base/chat/completions"), ep.apiKey, body)
             if ((status == 400 || status == 422) && level != Format.NONE) {
                 level = Format.values()[level.ordinal + 1] // this server does not take that response_format
@@ -118,14 +119,24 @@ class OpenAiCompatibleClient(
         return (0 until data.length()).mapNotNull { data.optJSONObject(it)?.optString("id")?.takeIf { id -> id.isNotBlank() } }.sorted()
     }
 
-    private fun request(model: String, system: String, user: String, schema: String?, level: Format): String {
+    private fun request(model: String, system: String, user: String, schema: String?, level: Format, reasoning: String, media: List<AiMedia>): String {
+        // Media go as OpenAI-compatible content parts after the text; text-only requests keep the plain string form.
+        val content: Any = if (media.isEmpty()) user else JSONArray().put(JSONObject().put("type", "text").put("text", user)).also { parts ->
+            media.forEach { m ->
+                val b64 = java.util.Base64.getEncoder().encodeToString(m.bytes)
+                parts.put(when (m.kind) {
+                    MediaKind.IMAGE -> JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", "data:${m.mime};base64,$b64"))
+                    MediaKind.AUDIO -> JSONObject().put("type", "input_audio").put("input_audio", JSONObject().put("data", b64).put("format", "wav"))
+                })
+            }
+        }
         val o = JSONObject().put("model", model).put("temperature", 0.2).put("stream", false)
-            .put("messages", JSONArray().put(JSONObject().put("role", "system").put("content", system)).put(JSONObject().put("role", "user").put("content", user)))
+            .put("messages", JSONArray().put(JSONObject().put("role", "system").put("content", system)).put(JSONObject().put("role", "user").put("content", content)))
         when (level) {
             Format.SCHEMA_NO_THINKING, Format.JSON_SCHEMA -> {
                 // Reasoning models (qwen3.5, gpt-oss, ...) can spend the whole context thinking and answer nothing. Ask them not to; servers
                 // that do not know the field answer 400 and the next dialect is used.
-                if (level == Format.SCHEMA_NO_THINKING) o.put("reasoning_effort", "none")
+                if (level == Format.SCHEMA_NO_THINKING) o.put("reasoning_effort", reasoning)
                 o.put("response_format", JSONObject().put("type", "json_schema")
                     .put("json_schema", JSONObject().put("name", "wayd_analysis").put("strict", false).put("schema", JSONObject(requireNotNull(schema)))))
             }
