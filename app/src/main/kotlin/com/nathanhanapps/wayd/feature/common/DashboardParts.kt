@@ -41,7 +41,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
-/** Compact, Loon-style dashboard building blocks shared by Home and the Clash extension. */
+/** Compact dashboard building blocks shared by Home and the Clash extension. */
 
 fun rate(context: android.content.Context, bytesPerSecond: Long): String = Formatter.formatShortFileSize(context, bytesPerSecond) + "/s"
 

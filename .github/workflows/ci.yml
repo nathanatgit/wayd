@@ -18,6 +18,11 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      # The clash variant builds the Go routing library, as release.yml does.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: routing/go.mod
+
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Android SDK components
@@ -41,5 +46,5 @@ jobs:
       - name: Unit tests
         run: ./gradlew test -PskipNative
 
-      - name: Build both flavors (debug)
-        run: ./gradlew :app:assembleStandardDebug :app:assembleResearchDebug
+      - name: Build both variants and lint (debug)
+        run: ./gradlew :app:assembleCoreDebug :app:assembleClashDebug :app:lintCoreDebug :app:lintClashDebug

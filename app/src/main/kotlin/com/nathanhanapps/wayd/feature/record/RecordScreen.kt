@@ -54,7 +54,7 @@ import com.nathanhanapps.wayd.feature.extensions.ClashExtension
 import com.nathanhanapps.wayd.feature.extensions.rememberClashInstalled
 
 /**
- * Home, Loon-style: the VPN switch lives in the header, then live speed, a few numbers, and one inset list of switches and
+ * Home, compact: the VPN switch lives in the header, then live speed, a few numbers, and one inset list of switches and
  * places. It observes no database table, so it costs nothing while the VPN records.
  */
 @Composable
