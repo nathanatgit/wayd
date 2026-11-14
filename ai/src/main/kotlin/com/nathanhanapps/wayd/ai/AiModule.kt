@@ -35,6 +35,9 @@ object AiModule {
     fun engine(impl: ProviderEngine): AiEngine = impl
 
     @Provides
+    fun depths(impl: AiDepthSettings): AiDepthSource = impl
+
+    @Provides
     @Singleton
     fun externalClient(connector: ExternalConnector): OpenAiCompatibleClient {
         val verifier = javax.net.ssl.HttpsURLConnection.getDefaultHostnameVerifier()
@@ -45,8 +48,8 @@ object AiModule {
 
     @Provides
     @Singleton
-    fun analyzer(@dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context, engine: AiEngine, dao: AiAnalysisDao): AiAnalyzer {
+    fun analyzer(@dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context, engine: AiEngine, dao: AiAnalysisDao, depths: AiDepthSource): AiAnalyzer {
         val debuggable = context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
-        return AiAnalyzer(engine, RoomAnalysisStore(dao), debugLog = if (debuggable) { m -> android.util.Log.i("WAYD-AI", m) } else null)
+        return AiAnalyzer(engine, RoomAnalysisStore(dao), debugLog = if (debuggable) { m -> android.util.Log.i("WAYD-AI", m) } else null, depths = depths)
     }
 }

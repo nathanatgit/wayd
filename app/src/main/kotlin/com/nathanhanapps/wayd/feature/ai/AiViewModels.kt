@@ -80,6 +80,7 @@ class AiSettingsViewModel @Inject constructor(
     private val models: ModelManager,
     private val engine: LiteRtEngine,
     val external: ExternalAiSettings,
+    val depths: com.nathanhanapps.wayd.ai.AiDepthSettings,
 ) : ViewModel() {
     val states: StateFlow<Map<String, ModelState>> = models.states
     val downloading: StateFlow<String?> = models.activeDownload
@@ -165,6 +166,7 @@ sealed interface ExternalTest {
 class ExternalAiViewModel @Inject constructor(
     val settings: ExternalAiSettings,
     private val client: OpenAiCompatibleClient,
+    val depths: com.nathanhanapps.wayd.ai.AiDepthSettings,
 ) : ViewModel() {
     val ui: StateFlow<ExternalAiUi> = settings.state
     private val _test = MutableStateFlow<ExternalTest>(ExternalTest.Idle)
@@ -217,4 +219,13 @@ class ExternalAiViewModel @Inject constructor(
     fun acknowledge(on: Boolean) = viewModelScope.launch { settings.setAcknowledged(on) }
 
     fun remove() = viewModelScope.launch { settings.clear(); _test.value = ExternalTest.Idle }
+
+    val profiles = settings.profiles
+
+    /** Saves the current (already saved) server and model as a named profile. */
+    fun saveProfile(name: String, onResult: (Boolean) -> Unit) = viewModelScope.launch { onResult(settings.saveProfile(name)) }
+
+    fun useProfile(id: String) = viewModelScope.launch { settings.useProfile(id); _test.value = ExternalTest.Idle }
+
+    fun deleteProfile(id: String) = viewModelScope.launch { settings.deleteProfile(id) }
 }

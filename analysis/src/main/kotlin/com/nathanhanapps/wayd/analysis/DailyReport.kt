@@ -11,8 +11,8 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
-data class AppTraffic(val pkg: String, val flows: Int, val bytesUp: Long, val bytesDown: Long, val screenOffUp: Long, val screenOffDown: Long)
-data class CompanyRow(val company: String, val category: TrackerCategory, val apps: List<Pair<String, Long>>, val bytesUp: Long)
+data class AppTraffic(val pkg: String, val flows: Int, val bytesUp: Long, val bytesDown: Long, val screenOffUp: Long, val screenOffDown: Long, val screenOffFlows: Int = 0)
+data class CompanyRow(val company: String, val category: TrackerCategory, val apps: List<Pair<String, Long>>, val bytesUp: Long, val flows: Int = 0)
 /** Traffic to one country (ISO 3166-1 alpha-2). Only produced when the GeoIP database from the Clash extension is present. */
 data class CountryRow(val code: String, val flows: Int, val bytes: Long)
 data class CoverageSummary(val flows: Int, val withPackagePct: Int, val measurableTcp: Int, val withHostnamePct: Int)
@@ -45,17 +45,17 @@ object DailyReportBuilder {
 
         val traffic = attributed.groupBy { it.pkg }.map { (pkg, fl) ->
             val off = fl.filter { !it.screenOn }
-            AppTraffic(pkg, fl.size, fl.sumOf { it.bytesUp }, fl.sumOf { it.bytesDown }, off.sumOf { it.bytesUp }, off.sumOf { it.bytesDown })
+            AppTraffic(pkg, fl.size, fl.sumOf { it.bytesUp }, fl.sumOf { it.bytesDown }, off.sumOf { it.bytesUp }, off.sumOf { it.bytesDown }, off.size)
         }.sortedByDescending { it.bytesUp + it.bytesDown }
 
-        val background = traffic.filter { it.screenOffUp + it.screenOffDown > 0 }
-            .sortedByDescending { it.screenOffUp + it.screenOffDown }.take(10)
+        val background = traffic.filter { it.screenOffUp + it.screenOffDown > 0 || it.screenOffFlows > 0 }
+            .sortedByDescending { it.screenOffUp + it.screenOffDown }
 
         val companies = attributed.mapNotNull { f -> tracker.lookup(f.host)?.let { Triple(f, it.company, it.category) } }
             .groupBy { it.second to it.third }.map { (key, rows) ->
                 val perApp = rows.groupBy { it.first.pkg }.map { (pkg, r) -> pkg to r.sumOf { it.first.bytesUp + it.first.bytesDown } }
                     .sortedByDescending { it.second }
-                CompanyRow(key.first, key.second, perApp, rows.sumOf { it.first.bytesUp })
+                CompanyRow(key.first, key.second, perApp, rows.sumOf { it.first.bytesUp }, rows.size)
             }.sortedByDescending { it.apps.sumOf { a -> a.second } }
 
         val hourly = LongArray(24)

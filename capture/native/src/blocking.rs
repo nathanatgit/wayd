@@ -65,7 +65,15 @@ pub fn normalize_host(s: &str) -> Option<String> {
 }
 
 struct Meta { owner: Option<String>, host: Option<String>, ip: IpAddr, control: Arc<FlowControl> }
-struct State { policy: Policy, flows: HashMap<u64, Meta> }
+struct State { policy: Policy, list: crate::hostlist::HostList, flows: HashMap<u64, Meta> }
+
+/// Per-app rules first, then the global block lists (hostname only). A list block reports the reserved LIST_RULE id.
+fn blocked(s: &State, m: &Meta) -> Option<Decision> {
+    s.policy.blocked(m).or_else(|| {
+        let host = m.host.as_deref()?;
+        s.list.blocks(host, m.owner.as_deref()).then_some(Decision { kind: 1, revision: s.policy.revision, rule: crate::hostlist::LIST_RULE })
+    })
+}
 
 pub struct FlowControl {
     pub up: Arc<AtomicU64>, pub down: Arc<AtomicU64>,
@@ -105,7 +113,7 @@ pub struct Blocking(Mutex<State>);
 
 impl Blocking {
     pub fn new() -> Self {
-        Self(Mutex::new(State { policy: Policy { revision: 0, rules: Vec::new() }, flows: HashMap::new() }))
+        Self(Mutex::new(State { policy: Policy { revision: 0, rules: Vec::new() }, list: Default::default(), flows: HashMap::new() }))
     }
 
     pub fn install(&self, text: &str) -> bool {
@@ -113,7 +121,7 @@ impl Blocking {
         let mut s = self.0.lock().unwrap();
         if policy.revision <= s.policy.revision { return false; }
         s.policy = policy;
-        for m in s.flows.values() { if let Some(d) = s.policy.blocked(m) { m.control.stop.send_replace(d); } }
+        for m in s.flows.values() { if let Some(d) = blocked(&s, m) { m.control.stop.send_replace(d); } }
         true
     }
 
@@ -124,7 +132,20 @@ impl Blocking {
     }
 
     pub fn close(&self, id: u64) { self.0.lock().unwrap().flows.remove(&id); }
-    pub fn active(&self) -> bool { !self.0.lock().unwrap().policy.rules.is_empty() }
+    pub fn active(&self) -> bool { let s = self.0.lock().unwrap(); !s.policy.rules.is_empty() || !s.list.is_empty() }
+
+    /// True when a global list is installed: every named TCP connection is then worth the bounded hostname wait.
+    pub fn list_active(&self) -> bool { !self.0.lock().unwrap().list.is_empty() }
+
+    /// Replaces the global block lists from a compiled file (empty path clears them) and re-checks live flows.
+    /// Returns the number of entries, or -1 when the file is missing or malformed (the previous lists stay).
+    pub fn install_list(&self, path: &str) -> i64 {
+        let list = if path.is_empty() { Default::default() } else { match crate::hostlist::HostList::load(path) { Some(l) => l, None => return -1 } };
+        let mut s = self.0.lock().unwrap();
+        s.list = list;
+        for m in s.flows.values() { if let Some(d) = blocked(&s, m) { m.control.stop.send_replace(d); } }
+        s.list.entries as i64
+    }
 
     pub fn metadata(&self, id: u64) -> (String, String) {
         self.0.lock().unwrap().flows.get(&id).map(|m| (m.owner.clone().unwrap_or_default(), m.host.clone().unwrap_or_default())).unwrap_or_default()
@@ -142,7 +163,7 @@ impl Blocking {
             }
         }
         if let Some(m) = s.flows.get(&id) {
-            if let Some(d) = s.policy.blocked(m) { m.control.stop.send_replace(d); }
+            if let Some(d) = blocked(&s, m) { m.control.stop.send_replace(d); }
         }
     }
 
@@ -155,10 +176,10 @@ impl Blocking {
         let s = self.0.lock().unwrap();
         let mut d = Decision { kind: if error { 2 } else { 5 }, revision: s.policy.revision, rule: 0 };
         if let Some(m) = s.flows.get(&id) {
-            if let Some(blocked) = s.policy.blocked(m) { return blocked; }
-            if !error && !s.policy.rules.is_empty() {
+            if let Some(d) = blocked(&s, m) { return d; }
+            if !error && (!s.policy.rules.is_empty() || !s.list.is_empty()) {
                 if m.owner.is_none() { d.kind = 3; }
-                else if m.host.is_none() && s.policy.rules.iter().any(|r| r.kind == "HOST" && m.owner.as_deref() == Some(&r.owner)) { d.kind = 4; }
+                else if m.host.is_none() && (!s.list.is_empty() || s.policy.rules.iter().any(|r| r.kind == "HOST" && m.owner.as_deref() == Some(&r.owner))) { d.kind = 4; }
             }
         }
         d

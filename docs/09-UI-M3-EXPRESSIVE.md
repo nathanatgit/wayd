@@ -93,6 +93,12 @@ AI entry points are contextual (selection action bar, finding card, app detail),
 - Privilege; AI model manager (download size, device check, delete); retention; export; wipe.
 - **HTTPS decryption** (D-058): directly visible risk notice and shared enable/app controls, followed by manual user-CA installation and root system-wide trust as separate method cards. No extra Danger zone disclosure; consent and operation confirmations stay mandatory.
 
+## Descriptive markers (D-061)
+
+Connection rows show roles rather than risk-verdict markers. APK permission markers explain capabilities; component markers explain possible features; endpoints/connections may link declared permissions or components through AI hypotheses. Every generated marker starts with `AI:` and links say possible association. Known local classifications remain visible when AI disagrees. Rule findings keep their own separate section and severity.
+
+Labels and evidence expands the latest APK version/source context, bounded-input notice, AI model/time/citations, and separate algorithm/AI blocking suggestions. Generation is user-started for the selected item. Connection history and connection detail retain explicit blocking confirmation and Undo; AI never chooses the action target. Both English and Chinese resources are supplied. No declaration is described as a current permission grant, and foreground state is not inferred from the placeholder flag.
+
 ## Motion
 
 - Use `MotionScheme.expressive()` springs for shared transitions (list → detail), record button morph, chip appearance.

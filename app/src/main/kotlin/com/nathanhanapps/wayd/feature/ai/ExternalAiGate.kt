@@ -59,7 +59,8 @@ class ExternalAiGate @Inject constructor(private val settings: ExternalAiSetting
         val mine = CompletableDeferred<Answer>()
         try {
             val scope = settings.warningScope(send) ?: return false
-            if (settings.skipsWarning(scope)) return true
+            // Attachments (photos, voice) always get the preview: "Don't ask again" covered text evidence, not personal media.
+            if (send.media.isEmpty() && settings.skipsWarning(scope)) return true
             synchronized(this) {
                 answer?.complete(Answer(false))
                 answer = mine
@@ -104,6 +105,7 @@ fun ExternalAiGateDialog(holder: ExternalAiGateHolder = hiltViewModel()) {
                 Text(stringResource(R.string.xg_body), style = MaterialTheme.typography.bodyMedium)
                 if (s.hasDecrypted) Text(stringResource(R.string.xg_decrypted), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
                 Text(stringResource(R.string.xg_items, s.items), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (s.media.isNotEmpty()) Text(stringResource(R.string.xg_media, s.media.joinToString(", ")), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
                 TextButton(onClick = { showText = !showText }) { Text(stringResource(if (showText) R.string.xg_hide else R.string.xg_show)) }
                 // Everything in the request body: the fixed instructions and the evidence, in the order they are sent.
                 if (showText) Text(

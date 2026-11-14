@@ -11,7 +11,7 @@ enum class Dir { UP, DOWN }
 /** Never upgrade a tier without a real source. */
 enum class Tier { PLAINTEXT, DECRYPTED, METADATA }
 enum class TierSource { HTTP, MITM, EBPF, FRIDA }
-enum class ApkFactKind { PERMISSION, RECEIVER, SERVICE, SDK, ENDPOINT, NSC, NATIVE_LIB, PACKER, PROVIDER, MANIFEST, SIGNER, COVERAGE }
+enum class ApkFactKind { PERMISSION, RECEIVER, SERVICE, SDK, ENDPOINT, NSC, NATIVE_LIB, PACKER, PROVIDER, MANIFEST, SIGNER, COVERAGE, ACTIVITY }
 enum class Severity { INFO, LOW, MEDIUM, HIGH }
 enum class UserState { NEW, SEEN, IGNORED }
 enum class BlockScope { APP, HOST, APP_HOST }

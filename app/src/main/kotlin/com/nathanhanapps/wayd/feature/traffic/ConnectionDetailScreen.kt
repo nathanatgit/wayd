@@ -31,6 +31,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +62,9 @@ import com.nathanhanapps.wayd.core.model.NetType
 import com.nathanhanapps.wayd.core.model.Proto
 import com.nathanhanapps.wayd.feature.analysis.AppIcon
 import com.nathanhanapps.wayd.feature.analysis.AppLabels
+import com.nathanhanapps.wayd.feature.analysis.LabelViewModel
+import com.nathanhanapps.wayd.feature.analysis.ItemLabelMarkers
+import com.nathanhanapps.wayd.feature.analysis.ItemLabelDetails
 import com.nathanhanapps.wayd.feature.analysis.categoryLabel
 import com.nathanhanapps.wayd.feature.common.GroupDivider
 import com.nathanhanapps.wayd.feature.common.InfoRow
@@ -111,8 +115,15 @@ class ConnectionDetailViewModel @Inject constructor(
 
 /** One recorded connection in detail: who, where, how much, TLS facts, rule outcome, DNS and (research build) decrypted content. */
 @Composable
-fun ConnectionDetailScreen(onBack: () -> Unit, onOpenApp: (pkg: String, window: String) -> Unit, vm: ConnectionDetailViewModel = hiltViewModel()) {
+fun ConnectionDetailScreen(onBack: () -> Unit, onOpenApp: (pkg: String, window: String) -> Unit, vm: ConnectionDetailViewModel = hiltViewModel(), labelVm: LabelViewModel = hiltViewModel()) {
     val detail by vm.state.collectAsStateWithLifecycle()
+    val labelContext by labelVm.context.collectAsStateWithLifecycle()
+    LaunchedEffect(detail?.flow?.id) {
+        detail?.flow?.let { f ->
+            val day = java.time.Instant.ofEpochMilli(f.startAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString()
+            labelVm.select(f.pkg, day, f)
+        }
+    }
     val missing by vm.missing.collectAsStateWithLifecycle()
     val context = LocalContext.current
     Column(Modifier.fillMaxSize()) {
@@ -132,6 +143,9 @@ fun ConnectionDetailScreen(onBack: () -> Unit, onOpenApp: (pkg: String, window: 
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(f.host ?: hostPort(f.dstIp, f.dstPort), style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            ItemLabelMarkers(labelContext, "f:${f.id}")
+                            ItemLabelDetails(labelContext, "f:${f.id}", labelVm)
+                            com.nathanhanapps.wayd.feature.apps.ConnectionBlockingActions()
                             Row(
                                 Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onOpenApp(f.pkg, java.time.Instant.ofEpochMilli(f.startAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString()) }.padding(vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -161,7 +175,7 @@ fun ConnectionDetailScreen(onBack: () -> Unit, onOpenApp: (pkg: String, window: 
                             InfoRow(Icons.Filled.Info, stringResource(R.string.cd_network), stringResource(when (f.netType) { NetType.WIFI -> R.string.cd_wifi; NetType.CELLULAR -> R.string.cd_cellular; NetType.OTHER -> R.string.cd_other }))
                             GroupDivider()
                             InfoRow(Icons.Filled.Info, stringResource(R.string.cd_screen), stringResource(if (f.screenOn) R.string.cd_on else R.string.cd_off))
-                            f.country?.let { GroupDivider(); InfoRow(Icons.Filled.Info, stringResource(R.string.cd_country), it) }
+                            f.country?.let { GroupDivider(); InfoRow(Icons.Filled.Info, stringResource(R.string.cd_country), com.nathanhanapps.wayd.feature.analysis.regionTitle(it)) }
                             f.company?.let { GroupDivider(); InfoRow(Icons.Filled.Info, stringResource(R.string.cd_company), it + (categoryLabel(f.category)?.let { c -> " · $c" } ?: "")) }
                         }
                     }

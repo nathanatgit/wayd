@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- M0 requests no permissions. Any addition must update docs/10-SECURITY-THREAT-MODEL.md. -->
+    <!-- Any permission addition must update docs/10-SECURITY-THREAT-MODEL.md. -->
+    <!-- D-062: push-to-talk voice questions in the Insights chat only. Requested at the first mic tap; audio stays in memory, never saved or recorded in the background. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <queries>
         <intent>

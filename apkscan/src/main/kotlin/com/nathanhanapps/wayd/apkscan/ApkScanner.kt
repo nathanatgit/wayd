@@ -42,12 +42,12 @@ class ApkScanner @Inject constructor(
     @Suppress("DEPRECATION")
     suspend fun scan(pkg: String, force: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         require(pkg.length in 3..255 && pkg.all { it.isLetterOrDigit() || it == '_' || it == '.' })
-        val flags = PackageManager.GET_PERMISSIONS or PackageManager.GET_RECEIVERS or
+        val flags = PackageManager.GET_PERMISSIONS or PackageManager.GET_RECEIVERS or PackageManager.GET_ACTIVITIES or
             PackageManager.GET_SERVICES or PackageManager.GET_PROVIDERS or PackageManager.GET_SIGNING_CERTIFICATES
         val info = pm.getPackageInfo(pkg, flags)
         val app = requireNotNull(info.applicationInfo)
         val paths = (listOf(app.sourceDir) + app.splitSourceDirs.orEmpty()).distinct()
-        val signature = "m5-v1:${info.longVersionCode}:${info.lastUpdateTime}:" + paths.joinToString(";") {
+        val signature = "m5-v2:${info.longVersionCode}:${info.lastUpdateTime}:" + paths.joinToString(";") {
             val file = File(it)
             "${file.length()}:${file.lastModified()}"
         }
@@ -60,10 +60,11 @@ class ApkScanner @Inject constructor(
                 key = key.take(512), value = value?.take(4096), evidence = source?.take(512))
         }
         info.requestedPermissions.orEmpty().take(512).forEach { add(ApkFactKind.PERMISSION, it, source = "PackageManager") }
+        info.activities.orEmpty().take(512).forEach { add(ApkFactKind.ACTIVITY, it.name, "exported=${it.exported}; permission=${it.permission.orEmpty()}", "PackageManager") }
         info.receivers.orEmpty().take(512).forEach { add(ApkFactKind.RECEIVER, it.name, "exported=${it.exported}; permission=${it.permission.orEmpty()}", "PackageManager") }
         info.services.orEmpty().take(512).forEach { add(ApkFactKind.SERVICE, it.name, "exported=${it.exported}; permission=${it.permission.orEmpty()}", "PackageManager") }
         info.providers.orEmpty().take(512).forEach { add(ApkFactKind.PROVIDER, it.name, "exported=${it.exported}; authority=${it.authority.orEmpty()}", "PackageManager") }
-        if (listOf(info.requestedPermissions?.size ?: 0, info.receivers?.size ?: 0, info.services?.size ?: 0, info.providers?.size ?: 0).any { it > 512 }) limits += "component_cap"
+        if (listOf(info.requestedPermissions?.size ?: 0, info.activities?.size ?: 0, info.receivers?.size ?: 0, info.services?.size ?: 0, info.providers?.size ?: 0).any { it > 512 }) limits += "component_cap"
         add(ApkFactKind.MANIFEST, "usesCleartextTraffic.effectiveFlag", (app.flags and ApplicationInfo.FLAG_USES_CLEARTEXT_TRAFFIC != 0).toString(), "PackageManager; NSC can override")
         info.sharedUserId?.let { add(ApkFactKind.MANIFEST, "sharedUserId", it, "PackageManager") }
         val signers = info.signingInfo?.apkContentsSigners.orEmpty()

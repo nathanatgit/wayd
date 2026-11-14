@@ -1,6 +1,7 @@
 package com.nathanhanapps.wayd.feature.ai
 
 import android.text.format.Formatter
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -53,12 +54,34 @@ import com.nathanhanapps.wayd.ai.Verdict
 import com.nathanhanapps.wayd.core.model.DataType
 import com.nathanhanapps.wayd.feature.analysis.Badge
 
-/** "Analyse with AI" on the app screen. The result is always labelled as the AI's opinion, apart from the rule findings. */
+/**
+ * The one visual identity for AI assistance (app analysis, item labels, chat): a tonal card with the AI mark, a title and the
+ * standing reminder that rules decide severity. Content inside is always the AI's opinion, never a rule result.
+ */
+@Composable
+fun AiAssistCard(title: String, modifier: Modifier = Modifier, subtitle: String? = stringResource(R.string.ai_card_subtitle), content: @Composable ColumnScope.() -> Unit) {
+    androidx.compose.material3.Surface(
+        modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium)
+                    subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)) }
+                }
+            }
+            content()
+        }
+    }
+}
+
+/** "Analyse with AI" on the app screen, shown first below the title. The result is always the AI's opinion, apart from rule findings. */
 @Composable
 fun AiSection(vm: AiAnalysisViewModel = hiltViewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(stringResource(R.string.ai_title), style = MaterialTheme.typography.titleMedium)
+    AiAssistCard(stringResource(R.string.ai_title)) {
         when (val s = state) {
             AiUiState.Idle -> Button(onClick = { vm.analyse() }) { Text(stringResource(R.string.ai_analyse)) }
             AiUiState.Running -> {

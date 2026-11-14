@@ -118,6 +118,8 @@ fun ControlsScreen(onOpenApp: (String) -> Unit, vm: ControlsViewModel = hiltView
         item {
             PolicyTransferSection()
         }
+        // Global block lists are a separate rule set from the per-app rules below (D-064).
+        item { BlockListsSection() }
         item {
             Text(stringResource(R.string.block_rules_title), style = MaterialTheme.typography.titleLarge)
             OutlinedTextField(

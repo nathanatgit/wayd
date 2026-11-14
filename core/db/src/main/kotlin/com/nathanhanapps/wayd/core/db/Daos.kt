@@ -193,6 +193,8 @@ private const val MEASURABLE =
 
 @Dao
 interface PermEventDao {
+    @Query("SELECT * FROM PermEvent WHERE pkg = :pkg AND ts >= :start AND ts < :end ORDER BY ts")
+    fun observeForApp(pkg: String, start: Long, end: Long): KFlow<List<PermEvent>>
     @Insert
     suspend fun insertAll(events: List<PermEvent>)
 
@@ -216,6 +218,8 @@ data class DayRow(val day: String, val flows: Int)
 
 @Dao
 interface FindingDao {
+    @Query("SELECT * FROM Finding WHERE pkg = :pkg AND createdAt >= :start AND createdAt < :end")
+    fun observeForApp(pkg: String, start: Long, end: Long): KFlow<List<Finding>>
     @Insert
     suspend fun insertAll(findings: List<Finding>)
 
@@ -249,6 +253,13 @@ interface DnsDao {
 
 @Dao
 interface AiAnalysisDao {
+    /** Saved per-item labels; [version] is LabelContract.VERSION, passed in so a contract bump cannot silently hide rows. */
+    @Query("SELECT * FROM AiAnalysis WHERE promptVersion = :version AND inputRefsJson LIKE :prefix || '%' AND validated = 1 ORDER BY createdAt DESC, id DESC LIMIT 300")
+    fun observeLabels(prefix: String, version: Int): KFlow<List<AiAnalysis>>
+
+    /** Label rows only, newest first, independent of how many app-level analyses exist. */
+    @Query("SELECT * FROM AiAnalysis WHERE promptVersion = :version AND inputRefsJson LIKE :prefix || '%' AND validated = 1 ORDER BY createdAt DESC, id DESC LIMIT :limit")
+    suspend fun labels(prefix: String, version: Int, limit: Int): List<AiAnalysis>
     @Insert
     suspend fun insert(row: AiAnalysis): Long
 

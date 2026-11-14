@@ -11,9 +11,18 @@ data class DomainInfo(val company: String, val category: TrackerCategory)
  * dataset (e.g. DuckDuckGo Tracker Radar) before relying on completeness. Unknown domains return null, never a guess.
  */
 class TrackerDb(entries: Collection<SeedEntry> = SeedDomains.all) {
-    private val map: Map<String, DomainInfo> = entries.associate { it.domain to DomainInfo(it.company, it.category) }
+    private val map = SuffixLookup(entries.associate { it.domain to DomainInfo(it.company, it.category) })
 
-    fun lookup(host: String?): DomainInfo? {
+    fun lookup(host: String?): DomainInfo? = map.lookup(host)
+
+    fun size() = map.size
+}
+
+/** Longest-suffix match on DNS labels, shared by the tracker list and curated role hints. Never matches across a label boundary. */
+class SuffixLookup<T>(private val map: Map<String, T>) {
+    val size: Int get() = map.size
+
+    fun lookup(host: String?): T? {
         if (host.isNullOrBlank()) return null
         var h = host.trim().trimEnd('.').lowercase()
         while (true) {
@@ -23,8 +32,6 @@ class TrackerDb(entries: Collection<SeedEntry> = SeedDomains.all) {
             h = h.substring(dot + 1)
         }
     }
-
-    fun size() = map.size
 }
 
 /** Hosts of public DNS-over-HTTPS resolvers: an app contacting one resolves names outside the system resolver. */
