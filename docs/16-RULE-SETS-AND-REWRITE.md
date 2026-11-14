@@ -1,6 +1,6 @@
 # 16 · Block lists, rewrite rules and their cost (design)
 
-Status: **block lists implemented 2026-11-14 (D-064: native matcher, Adblock/hosts parser, list storage, consent, Controls section); rewrite rules and hit counters are still design only.** Nat answered the decisions at the end: global consent yes; file and URL import; rewrite phase 1 as proposed; list rules use the bounded hostname wait (no early pass-through). It answers three requests from Nat: split blocking and rewriting into two rule sets with the block set Adblock-compatible; add Loon-style rewriting of decrypted traffic; and make sure many rules do not slow the phone or drain the battery. It needs Nat's decisions at the end before any native work starts.
+Status: **block lists implemented 2026-11-14 (D-064: native matcher, Adblock/hosts parser, list storage, consent, Controls section); rewrite rules and hit counters are still design only.** Nat answered the decisions at the end: global consent yes; file and URL import; rewrite phase 1 as proposed; list rules use the bounded hostname wait (no early pass-through). It answers three requests from Nat: split blocking and rewriting into two rule sets with the block set Adblock-compatible; add rewriting of decrypted traffic; and make sure many rules do not slow the phone or drain the battery. It needs Nat's decisions at the end before any native work starts.
 
 ## Where the code is today
 
@@ -14,7 +14,7 @@ Status: **block lists implemented 2026-11-14 (D-064: native matcher, Adblock/hos
 |---|---|---|
 | Works on | connection metadata: app, hostname (SNI / HTTP Host), IP | decrypted HTTP messages |
 | Needs decryption | no | yes, per app, existing Danger-zone consent |
-| Format | Adblock / hosts lists + WAYD's own per-app rules | WAYD rewrite rules (Loon-like), JSON |
+| Format | Adblock / hosts lists + WAYD's own per-app rules | WAYD rewrite rules, JSON |
 | Where enforced | before the upstream dial (existing gate) | inside the MITM relay |
 | Stored | compiled binary set per list + existing `BlockRule` rows | new `RewriteRule` table (Room migration) |
 | Screen | Controls → Block | Controls → Rewrite |
@@ -40,7 +40,7 @@ Lists are imported by the user from a file or a URL they type (a user-initiated 
 
 Precedence: per-app WAYD block → `$important` list block → `@@` exception → list block → pass.
 
-### Rewrite set: what a rule can do (Loon-like, no scripts first)
+### Rewrite set: what a rule can do (no scripts first)
 
 ```json
 {
@@ -73,7 +73,7 @@ Not if the lookup is designed for it. What costs power on a phone VPN is CPU tim
 | DNS66, Blokada (DNS mode), personalDNSfilter | only DNS queries are inspected; the block list is a hash set, so a lookup is O(1) regardless of list size. Costs are load time and RAM (roughly tens of MB for a few hundred thousand hosts as Java strings). |
 | AdGuard for Android | native filtering engine; rules are compiled into hash-indexed tables keyed by a short substring ("shortcut"), so only a handful of candidate rules are evaluated per request. HTTPS filtering is opt-in per app and it is the expensive part, not the rule count. |
 | uBlock Origin | tokenised filter index plus a hostname trie; compiled lists are cached ("selfie") so start-up does not re-parse text. |
-| Loon / Surge / Quantumult X | `DOMAIN-SET` / rule sets in a suffix trie; the decision is made **once per connection** and cached; MITM runs only for hostnames explicitly listed; scripts only on URL matches. |
+| Rule-based proxy clients | `DOMAIN-SET` / rule sets in a suffix trie; the decision is made **once per connection** and cached; MITM runs only for hostnames explicitly listed; scripts only on URL matches. |
 
 What WAYD should do, in order of effect:
 
@@ -101,3 +101,26 @@ Budgets to verify on the NX733J before calling it done: list load < 300 ms for 3
 2. **List downloads:** allow fetching a list from a URL the user types (user-initiated, like model downloads), or file import only?
 3. **Rewrite scope for phase 1:** REJECT + header/query actions first (no body buffering), as above?
 4. **Fail-open for list rules** when the hostname cannot be read in time (per-app rules stay fail-closed)?
+
+## Plugin-format import and export (proposal, 2026-11-14)
+
+Nat asked for rule-based blocking and rewriting of decrypted traffic with rules that can be exchanged. Proposal: treat the common rule-plugin text format (`.plugin` text with `#!name=` / `#!desc=` and `[Rule]`, `[Rewrite]`, `[MITM]`, `[Script]` sections) as the interchange format, importing a subset and exporting the same subset. The exact keyword set below is from memory and **must be checked against that format's current documentation before the importer is written**.
+
+| Plugin section / line | WAYD target | Notes |
+|---|---|---|
+| `[Rule]` `DOMAIN,host,REJECT` | block list entry, exact | all `REJECT*` policies mean block at connection level |
+| `[Rule]` `DOMAIN-SUFFIX,host,REJECT` | block list entry, suffix | |
+| `[Rule]` `DOMAIN-KEYWORD`, `IP-CIDR`, `USER-AGENT`, `GEOIP`, proxy policies | skipped, counted | keyword/CIDR could follow later; proxy policies belong to Clash routing, not here |
+| `[Rewrite]` `<url-regex> reject` / `reject-200` / `reject-img` / `reject-dict` / `reject-array` | rewrite REJECT with the matching canned body | needs decryption for that host |
+| `[Rewrite]` `<url-regex> 302 <url>` / `307 <url>` | rewrite REDIRECT | |
+| `[Rewrite]` `header-add` / `header-del` / `header-replace`, `response-header-*` | rewrite header actions | |
+| `[Rewrite]` `request-body-replace-regex`, `response-body-replace-regex`, `response-body-json-*`, `mock-response-body` | rewrite body actions | phases 2–3 |
+| `[MITM]` `hostname = a.com, *.b.com` | list of hosts the rules need decrypted | never switches decryption on: WAYD shows which apps/hosts would need the existing per-app consent |
+| `[Script]` | skipped, counted | no script engine planned |
+
+Consequences for the rewrite design above:
+
+- **Match on a URL regex**, as the plugin format does, instead of host + path prefix. The Rust `regex` crate is linear-time (no catastrophic backtracking), patterns compile once at install, and a hostname prefilter (from `[MITM]` or the literal host in the pattern) keeps unrelated flows on the pass-through path. Imported patterns over a size limit, or using look-around/back-references the crate rejects, are skipped and counted.
+- **Scope:** plugin rules are global; WAYD rewrite rules stay per app. An imported plugin is stored as one rule group that the user attaches to chosen apps (each needs its decryption consent); its `[Rule]` part becomes a block list under the D-064 global consent. Export writes a group back as a plugin without app names.
+- **Export of WAYD's own rules:** per-app exact-host blocks export as `DOMAIN,host,REJECT`; APP and IP rules have no plugin equivalent and stay in WAYD's JSON export.
+- Adblock/hosts import (D-064) stays; the plugin format is an additional format for the same two rule sets.
