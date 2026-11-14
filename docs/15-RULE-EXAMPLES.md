@@ -1,6 +1,6 @@
 # Rule examples / 规则示例
 
-These are illustrative, per-app rules. Only APP, exact HOST and exact IP blocking are implemented today. Create those from app history and inspect them in Controls. JSON import, regex predicates, local responses and response rewriting are **not implemented**; the examples below are a design vocabulary, not importable configuration. Example domains are placeholders, not a recommended blocklist.
+These are illustrative, per-app rules. Only APP, exact HOST and exact IP blocking are implemented as per-app rules; global Adblock/hosts block lists are implemented separately ([16-RULE-SETS-AND-REWRITE.md](16-RULE-SETS-AND-REWRITE.md)). Create those from app history and inspect them in Controls. JSON import, regex predicates, local responses and response rewriting are **not implemented**; the examples below are a design vocabulary, not importable configuration. Example domains are placeholders, not a recommended blocklist.
 
 以下示例均限定单个应用。目前仅支持整个应用、精确主机名、精确 IP 阻止，可从应用历史创建，在“管控”检查。JSON 导入、正则条件、本地回复与响应改写尚未实现，下面的 JSON 仅用于说明设计，不能直接导入。
 

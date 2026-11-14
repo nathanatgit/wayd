@@ -1,13 +1,5 @@
 # 10 · Security and threat model
 
-## Local APK scanner (M5)
-
-APK scanning is user-started WorkManager work. It reads installed base/split APKs through PackageManager paths, never executes their code, never extracts ZIP paths to disk, and never reads privileged APK directories. Already-granted Shizuku access may run the fixed read-only current-user package inventory call in `Command.ListPackages`; no generic command execution or automatic permission prompt is added. Binary XML/DEX readers bound sizes, counts and offsets; malformed/unsupported input remains a coverage limitation. Facts and certificate metadata stay in the existing SQLCipher store. Possible endpoints retain hosts only, without embedded credentials, paths or query values. No package names, parser exceptions or APK data are logged. Signer subjects and static signatures are untrusted evidence, not verified identity or behavioral proof.
-
-WorkManager's merged `WAKE_LOCK` and `RECEIVE_BOOT_COMPLETED` permissions support OS scheduling and resumption of user-enqueued local scans; no automatic periodic scan or network destination is added. Its scheduler services use the library's system binding protections. Existing `QUERY_ALL_PACKAGES` permission is reused; a ROM may still restrict visibility.
-
-WAYD holds the most sensitive data on the phone. Treat WAYD itself as a high-value target.
-
 ## Assets
 
 1. Captured traffic, decrypted payloads, permission history (DB + blobs).
@@ -51,23 +43,7 @@ WAYD holds the most sensitive data on the phone. Treat WAYD itself as a high-val
 
 No location, contacts, SMS or storage permissions. WAYD reads device identifiers only to match them in traffic, and only at the privilege level available.
 
-## Permissions added with on-device AI (2026-11-09)
-
-| Permission | Why | Risk / mitigation |
-|---|---|---|
-| `FOREGROUND_SERVICE_DATA_SYNC` (+ `INTERNET`, already declared) | Keep a 2-4 GB model download alive while the app is in the background. | The download starts only when the user taps Download, goes only to the host the user chose, is SHA-256 verified and can be cancelled. No other AI-related network use. |
-
-The captured data is masked (identifiers replaced by type tokens), wrapped in inert `<data>` blocks and size-bounded before it reaches the model; model output is schema- and evidence-validated and can never change rules, blocks, consents or privileges.
-
-## Permission added with the Insights chat (2026-11-12, D-062)
-
-| Permission | Why | Risk / mitigation |
-|---|---|---|
-| `RECORD_AUDIO` | Push-to-talk voice questions in the Insights AI chat. | Requested only at the first microphone tap, never at start-up; denial leaves text and file attachments working. Recording runs only while the user holds it (tap to start/stop, 30 s cap), never in the background, and the 16 kHz clip stays in memory for that chat, never written to disk or the database. Clips (like photos and video frames) go only to the selected provider; an external send always shows the preview listing attachments, even when "Don't ask again" was set for text. Attachments are untrusted model input and are not WAYD evidence. |
-
-Photos, video and audio files come from the system photo picker / document picker, so no storage or media permission is added. Video is reduced to a few still frames; its sound track is not sent.
-
-## Permissions added in M1 (2026-11-09)
+### Added in M1 (2026-11-09)
 
 | Permission | Why | Risk / mitigation |
 |---|---|---|
@@ -80,6 +56,48 @@ Photos, video and audio files come from the system photo picker / document picke
 Native code (`capture/native`) parses no payloads; it reports only bounded prefixes (2 KB TCP per direction, DNS datagrams, first UDP datagram) to Kotlin, where parsers are size-limited and treat input as hostile.
 
 **Debug-only intent extra:** `WaydVpnService` honours `--es exclude <cidr,...>` to keep prefixes out of the tunnel, but only when the APK is debuggable (`FLAG_DEBUGGABLE`) and the service is not exported. Release builds ignore it.
+
+### Added with on-device AI (2026-11-09)
+
+| Permission | Why | Risk / mitigation |
+|---|---|---|
+| `FOREGROUND_SERVICE_DATA_SYNC` (+ `INTERNET`, already declared) | Keep a 2-4 GB model download alive while the app is in the background. | The download starts only when the user taps Download, goes only to the host the user chose, is SHA-256 verified and can be cancelled. No other AI-related network use. |
+
+The captured data is masked (identifiers replaced by type tokens), wrapped in inert `<data>` blocks and size-bounded before it reaches the model; model output is schema- and evidence-validated and can never change rules, blocks, consents or privileges.
+
+### Added with the Insights chat (2026-11-12, D-062)
+
+| Permission | Why | Risk / mitigation |
+|---|---|---|
+| `RECORD_AUDIO` | Push-to-talk voice questions in the Insights AI chat. | Requested only at the first microphone tap, never at start-up; denial leaves text and file attachments working. Recording runs only while the user holds it (tap to start/stop, 30 s cap), never in the background, and the 16 kHz clip stays in memory for that chat, never written to disk or the database. Clips (like photos and video frames) go only to the selected provider; an external send always shows the preview listing attachments, even when "Don't ask again" was set for text. Attachments are untrusted model input and are not WAYD evidence. |
+
+Photos, video and audio files come from the system photo picker / document picker, so no storage or media permission is added. Video is reduced to a few still frames; its sound track is not sent.
+
+## Local APK scanner (M5)
+
+APK scanning is user-started WorkManager work. It reads installed base/split APKs through PackageManager paths, never executes their code, never extracts ZIP paths to disk, and never reads privileged APK directories. Already-granted Shizuku access may run the fixed read-only current-user package inventory call in `Command.ListPackages`; no generic command execution or automatic permission prompt is added. Binary XML/DEX readers bound sizes, counts and offsets; malformed/unsupported input remains a coverage limitation. Facts and certificate metadata stay in the existing SQLCipher store. Possible endpoints retain hosts only, without embedded credentials, paths or query values. No package names, parser exceptions or APK data are logged. Signer subjects and static signatures are untrusted evidence, not verified identity or behavioral proof.
+
+WorkManager's merged `WAKE_LOCK` and `RECEIVE_BOOT_COMPLETED` permissions support OS scheduling and resumption of user-enqueued local scans; no automatic periodic scan or network destination is added. Its scheduler services use the library's system binding protections. Existing `QUERY_ALL_PACKAGES` permission is reused; a ROM may still restrict visibility.
+
+WAYD holds the most sensitive data on the phone. Treat WAYD itself as a high-value target.
+
+## M7 core controls · 2026-11-10
+
+No new permissions or network destinations. Rules require explicit per-app confirmation and a versioned ConsentRecord, bind to current Android user, package and installed signer fingerprints, and reject shared-UID/unknown identities. Legacy unbound rules stay inactive. Temporary controls live only in engine-session memory; permanent controls run only while WAYD VPN runs. Package changes revalidate bindings; removal and a global rules list provide reversal. Missing names/owners are disclosed coverage gaps, not successful policy decisions. Snapshot validation/activation is bounded and atomic; a required gate failure closes its flow. Old native ABI versions fail startup.
+
+Release logs must not contain target names, package identifiers or payloads. No response rewriting or imported grants exist in this slice. Future routing receives only permitted streams after WAYD policy; inspect [13-BLOCKING.md](13-BLOCKING.md) for pending acceptance cases. Capture manifest lint exceptions are scoped to the existing UID-attribution package permission and active-VPN foreground exemption; no exact-alarm permission is required for that VPN eligibility ([Android types](https://developer.android.com/develop/background-work/services/fgs/service-types#system-exempted)).
+
+## Block lists (D-064, D-065, 2026-11-14)
+
+| Risk | Mitigation |
+|---|---|
+| A list is hostile or broken input | Parsed as text only; only hostname rules are accepted, everything else is counted as skipped; hosts are normalised and validated in Kotlin and again in the engine; a malformed compiled file is rejected whole. Limits: 20 lists, 1,000,000 entries each, 32 MiB of text. |
+| A list blocks more than the user expects | Lists start disabled; enabling shows the scope (all covered apps, entry count) and records `ConsentRecord("blocklist-v1:<id>")`; switching off or deleting revokes it. Per-app rules win; history marks "Blocked by a block list". |
+| New network destination | Only an HTTPS address the user typed, fetched when they press Import or Update; no schedule, no bundled list, no redirect to a non-HTTPS URL. The request carries a fixed user agent and nothing about the device or its traffic. WAYD's own traffic is outside its VPN. |
+| Local DNS answers hide a failure or are abused | Only queries for listed names are answered (A → `0.0.0.0`, AAAA → `::`, other types empty); responses, non-standard opcodes and malformed or compressed questions are forwarded untouched; the answer is recorded with the DNS flow. |
+| False sense of coverage | Stated in the UI: connections whose hostname cannot be read still pass; apps using their own encrypted DNS skip the DNS stage. |
+
+No new permission. List names, hosts and counts are not logged in release builds.
 
 ## Planned optional routing threats
 
@@ -110,12 +128,6 @@ routing grants even if the encrypted profile is damaged and deletes its key.
 No automatic Direct fallback follows proxy failure. Unknown/unselected traffic
 continues Direct under the clearly disclosed initial scope. DNS and IPv6 need
 broader installed-VPN/leak acceptance before any protection claim.
-
-## M7 core controls · 2026-11-10
-
-No new permissions or network destinations. Rules require explicit per-app confirmation and a versioned ConsentRecord, bind to current Android user, package and installed signer fingerprints, and reject shared-UID/unknown identities. Legacy unbound rules stay inactive. Temporary controls live only in engine-session memory; permanent controls run only while WAYD VPN runs. Package changes revalidate bindings; removal and a global rules list provide reversal. Missing names/owners are disclosed coverage gaps, not successful policy decisions. Snapshot validation/activation is bounded and atomic; a required gate failure closes its flow. Old native ABI versions fail startup.
-
-Release logs must not contain target names, package identifiers or payloads. No response rewriting or imported grants exist in this slice. Future routing receives only permitted streams after WAYD policy; inspect [13-BLOCKING.md](13-BLOCKING.md) for pending acceptance cases. Capture manifest lint exceptions are scoped to the existing UID-attribution package permission and active-VPN foreground exemption; no exact-alarm permission is required for that VPN eligibility ([Android types](https://developer.android.com/develop/background-work/services/fgs/service-types#system-exempted)).
 
 ## Explicit extension resource downloads and shared GeoIP (2026-11-10)
 
