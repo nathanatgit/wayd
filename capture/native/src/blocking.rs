@@ -134,6 +134,15 @@ impl Blocking {
     pub fn close(&self, id: u64) { self.0.lock().unwrap().flows.remove(&id); }
     pub fn active(&self) -> bool { let s = self.0.lock().unwrap(); !s.policy.rules.is_empty() || !s.list.is_empty() }
 
+    /// DNS stage of the global lists: true when the queried name is listed for this flow's owner (usually the system resolver,
+    /// so app-scoped entries rarely apply here; the TCP hostname check still covers them).
+    pub fn dns_blocked(&self, id: u64, name: &str) -> bool {
+        let s = self.0.lock().unwrap();
+        if s.list.is_empty() { return false; }
+        let Some(host) = normalize_host(name) else { return false; };
+        s.list.blocks(&host, s.flows.get(&id).and_then(|m| m.owner.as_deref()))
+    }
+
     /// True when a global list is installed: every named TCP connection is then worth the bounded hostname wait.
     pub fn list_active(&self) -> bool { !self.0.lock().unwrap().list.is_empty() }
 

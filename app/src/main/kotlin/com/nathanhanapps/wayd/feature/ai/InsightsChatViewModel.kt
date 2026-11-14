@@ -138,7 +138,8 @@ class InsightsChatViewModel @Inject constructor(
 
     fun remove(key: Long) = attachments.update { list -> list.filterNot { it.key == key } }
 
-    fun send(window: String, text: String) {
+    fun send(window: String, text: String, scope: ChatScope? = null) {
+        val key = scope?.key ?: window
         if (busy.value) return
         if (recording.value) stopVoice()
         val picked = attachments.value
@@ -147,18 +148,20 @@ class InsightsChatViewModel @Inject constructor(
         var n = 0
         val media = picked.flatMap { a -> a.media.map { m -> AiMedia("u:${++n}", m.kind, m.mime, m.bytes, m.label) } }
         val id = System.nanoTime()
-        val history = messages.value.filter { it.window == window }.mapNotNull { m ->
+        val history = messages.value.filter { it.window == key }.mapNotNull { m ->
             (m.outcome as? ChatOutcome.Answered)?.let { ChatTurn(m.question, it.answer.answer) }
         }
-        messages.update { it + ChatMessage(id, window, text.trim(), picked.map { it.title }, null) }
+        messages.update { it + ChatMessage(id, key, text.trim(), picked.map { it.title }, null) }
         attachments.value = emptyList()
         notice.value = null
         busy.value = true
         job = viewModelScope.launch {
             val outcome = try {
-                val result = analysis.analyse(window)
-                val (items, notes) = withContext(Dispatchers.Default) { InsightsEvidence.build(result, window) { labels.label(it) } }
-                analyzer.ask(ChatRequest("Insights for window $window", evidence.uiLocale(), items, notes, text.trim(), history, media), gate::ask)
+                val (items, notes) = scope?.evidence?.invoke() ?: run {
+                    val result = analysis.analyse(window)
+                    withContext(Dispatchers.Default) { InsightsEvidence.build(result, window) { labels.label(it) } }
+                }
+                analyzer.ask(ChatRequest(scope?.subject ?: "Insights for window $window", evidence.uiLocale(), items, notes, text.trim(), history, media), gate::ask)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 messages.update { list -> list.filterNot { it.id == id } }
                 throw e
@@ -182,4 +185,32 @@ class InsightsChatViewModel @Inject constructor(
             if (c.moveToFirst()) c.getString(0) else null
         }
     }.getOrNull()?.take(60) ?: app.getString(R.string.chat_attachment)
+}
+
+/**
+ * A chat about one subject instead of the whole Insights window (for example one app). [key] separates its conversation from
+ * others; [evidence] is built when a question is sent, so it always reflects the current snapshot.
+ */
+class ChatScope(val key: String, val subject: String, val evidence: suspend () -> Pair<List<EvidenceItem>, List<String>>)
+
+/**
+ * One app's evidence for chat: the same rule-built host lines the whole-history check uses (role, traffic, related permissions and
+ * components, attention), the app's sensitive capabilities, and its rule findings. No payloads.
+ */
+fun com.nathanhanapps.wayd.feature.analysis.LabelContext.chatEvidence(): Pair<List<EvidenceItem>, List<String>> {
+    val named = hosts.filter { it.summary.host != null }
+    val lines = historyHosts()
+    val items = ArrayList<EvidenceItem>()
+    items += EvidenceItem("r:0", "app=$pkg destinations=${hosts.size} records=${flows.size} " +
+        com.nathanhanapps.wayd.core.model.Attention.entries.joinToString(" ") { a -> "${a.name.lowercase()}=${hosts.count { it.attention == a }}" } +
+        "; attention is computed by rules; not complete coverage")
+    val index = com.nathanhanapps.wayd.analysis.FactIndex(facts)
+    val sensitive = index.declared.keys.filter { it in com.nathanhanapps.wayd.analysis.LabelRelations.SENSITIVE }
+    if (sensitive.isNotEmpty()) items += EvidenceItem("p:0", "sensitive capabilities declared in the APK: ${sensitive.joinToString(",")}; declared is not granted or used")
+    lines.take(20).forEachIndexed { i, h ->
+        val a = named[i]
+        items += EvidenceItem("h:$i", h.line + " attention=${a.attention}" + if (a.suggestions.isNotEmpty()) " suggest=${a.suggestions.joinToString(",") { it.kind.name }}" else "")
+    }
+    findings.take(6).forEach { f -> items += EvidenceItem("x:${f.id}", "rule=${f.ruleId} severity=${f.severity} dataTypes=${f.dataTypes}; decided by rules") }
+    return items to emptyList()
 }

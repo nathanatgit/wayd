@@ -60,7 +60,7 @@ import com.nathanhanapps.wayd.ai.MediaKind
  */
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-fun InsightsChatCard(window: String, vm: InsightsChatViewModel = hiltViewModel()) {
+fun InsightsChatCard(window: String, scope: ChatScope? = null, title: String = stringResource(R.string.chat_title), vm: InsightsChatViewModel = hiltViewModel()) {
     val messages by vm.messages.collectAsStateWithLifecycle()
     val attachments by vm.attachments.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -76,10 +76,10 @@ fun InsightsChatCard(window: String, vm: InsightsChatViewModel = hiltViewModel()
     val pickAudio = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(vm::attachAudio) }
     val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> micDenied = !granted; if (granted) vm.startVoice() }
 
-    fun send(q: String) { vm.send(window, q); text = "" }
+    fun send(q: String) { vm.send(window, q, scope); text = "" }
 
-    AiAssistCard(stringResource(R.string.chat_title)) {
-        val shown = messages.filter { it.window == window }
+    AiAssistCard(title) {
+        val shown = messages.filter { it.window == (scope?.key ?: window) }
         if (shown.isEmpty()) Text(stringResource(R.string.chat_empty), style = MaterialTheme.typography.bodySmall)
         shown.forEach { m -> ChatExchange(m, busy && m.outcome == null, vm) { q -> send(q) } }
 

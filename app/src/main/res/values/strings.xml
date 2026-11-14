@@ -255,11 +255,7 @@ That content can include things other people sent you or that were sent about th
     <string name="apk_not_scanned">No static results yet. Scan this app to inspect its installed APKs. Hidden or unreadable packages may be unavailable.</string>
     <string name="apk_scanned_at">Static snapshot: %1$s</string>
     <string name="apk_signer_note">Signer subjects are self-asserted certificate text, not a verified company identity. Compare SHA-256 fingerprints to establish shared signing identity.</string>
-    <string name="apk_declared">Declared</string>
-    <string name="apk_used">Used</string>
-    <string name="apk_sent">Sent</string>
     <string name="apk_link_note">Declared: APK facts. Used: up to 100 distinct recorded AppOps. Sent: up to 200 recorded hostnames. Observations use retained history; these counts do not establish a permission-to-payload link.</string>
-    <string name="apk_observed_ops">Recorded operations: %1$s</string>
     <string name="apk_observed_hosts">Observed hosts: %1$s</string>
     <string name="apk_contacted">Exact host also appears in retained traffic</string>
     <string name="apk_permissions">Permissions (%1$d)</string>
@@ -289,14 +285,10 @@ That content can include things other people sent you or that were sent about th
     <string name="block_error">Could not activate this rule. Check the VPN, package identity or shared UID. Existing active policy is retained.</string>
     <string name="block_forever">Block forever</string>
     <string name="block_history">Connection history and blocking</string>
-    <string name="block_history_limit">%1$d matches in latest 200 connections; showing up to 30. Tap a connection to view its messages or block it.</string>
     <string name="block_inactive">Inactive / awaiting valid session or app identity</string>
     <string name="block_ip_warning">This address may serve several sites. Blocking it can affect other services used by this app.</string>
     <string name="block_outcome_blocked">Blocked by local policy</string>
     <string name="block_outcome_error">Closed: policy gate failed</string>
-    <string name="block_outcome_legacy">Historical record: no enforcement result</string>
-    <string name="block_outcome_passed">Passed local policy check</string>
-    <string name="block_outcome_unknown">Policy could not evaluate owner or hostname</string>
     <string name="block_persistent">Saved until removed</string>
     <string name="block_remove">Remove</string>
     <string name="block_removed">Rule removed. Other matching blocks may still apply.</string>
@@ -605,10 +597,6 @@ That content can include things other people sent you or that were sent about th
     <string name="history_messages">%1$d recorded messages</string>
     <string name="history_message_limit">Showing the first %1$d messages in this connection.</string>
     <string name="history_block">Block this destination</string>
-    <string name="history_related">%1$d nearby TCP records</string>
-    <string name="history_related_decrypted">A related record contains decrypted content</string>
-    <string name="history_related_note">Same app and endpoint, started within 30 seconds. Separate records; this does not establish a shared TCP session.</string>
-    <string name="history_tcp_record">TCP %1$d · %2$s</string>
     <string name="heatmap_title">Activity over 7 days</string>
     <string name="heatmap_less">Less</string>
     <string name="heatmap_more">More</string>
@@ -746,6 +734,7 @@ That content can include things other people sent you or that were sent about th
     <string name="ai_effort_high">High</string>
     <string name="ai_effort_note">External servers only. Low: compact prompt, no retry. Standard: one retry if an answer fails validation. High: full instructions and longer reasoning where the server supports it.</string>
     <string name="chat_title">Ask AI about these insights</string>
+    <string name="chat_title_app">Ask AI about this app</string>
     <string name="chat_empty">Ask what an app did, why something was flagged, or attach a screenshot, video or voice question. Answers cite this period\'s report.</string>
     <string name="chat_hint">Ask about this period…</string>
     <string name="chat_send">Send</string>

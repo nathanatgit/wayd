@@ -84,6 +84,47 @@ impl HostList {
     }
 }
 
+
+/// First question of a plain DNS query: (lower-case name, offset just past QTYPE/QCLASS). None for responses,
+/// non-standard opcodes, compressed or malformed names: those are forwarded untouched.
+pub fn dns_question(p: &[u8]) -> Option<(String, usize)> {
+    if p.len() < 17 || p[2] & 0x80 != 0 || (p[2] >> 3) & 0x0f != 0 || u16::from_be_bytes([p[4], p[5]]) != 1 { return None; }
+    let mut name = String::new();
+    let mut i = 12;
+    loop {
+        let len = *p.get(i)? as usize;
+        if len == 0 { i += 1; break; }
+        if len > 63 || name.len() + len + 1 > 254 { return None; }
+        let label = p.get(i + 1..i + 1 + len)?;
+        if !label.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'-' || *c == b'_') { return None; }
+        if !name.is_empty() { name.push('.'); }
+        name.extend(label.iter().map(|c| c.to_ascii_lowercase() as char));
+        i += 1 + len;
+    }
+    if name.is_empty() || p.len() < i + 4 { return None; }
+    Some((name, i + 4))
+}
+
+/// Local answer for a listed name: the unspecified address for A/AAAA (the app's connect fails at once, no retry
+/// storm against other resolvers), an empty NOERROR answer for every other type.
+pub fn dns_blocked_reply(query: &[u8], question_end: usize) -> Vec<u8> {
+    let qtype = u16::from_be_bytes([query[question_end - 4], query[question_end - 3]]);
+    let rdata: &[u8] = match qtype { 1 => &[0; 4], 28 => &[0; 16], _ => &[] };
+    let mut r = Vec::with_capacity(question_end + 28);
+    r.extend_from_slice(&query[..2]);
+    r.extend_from_slice(&[0x80 | (query[2] & 0x01), 0x80]); // QR, copy RD; RA, NOERROR
+    r.extend_from_slice(&[0, 1, 0, if rdata.is_empty() { 0 } else { 1 }, 0, 0, 0, 0]);
+    r.extend_from_slice(&query[12..question_end]);
+    if !rdata.is_empty() {
+        r.extend_from_slice(&[0xc0, 0x0c]);
+        r.extend_from_slice(&qtype.to_be_bytes());
+        r.extend_from_slice(&[0, 1, 0, 0, 0, 60]); // IN, TTL 60 s
+        r.extend_from_slice(&(rdata.len() as u16).to_be_bytes());
+        r.extend_from_slice(rdata);
+    }
+    r
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,6 +150,42 @@ mod tests {
         assert!(HostList::parse(".\tcom\n").is_none());
         assert!(HostList::parse("=\tx.test\textra\n").is_none());
         assert!(HostList::parse("").unwrap().is_empty());
+    }
+
+
+    fn query(name: &str, qtype: u16) -> Vec<u8> {
+        let mut q = vec![0x12, 0x34, 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0];
+        for l in name.split('.') { q.push(l.len() as u8); q.extend_from_slice(l.as_bytes()); }
+        q.push(0);
+        q.extend_from_slice(&qtype.to_be_bytes());
+        q.extend_from_slice(&[0, 1]);
+        q
+    }
+
+    #[test]
+    fn dns_question_and_local_answers() {
+        let q = query("Ads.Example.COM", 1);
+        let (name, end) = dns_question(&q).unwrap();
+        assert_eq!(name, "ads.example.com");
+        assert_eq!(end, q.len());
+        let a = dns_blocked_reply(&q, end);
+        assert_eq!(&a[..2], &q[..2]);
+        assert_eq!(a[2] & 0x80, 0x80);
+        assert_eq!(a[3] & 0x0f, 0);
+        assert_eq!(&a[4..8], &[0, 1, 0, 1]);
+        assert_eq!(&a[a.len() - 4..], &[0, 0, 0, 0]);
+        let q6 = query("ads.example.com", 28);
+        assert_eq!(dns_blocked_reply(&q6, q6.len()).len(), q6.len() + 12 + 16);
+        let https = query("ads.example.com", 65);
+        let r = dns_blocked_reply(&https, https.len());
+        assert_eq!(&r[4..8], &[0, 1, 0, 0]); // NODATA
+        assert_eq!(r.len(), https.len());
+        // Responses, truncated packets and compressed names are never answered locally.
+        let mut resp = q.clone(); resp[2] |= 0x80;
+        assert!(dns_question(&resp).is_none());
+        assert!(dns_question(&q[..q.len() - 3]).is_none());
+        let mut comp = q.clone(); comp[12] = 0xc0;
+        assert!(dns_question(&comp).is_none());
     }
 
     #[test]
