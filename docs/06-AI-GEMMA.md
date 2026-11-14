@@ -110,22 +110,43 @@ Question: {optional}
 
 Mask raw identifier values to their type tokens before prompting; the model needs "this is an Android ID", not the value.
 
-## APK and connection labels (D-061)
+## AI features beyond app analysis (D-061 to D-065)
 
-`LabelAnalyzer` is a separate per-item metadata interpreter, using the same selected engine, encrypted `AiAnalysis` table and external-send gate. It does not replace the analysis-result v1 schema above. `promptVersion=101` and `labels-v1|<package hash>|<a:id or f:id>|<locale>|<input hash>` isolate label results. The schema is included in the text prompt as well as constrained decoding for providers that fall back to ordinary JSON/text.
+All of them share the rules above: schema-validated output, evidence ids, masked and size-bounded input in inert `<data>` blocks, no payload bodies unless the user selected decrypted messages, and the model never sets severity, attention, blocks or consents. Every prompt starts with `AiIdentity`.
 
-Input contains at most 24 bounded metadata items: the exact target, selected APK facts, up to four related/recent flows, up to four AppOps buckets and up to two findings that cite the selected connection. Captured message bodies/headers/URLs are not included. APK strings are masked and neutralised in data blocks. This selection is not complete APK or capture coverage. AppOps buckets retain actual source/process context; persistent and foreground-service are not renamed foreground, and packet appForeground=false remains unknown.
+| Feature | Contract | Input | Output | Stored |
+|---|---|---|---|---|
+| Per-item label ("Ask AI about this item") | `LabelContract` v102 | one host or APK fact plus ranked context: rule-found relations, exact APK endpoint, same-time AppOps buckets, cited findings, related permissions/components/SDKs | role, short explanation, possible permission/feature links, blocking advice, reason | `AiAnalysis`, keyed by a digest of app + subject (`h:<host>` or the fact) |
+| Whole-history check | `HistoryContract` v201 | one rule-built line per host, in chunks | role, advice, note per host | `AiAnalysis`, one row per run |
+| Chat (Insights, app page) | `ChatContract` | report rows or the app's host lines, rule findings, last 2–3 turns, user attachments | answer ≤ 1200 chars, cited ids, attachment notes, ≤ 3 follow-ups | not stored |
 
-Output: `label_schema=1`, exact `target_id`, controlled `role`, short `explanation`, `permission_refs`, `feature_refs`, corresponding human-readable `feature_labels`, `evidence_ids`, controlled `advice`, and `reason`. Roles: FUNCTIONAL, LOGIN, LOCATION, PUSH, ANALYTICS, DIAGNOSTICS, ADS, MEDIA, UPDATE, CARRIER, SYSTEM, UNKNOWN. Advice: TRY_TEMPORARY, MAY_AFFECT_FUNCTION, INSUFFICIENT. At most four IDs per relationship/citation list; citations must include the target and every linked fact. Permission/component explanations cannot masquerade as connection roles. Unsupported hostname/attribution/byte evidence prevents positive domain-block advice. Every generated marker has an `AI:` prefix, and all links are hypotheses.
+Rules that matter when changing them:
 
-One validation repair is allowed. Invalid answers are not stored. The app attaches its own bounded input snapshot to saved JSON; loading checks package/target/locale, validation version and typed references. Detail views also require referenced rows still to be retained, so removed/rescanned APK evidence does not silently keep a link. Saved model/time provenance remains visible. Model/provider changes during approval/repair fail closed. Suggestions never provide a policy target; block controls derive their exact target from the original Flow and use the existing scope/consent confirmation and Undo. No automatic inference, new destination or permission is introduced.
+- **Labels:** links are possible associations, never proof. The target and links are cited by the validator; `evidence_ids` holds extra supports. Advice other than INSUFFICIENT needs a connection target with domain-block evidence. Saved answers are shown for every record of the host; APK references are revalidated against current facts (a rescan hides stale links); advice is lowered to INSUFFICIENT when a block is no longer possible.
+- **History check:** up to 60 hosts, most attention first; a failed chunk is skipped, not fatal; lines marked `noblock` can only get INSUFFICIENT.
+- **Chat:** attachments are the user's media, not WAYD evidence, and are untrusted. Images go as JPEG ≤ 768 px, video as ≤ 3 still frames (no sound), audio as 16 kHz mono WAV ≤ 30 s. LiteRT-LM receives `Content.ImageBytes` / `Content.AudioBytes` after the text and reloads once with vision (GPU, else CPU) and audio (CPU) backends; a model without them is reported as unable to take that media. External servers receive OpenAI-compatible `image_url` and `input_audio` parts.
 
-## Optional external provider previews (D-046, D-055)
+## Context budgets and depth
 
-The external provider remains off by default, with recorded consent for the chosen server origin. User-started analysis shows its destination, model, decrypted-content warning and an optional exact masked-text preview. The initially unchecked Don't ask again checkbox takes effect only when Send is pressed. It records a revocable ConsentRecord for the full server URL and model and discloses that later selected decrypted content may also be sent without preview. Changing the URL/model or withdrawing server consent restores previews. Settings → Re-enable all warnings resets these optional preview choices, leaving configuration, credentials and other feature consents intact. The analyzer's default approver still refuses all external sends; model output remains schema-validated and cannot decide severity or actions.
+The local engine window is 8K tokens for prompt plus answer (`LiteRtEngine.MAX_TOKENS`). Requests are sized well below it.
 
-## Context budgets, depth setting and chat (D-062)
+| Size | Default for | Label items | Analysis items | History hosts per chunk | Images per chat question |
+|---|---|---|---|---|---|
+| Small | Gemma E2B, unknown local models | 10 × 220 chars | 10 × 320 chars | 8 | 2 |
+| Medium | Gemma E4B | 14 × 300 chars | 16 × 520 chars | 14 | 4 |
+| Large | external servers | 24 × 700 chars | 24 × 900 chars | 40 | 6 |
 
-Every request fits a per-provider budget from Settings → AI → Analysis depth (on-device and external are stored separately). AUTO picks Small for E2B and unknown local models, Medium for E4B and Large for external servers. Labels: 10×220 / 14×300 / 24×700 chars (2.2K / 3.8K / 12K total); app analysis: 10×320 / 16×520 / 24×900; chat attachments: 2 / 4 / 6 images and one ≤ 30 s audio clip. Evidence is priority-ordered and trimmed from the tail; the target is always kept and the saved input is exactly what was sent. Effort Low uses the compact prompt without a repair retry; Standard uses the compact prompt on Small/Medium and one repair; High uses the full prompt and, for external servers, `reasoning_effort: "medium"`. The local engine's 8K window (prompt + answer) is unchanged.
+- Evidence is priority-ordered and trimmed from the tail; the target is always kept; the saved input is exactly what was sent.
+- **On-device** (Settings → AI): Auto / Small / Medium only, always the compact prompts, always one repair retry. No effort control and no Large.
+- **External:** Auto (Large) / Small / Medium / Large, plus effort. Low: compact prompt, no repair. Standard: compact on Small/Medium, one repair. High: full prompt, one repair, `reasoning_effort: "medium"` instead of `"none"`.
 
-All prompts start with `AiIdentity` (one identity for app analysis, labels and chat). The Insights chat (`ChatContract`, schema `chat_schema: 1`) answers from the window's report rows and rule findings and must cite their ids; history (last 2–3 turns) and user attachments are untrusted inputs. Media reach LiteRT-LM as `Content.ImageBytes` / `Content.AudioBytes` after the text; the engine reloads once with vision (GPU, else CPU) and audio (CPU) backends and keeps that engine. A model without those sections fails closed as unsupported media. External servers receive OpenAI-compatible `image_url` data URLs and `input_audio` WAV parts. Video is sampled into still frames; no raw video or video sound is sent.
+## External provider (D-046, D-055, D-063)
+
+- Off by default. The user chooses the server; each server origin needs its own recorded acknowledgement.
+- Each user-started request shows destination, model, a decrypted-content warning and an optional exact masked-text preview. "Don't ask again" is recorded per server address and model, takes effect only on Send, and is reset by any address/model change or by Settings → Re-enable all warnings. A request with attachments always shows the preview and lists them.
+- Up to 12 saved profiles (server, model, Keystore-encrypted key). Switching keeps each origin's acknowledgement and resets the preview choice.
+- The analyzers' default approver refuses every external send; model or provider changes during approval or repair fail closed.
+
+## Measuring answer quality
+
+`HistoryEvalTest` (opt-in: `WAYD_OLLAMA_URL`, `WAYD_OLLAMA_MODEL`, optional `WAYD_EXTERNAL_KEY`, `WAYD_EVAL_SIZE`) sends synthetic hosts through the compact history prompt and prints role and advice scores. Use it to compare prompt changes and models; it has not yet been run against Gemma.

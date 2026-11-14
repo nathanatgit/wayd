@@ -46,3 +46,8 @@ Not done yet: no router capture has been supplied, and the test Wi-Fi had no IPv
 
 - Macrobenchmark: report open time, app list scroll.
 - Throughput: iperf3 over the tunnel; CPU and battery for 1 h idle + 1 h streaming. No battery claim has been measured yet.
+
+## AI contract tests and the opt-in quality check (D-062 to D-065)
+
+- `LabelContractTest`, `ChatContractTest`, `HistoryCheckTest` (`ai/`), `LabelRulesTest`, `LabelRelationsTest` (`analysis/`), `AdblockParserTest` (`capture/`) and the Rust `hostlist` tests run in the normal `test` / `cargo test --lib` tasks with fake engines; they cover validation, budgets, chunking, restore and list matching, not answer quality.
+- `HistoryEvalTest` is skipped unless `WAYD_OLLAMA_URL` and `WAYD_OLLAMA_MODEL` are set (optional `WAYD_EXTERNAL_KEY`, `WAYD_EVAL_SIZE=SMALL|MEDIUM|LARGE`). It sends synthetic hosts through the compact history prompt and prints `EVAL … role=x/8 advice=y/8`; below 60% it fails. Run it with Gemma served locally before and after a prompt change.

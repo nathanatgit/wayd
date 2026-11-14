@@ -4,6 +4,8 @@ Status: **core blocking and history controls implemented locally, 2026-11-10; de
 
 ## Current implementation
 
+**Scope of this file:** per-app rules (app, exact host, exact IP), their consent, history actions and transfer. Global Adblock/hosts **block lists**, their DNS stage, the planned **rewrite rules** and rule exchange are in [16-RULE-SETS-AND-REWRITE.md](16-RULE-SETS-AND-REWRITE.md) (D-064, D-065). Per-app rules always win over lists.
+
 Sample blocking, future local replies/replacement and field-specific regex: [Rule examples / 规则示例](15-RULE-EXAMPLES.md). Typed exact blocking and reviewed persistent-definition transfer are executable; examples do not add regex or response support. Session rule lifetime follows the WAYD VPN engine, not the independent Home recording toggle.
 
 - [BlockingRules](../capture/src/main/kotlin/com/nathanhanapps/wayd/capture/BlockingRules.kt) owns durable and memory-only session rules, explicit per-app ConsentRecords, current-user/package/signer binding, activation acknowledgment and removal. Shared UIDs, missing identity and legacy unbound records remain inactive. Rules added while VPN is off are saved but inactive.
