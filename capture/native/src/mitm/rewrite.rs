@@ -29,9 +29,10 @@ pub struct Rule {
     host: String,
     /// Upper-case method, or empty for any.
     method: String,
-    /// PREFIX, EXACT or CONTAINS against the request target (path and query).
+    /// PREFIX, EXACT or CONTAINS against the request target (path and query), or REGEX against `https://host` + target.
     kind: String,
     pattern: String,
+    regex: Option<regex::Regex>,
     action: Action,
 }
 
@@ -43,10 +44,11 @@ impl Rule {
         }
     }
 
-    fn matches(&self, method: &str, target: &str) -> bool {
+    fn matches(&self, method: &str, target: &str, host: &str) -> bool {
         (self.method.is_empty() || self.method.eq_ignore_ascii_case(method)) && match self.kind.as_str() {
             "EXACT" => target == self.pattern,
             "CONTAINS" => target.contains(&self.pattern),
+            "REGEX" => self.regex.as_ref().is_some_and(|r| r.is_match(&format!("https://{host}{target}"))),
             _ => target.starts_with(&self.pattern),
         }
     }
@@ -69,7 +71,11 @@ impl RewriteSet {
             let id: i64 = f[0].parse().ok()?;
             let host = f[2].strip_prefix('.').unwrap_or(f[2]);
             if !crate::blocking::valid_owner(f[1]) || crate::blocking::normalize_host(host).as_deref() != Some(host) { return None; }
-            if !matches!(f[4], "PREFIX" | "EXACT" | "CONTAINS") || f[5].is_empty() || f[5].len() > 2048 { return None; }
+            if !matches!(f[4], "PREFIX" | "EXACT" | "CONTAINS" | "REGEX") || f[5].is_empty() || f[5].len() > 2048 { return None; }
+            // A pattern the engine cannot compile (look-around, back-references, too large) disables that one rule, not the whole set.
+            let regex = if f[4] == "REGEX" {
+                match regex::RegexBuilder::new(f[5]).size_limit(1 << 20).build() { Ok(r) => Some(r), Err(_) => continue }
+            } else { None };
             let token = |s: &str| !s.is_empty() && s.len() <= 128 && s.bytes().all(|c| c.is_ascii_alphanumeric() || b"-_.".contains(&c));
             let action = match f[6] {
                 "REJECT" if matches!(f[7], "204" | "200-empty" | "200-json") => Action::Reject(f[7].into()),
@@ -88,7 +94,7 @@ impl RewriteSet {
                 }
                 _ => return None,
             };
-            rules.push(Rule { id, owner: f[1].into(), host: f[2].into(), method: f[3].to_ascii_uppercase(), kind: f[4].into(), pattern: f[5].into(), action });
+            rules.push(Rule { id, owner: f[1].into(), host: f[2].into(), method: f[3].to_ascii_uppercase(), kind: f[4].into(), pattern: f[5].into(), regex, action });
         }
         Some(Self { rules, hits: Mutex::new(HashMap::new()) })
     }
@@ -98,7 +104,7 @@ impl RewriteSet {
     /// The stage for one decrypted flow, or None when no rule names this app and host (the common case).
     pub fn stage(&self, owner: &str, host: &str) -> Option<ReqStage> {
         let rules: Vec<Rule> = self.rules.iter().filter(|r| r.owner == owner && r.host_matches(host)).cloned().collect();
-        (!rules.is_empty()).then(|| ReqStage { rules, state: St::Head, buf: Vec::new() })
+        (!rules.is_empty()).then(|| ReqStage { rules, state: St::Head, buf: Vec::new(), host: host.to_string() })
     }
 
     pub fn hit(&self, ids: &[i64]) {
@@ -128,7 +134,7 @@ pub struct Out {
     pub hits: Vec<i64>,
 }
 
-pub struct ReqStage { rules: Vec<Rule>, state: St, buf: Vec<u8> }
+pub struct ReqStage { rules: Vec<Rule>, state: St, buf: Vec<u8>, host: String }
 
 impl ReqStage {
     pub fn feed(&mut self, mut data: &[u8]) -> Out {
@@ -190,7 +196,7 @@ impl ReqStage {
             if h.name.eq_ignore_ascii_case("content-length") { length = v.trim().parse().ok(); }
             if h.name.eq_ignore_ascii_case("upgrade") { upgrade = true; }
         }
-        let matched: Vec<&Rule> = self.rules.iter().filter(|r| r.matches(method, target)).collect();
+        let matched: Vec<&Rule> = self.rules.iter().filter(|r| r.matches(method, target, &self.host)).collect();
         let head_request = method.eq_ignore_ascii_case("HEAD");
         // The first local-answer rule (reject or redirect) decides; the request and its body then never reach the server.
         let reject = matched.iter().find_map(|r| match &r.action {
@@ -317,7 +323,7 @@ mod tests {
         assert!(s.stage(OWNER, "api.example.com").is_some() && s.stage(OWNER, "example.com").is_some());
         assert!(s.stage(OWNER, "notexample.com").is_none() && s.stage("0:com.other", "api.example.com").is_none());
         for bad in ["1\tbad owner\tx.com\t\tPREFIX\t/\tREJECT\t204", "1\t0:a.b\tX.com\t\tPREFIX\t/\tREJECT\t204",
-            "1\t0:a.b\tx.com\t\tREGEX\t/\tREJECT\t204", "1\t0:a.b\tx.com\t\tPREFIX\t/\tREJECT\t500",
+            "1\t0:a.b\tx.com\t\tGLOB\t/\tREJECT\t204", "1\t0:a.b\tx.com\t\tPREFIX\t/\tREJECT\t500",
             "1\t0:a.b\tx.com\t\tPREFIX\t/\tHEADER_SET\tX-A: a\rb", "1\t0:a.b\tx.com\t\tPREFIX\t/\tHEADER_REMOVE\tbad name"] {
             assert!(RewriteSet::parse(&format!("WAYDRW1\n{bad}\n")).is_none(), "{bad}");
         }
@@ -375,6 +381,24 @@ mod tests {
         for bad in ["301 https://a.example/x", "302 ftp://a.example/x", "302 https://a.example/x y", "302"] {
             assert!(RewriteSet::parse(&format!("WAYDRW1\n4\t0:a.b\tx.com\t\tPREFIX\t/\tREDIRECT\t{bad}\n")).is_none(), "{bad}");
         }
+    }
+
+    #[test]
+    fn regex_matches_the_full_url_and_a_bad_pattern_only_disables_its_rule() {
+        let s = set(&[
+            "5\t0:com.example.app\t.example.com\t\tREGEX\t^https?://api\\.example\\.com/v\\d+/(ads|track)\\b\tREJECT\t204",
+            "6\t0:com.example.app\t.example.com\t\tREGEX\t(?=lookahead)\tREJECT\t204",
+            "7\t0:com.example.app\t.example.com\t\tPREFIX\t/keep\tHEADER_REMOVE\tX-Id",
+        ]);
+        let mut st = s.stage(OWNER, "api.example.com").unwrap();
+        assert_eq!(st.feed(b"GET /v2/ads?x=1 HTTP/1.1\r\nHost: api.example.com\r\n\r\n").hits, vec![5]);
+        let pass = st.feed(b"GET /v2/adsense HTTP/1.1\r\nHost: api.example.com\r\n\r\n");
+        assert!(pass.local.is_empty() && pass.forwarded == 1);
+        // Rule 6 could not compile and is gone; rule 7 still works.
+        assert_eq!(st.feed(b"GET /keep HTTP/1.1\r\nX-Id: 1\r\n\r\n").hits, vec![7]);
+        // Same pattern, other host: the URL is built from the flow's host, so it does not match.
+        let mut other = s.stage(OWNER, "cdn.example.com").unwrap();
+        assert!(other.feed(b"GET /v2/ads HTTP/1.1\r\n\r\n").local.is_empty());
     }
 
     #[test]

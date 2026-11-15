@@ -21,7 +21,7 @@ import org.json.JSONObject
  * decrypts for that app with the existing decryption consent; a rule cannot switch decryption on.
  *
  * [action]: `REJECT` ([arg] `204`, `200-empty`, `200-json`), `HEADER_REMOVE` (header name), `HEADER_SET` (`Name: value`),
- * `QUERY_REMOVE` (parameter name), `REDIRECT` (`302 <url>` or `307 <url>`). [match]: `PREFIX`, `EXACT` or `CONTAINS` against the request path and query.
+ * `QUERY_REMOVE` (parameter name), `REDIRECT` (`302 <url>` or `307 <url>`). [match]: `PREFIX`, `EXACT` or `CONTAINS` against the request path and query, or `REGEX` against the full URL (`https://host/path?query`).
  */
 data class RewriteRule(
     val id: Long,
@@ -41,7 +41,7 @@ data class RewriteRule(
         val token = Regex("[A-Za-z0-9_.-]{1,128}")
         val text = { s: String -> s.none { it == '\t' || it == '\n' || it == '\r' } }
         return BlockTargets.packageName(pkg) && BlockTargets.host(host) == host && '.' in host &&
-            (method.isEmpty() || method.matches(Regex("[A-Za-z]{1,16}"))) && match in setOf("PREFIX", "EXACT", "CONTAINS") &&
+            (method.isEmpty() || method.matches(Regex("[A-Za-z]{1,16}"))) && match in setOf("PREFIX", "EXACT", "CONTAINS", "REGEX") && (match != "REGEX" || engineRegex(pattern)) &&
             pattern.isNotEmpty() && pattern.length <= 2048 && text(pattern) && when (action) {
                 "REJECT" -> arg in setOf("204", "200-empty", "200-json")
                 "HEADER_REMOVE", "QUERY_REMOVE" -> token.matches(arg)
@@ -112,3 +112,10 @@ class RewriteStore @Inject constructor(@ApplicationContext context: Context, pri
         const val STATEMENT = 1
     }
 }
+
+/**
+ * Best-effort check that the engine's linear-time regex library will accept a pattern: it must compile here and use no
+ * look-around or back-references. The engine has the final word and disables only that rule if it disagrees.
+ */
+internal fun engineRegex(pattern: String): Boolean =
+    runCatching { Regex(pattern) }.isSuccess && listOf("(?=", "(?!", "(?<=", "(?<!").none { it in pattern } && !Regex("""\[1-9]""").containsMatchIn(pattern)

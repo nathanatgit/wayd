@@ -858,6 +858,8 @@
     <string name="rw_match_prefix">开头匹配</string>
     <string name="rw_match_exact">完全匹配</string>
     <string name="rw_match_contains">包含</string>
+    <string name="rw_match_regex">正则</string>
+    <string name="rw_pattern_regex">匹配完整网址的正则（不支持环视和反向引用）</string>
     <string name="rw_action_reject">本地应答</string>
     <string name="rw_action_header_remove">移除请求头</string>
     <string name="rw_action_header_set">设置请求头</string>

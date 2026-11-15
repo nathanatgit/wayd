@@ -12,7 +12,7 @@ Design: [16-RULE-SETS-AND-REWRITE.md](../16-RULE-SETS-AND-REWRITE.md). Built so 
 
 ## Decisions needed from Nat
 
-1. **Regex matching:** add the Rust `regex` crate (linear-time) for URL patterns? Needed for rewrite import from rule plugins. Without it, matching stays prefix / exact / contains.
+1. ~~Regex matching~~ — approved and built (D-069): match kind `REGEX` on the full URL.
 2. **Compression:** add a gzip crate (`flate2`) for body edits? Without it, body rules only apply to uncompressed bodies.
 3. **Storage:** rules are a JSON file under no-backup storage. Move to a Room table (migration, schema v6) only if rules need to join with history.
 
@@ -25,7 +25,7 @@ Design: [16-RULE-SETS-AND-REWRITE.md](../16-RULE-SETS-AND-REWRITE.md). Built so 
 
 ## Rule exchange (P2)
 
-- Import: rule-plugin `DOMAIN` / `DOMAIN-SUFFIX` lines already load as block-list entries (D-067). Rewrite lines need regex matching first. Check the keyword list against the format's documentation before writing the importer.
+- Import: rule-plugin `DOMAIN` / `DOMAIN-SUFFIX` lines already load as block-list entries (D-067). Regex matching exists (D-069), so `[Rewrite]` reject / redirect lines can be imported next: the importer must ask which app the group applies to and take the host from `[MITM]` or the pattern. Check the keyword list against the format's documentation before writing the importer.
 - Export: per-app exact-host blocks and enabled lists as `DOMAIN` / `DOMAIN-SUFFIX` lines; rewrite rules once the formats line up. APP and IP rules stay in WAYD's JSON export.
 - Include block lists (metadata only) and rewrite rules in the existing reviewed JSON backup/import.
 

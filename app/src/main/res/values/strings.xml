@@ -858,6 +858,8 @@ That content can include things other people sent you or that were sent about th
     <string name="rw_match_prefix">Starts with</string>
     <string name="rw_match_exact">Exact</string>
     <string name="rw_match_contains">Contains</string>
+    <string name="rw_match_regex">Regex</string>
+    <string name="rw_pattern_regex">Regex on the full URL (no look-around or back-references)</string>
     <string name="rw_action_reject">Answer locally</string>
     <string name="rw_action_header_remove">Remove header</string>
     <string name="rw_action_header_set">Set header</string>

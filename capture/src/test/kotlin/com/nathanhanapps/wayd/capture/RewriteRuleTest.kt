@@ -17,11 +17,16 @@ class RewriteRuleTest {
     @Test fun rejectsWhatTheEngineWouldReject() {
         for (bad in listOf(
             base.copy(pkg = "not a package"), base.copy(host = "Api.Example.com"), base.copy(host = "localhost"), base.copy(host = "1.2.3.4"),
-            base.copy(method = "GE T"), base.copy(match = "REGEX"), base.copy(pattern = ""), base.copy(pattern = "/a\tb"),
+            base.copy(method = "GE T"), base.copy(match = "GLOB"), base.copy(pattern = ""), base.copy(pattern = "/a\tb"),
             base.copy(arg = "500"), base.copy(action = "HEADER_REMOVE", arg = "bad name"), base.copy(action = "HEADER_SET", arg = "NoColon"),
             base.copy(action = "HEADER_SET", arg = "X-A: a\rb"), base.copy(action = "SCRIPT", arg = "x"),
         )) assertFalse(bad.toString(), bad.valid())
         assertTrue(base.copy(action = "HEADER_SET", arg = "User-Agent: generic client").valid())
         assertTrue(base.copy(action = "QUERY_REMOVE", arg = "idfa", method = "").valid())
+        assertTrue(base.copy(action = "REDIRECT", arg = "307 https://example.com/x").valid())
+        assertFalse(base.copy(action = "REDIRECT", arg = "301 https://example.com/x").valid())
+        assertTrue(base.copy(match = "REGEX", pattern = "^https?://api[.]example[.]com/v[0-9]+/ads").valid())
+        assertFalse(base.copy(match = "REGEX", pattern = "(?=x)y").valid())
+        assertFalse(base.copy(match = "REGEX", pattern = "(unclosed").valid())
     }
 }

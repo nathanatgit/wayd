@@ -9,13 +9,13 @@ Priorities: **P0** blocks trust in what is already shipped or built · **P1** ne
 | # | Task | Detail |
 |---|---|---|
 | 1 | Device pass for everything since D-061 (labels, history check, chat, depth, profiles, block lists, DNS stage, rewrite rules, inferred names). Nothing after v0.4.0 has been checked on a phone, and v0.5.0 is already released. | [todo/device-pass.md](todo/device-pass.md) |
-| 2 | Push and merge `feat/dns-list-blocking` (D-065 to D-068) once the device pass is clean, then decide the next version. | [todo/device-pass.md](todo/device-pass.md) |
+| 2 | Push and merge `feat/dns-list-blocking` (D-065 to D-069) once the device pass is clean, then decide the next version. | [todo/device-pass.md](todo/device-pass.md) |
 
 ## P1 — next
 
 | # | Task | Detail |
 |---|---|---|
-| 3 | Rewrite phase 2: response header edits, JSON body edits; decide on a regex dependency; show the rewritten request in the inspector; "add rule from this request". | [todo/rewrite-next.md](todo/rewrite-next.md) |
+| 3 | Rewrite phase 2: response header edits, JSON body edits (gzip decision open); import `[Rewrite]` lines from rule plugins; show the rewritten request in the inspector; "add rule from this request". | [todo/rewrite-next.md](todo/rewrite-next.md) |
 | 4 | Measure hostname coverage after D-067; then QUIC Initial SNI, DNS over TCP, session-scoped coverage numbers. | [todo/hostname-coverage.md](todo/hostname-coverage.md) |
 | 5 | AI quality: run `HistoryEvalTest` on Gemma E2B/E4B, add the same kind of score for labels and chat, injection tests on the real model. | [todo/ai-quality.md](todo/ai-quality.md) |
 

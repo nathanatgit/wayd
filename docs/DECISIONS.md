@@ -316,3 +316,13 @@ Nat asked to implement the alter feature. Scope kept to the request side so noth
 - **Block lists:** the engine counts connections blocked by a list and DNS names answered locally per VPN run (`nativeListStats`); Controls → Block lists shows both.
 - **Housekeeping:** `.gitattributes` stores and checks out text with LF (ends the CRLF warnings on Windows); AGENTS.md names JUnit 4, which the suites actually use; CI runs the Rust tests with and without the decryption feature.
 - No schema, permission or dependency change. Policy ABI stays 4.
+
+**D-069 · 2026-11-15 · regex library for rewrite URL patterns (Nat)**
+
+Nat approved adding a regex library to the engine.
+
+- **Dependency:** Rust `regex` `=1.13.1`, only under the `mitm` feature, `default-features = false` with `std` and `unicode-perl`. It is a finite-automaton engine: matching time is linear in the input, so a pattern cannot stall a connection; look-around and back-references are not supported by design.
+- **Rule match kind `REGEX`:** the pattern is matched against `https://<flow host><path?query>`. It is compiled once when rules are installed, with a 1 MiB compiled-size limit and a 2,048-character pattern limit. A pattern the engine cannot compile disables only that rule; the other rules stay installed.
+- The rule's app and host are still required and still decide whether a flow enters the rewrite stage at all, so a regex never runs on flows of other hosts.
+- Kotlin pre-checks a pattern (compiles, no look-around or back-reference) before saving; the engine has the final word.
+- Opens the way to importing `[Rewrite]` lines from rule plugins (not built: imported rules still need an app and a host).

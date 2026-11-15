@@ -142,12 +142,12 @@ private fun AddRewriteDialog(onDismiss: () -> Unit, onAdd: (String, String, Bool
                 OutlinedTextField(host, { host = it.take(253) }, label = { Text(stringResource(R.string.rw_host)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip(subdomains, { subdomains = !subdomains }, { Text(stringResource(R.string.rw_subdomains)) })
-                    listOf("PREFIX" to R.string.rw_match_prefix, "EXACT" to R.string.rw_match_exact, "CONTAINS" to R.string.rw_match_contains).forEach { (k, label) ->
+                    listOf("PREFIX" to R.string.rw_match_prefix, "EXACT" to R.string.rw_match_exact, "CONTAINS" to R.string.rw_match_contains, "REGEX" to R.string.rw_match_regex).forEach { (k, label) ->
                         FilterChip(match == k, { match = k }, { Text(stringResource(label)) })
                     }
                 }
                 OutlinedTextField(method, { method = it.take(16) }, label = { Text(stringResource(R.string.rw_method)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(pattern, { pattern = it.take(2048) }, label = { Text(stringResource(R.string.rw_pattern)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(pattern, { pattern = it.take(2048) }, label = { Text(stringResource(if (match == "REGEX") R.string.rw_pattern_regex else R.string.rw_pattern)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("REJECT" to R.string.rw_action_reject, "HEADER_REMOVE" to R.string.rw_action_header_remove, "HEADER_SET" to R.string.rw_action_header_set,
                         "QUERY_REMOVE" to R.string.rw_action_query_remove, "REDIRECT" to R.string.rw_action_redirect).forEach { (k, label) ->

@@ -69,7 +69,7 @@ Per app, on decrypted HTTP/1.1 only (the engine already forces HTTP/1.1 on decry
 | `BODY_JSON_SET` / `BODY_JSON_REMOVE` | edit JSON fields by pointer | 2 |
 | `BODY_REPLACE` (literal or bounded regex) | text bodies ≤ 1 MiB with a time budget | 3 |
 
-- **Matching today (phase 1):** app + host (exact or with subdomains) + optional method + path/query prefix, exact or contains; no regex dependency yet.
+- **Matching today:** app + host (exact or with subdomains) + optional method + path/query prefix, exact or contains, or a regex on the full URL (D-069, linear-time `regex` crate).
 - **Matching planned:** a URL regex compiled once (Rust `regex`, linear time), behind a hostname prefilter so flows without a rule stay on the byte-for-byte pass-through.
 - **Engine work:** an active HTTP/1.1 stage that holds the head (and the body, for body actions), re-serialises with correct `Content-Length` / chunking, and decodes gzip before body edits.
 - **Evidence:** the inspector keeps the original and the rewritten message; each rule has a hit counter and Undo.
