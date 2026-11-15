@@ -1,6 +1,6 @@
 # Handoff
 
-_Last updated: 2026-11-15 · **v0.5.0** released from `main` (versionCode 8) · decisions through D-070._
+_Last updated: 2026-11-15 · **v0.5.0** released; `main` carries D-065 to D-070 + UI revision, untagged · decisions through D-070._
 
 WAYD (在干嘛, `com.nathanhanapps.wayd`) is a local-only Android privacy monitor. A `VpnService` forwards traffic and applies local blocks; optional recording keeps evidence on the phone; consent-gated decryption reads supported HTTPS; rules produce findings; on-device Gemma (or an approved external OpenAI-compatible server) explains them.
 
@@ -8,28 +8,38 @@ Read [AGENTS.md](../AGENTS.md) first, then this file, then the doc for the modul
 
 ## Now
 
-_Handed off 2026-11-15, 12:20._
+_Handed off 2026-11-15, evening._
 
 | | State |
 |---|---|
 | Released | **v0.5.0** (2026-11-14): D-060 to D-064. Release workflow and CI pass. |
-| Unreleased | Branch `feat/dns-list-blocking`, **local only, not pushed**, 13 commits ahead of `main`: D-065 DNS-stage block lists, app chat, eval test · D-066 rewrite rules (request side) · D-067 inferred hostnames, rule-plugin list import · D-068 redirect, list counters, `.gitattributes` · D-069 regex matching (new Rust `regex` dependency) · D-070 rewrite import from rule plugins · `tools/rwprobe` test app · docs and [TODO.md](TODO.md). The last commit is the D-070 work plus this handoff. |
-| On the phone | NX733J `320146880841`: clash debug with **everything through D-070** installed over `com.nathanhanapps.wayd.d049` on 2026-11-15 12:14, data kept (version still reads 0.5.0). Probe `com.nathanhanapps.wayd.rwprobe` installed. `Download/wayd-probe-rules.plugin` pushed for import. |
-| Last validation | `cargo test --lib --features mitm` 37 passed; full Gradle build with native rebuild (`test`, both debug assemblies, both lints) passes: `build/d070-validation.log`. |
-| Device evidence so far | One probe **baseline** run (2026-11-15, FlClash owned the VPN, no WAYD rules): 15 requests returned 200, no FAIL, every rule check "no". **No WAYD feature since v0.4.0 has been exercised on the phone.** |
+| Unreleased, merged to `main` | Everything from branch `feat/dns-list-blocking` (pushed and merged `--no-ff` on 2026-11-15, **not tagged**; versionCode still 8): D-065 DNS-stage block lists, app chat, eval test · D-066 rewrite rules (request side) · D-067 inferred hostnames, rule-plugin list import · D-068 redirect, list counters, `.gitattributes` · D-069 regex matching (Rust `regex`) · D-070 rewrite import from rule plugins · `tools/rwprobe` · **Quick Settings tile** · **UI revision** (below). |
+| On the phone | NX733J `320146880841`: clash debug through D-070 over `com.nathanhanapps.wayd.d049` (12:14). **The tile and the UI revision are not installed yet.** Probe installed. `Download/WAYD/wayd-probe-rules.plugin` and `Download/WAYD/wayd-probe-blocklist.txt` (`||example.org^`) pushed for import. |
+| Last validation | `./gradlew test :app:assembleCoreDebug :app:assembleClashDebug :app:lintCoreDebug -PskipNative` passes (`build/ui-revise.log`); `RewritePluginParserTest.probePluginFileImportsAllSixRules` proves the probe plugin parses to 6 rules. |
+| Device evidence so far | One probe **baseline** run (FlClash owned the VPN, no WAYD rules): all 200, no FAIL. Nat's first import attempt said 该文件中没有可导入的改写规则; the file parses fine, so the wrong file was likely picked (the import now tells "unreadable" apart from "no rewrite rules"). **No WAYD feature since v0.4.0 has been exercised on the phone.** |
 
-### Where the new screens are (Nat could not find them at first)
+### UI revision (2026-11-15, Nat's requests)
 
-There is no 管控 tab. Open **工具 → 阻止与改写** (or the 阻止与改写 row on 总览), then scroll: summary card → rule backup → **阻止列表** → **改写规则** → per-app rules.
+- **Quick Settings tile** (`capture/…/CaptureTileService.kt`): starts/stops the VPN; opens the app when VPN consent is still missing.
+- **AI cards** (`AiUi.kt` `AiAssistCard`): provider mark (`AiMark.kt`: Gemma → Gemini mark; external → Grok/ChatGPT/Claude/Kimi/Qwen/DeepSeek by model name then host; star fallback; marks from LobeHub icons, MIT, `res/drawable/ic_ai_*.xml`), `action` slot in the title row ("用 AI 分析"), the "rules decide severity" line moved behind a `?` (`HelpHint`).
+- **Chat** (`ChatUi.kt`): Gemini-style rounded box, rotating grey hints (`chat_hints` / `chat_hints_app` arrays), stop button while answering.
+- **Connection history**: "AI 检查" button in the collapsed header.
+- **External AI**: profile list + 添加配置; every save is a profile (`ExternalAiSettings.saveProfile(name, id)`); legacy single server migrates to a profile. Warning banner and per-server acknowledgement unchanged.
+- **阻止与改写 / HTTPS 解密**: rebuilt with `InsetGroup` / `ItemRow` / `ActionRow` / `PageHeader` (in `DashboardParts.kt`), summary panel with `StatGrid`; explanations behind `?`. Unused strings removed in both locales.
+- **Not built**: whitelist/blacklist mode for the decryption app list. The mode check is free, but blacklist with few exclusions decrypts nearly every app (double TLS, storage, pinned apps failing). Offered instead: "apps with recorded traffic except these" if Nat wants it.
 
-### Immediate next step: the probe run with WAYD
+### Where the new screens are
 
-Nat does on the phone (details: [tools/rwprobe/README.md](../tools/rwprobe/README.md)):
+Open **工具 → 阻止与改写**: summary → 阻止列表 → 改写规则 → 阻止规则 → 规则备份与恢复.
+
+### Immediate next step: install, then the probe run with WAYD
+
+Install a core/clash debug over `.d049` (ask Nat first), have him tap through the revised screens and add the tile. Then Nat does on the phone (details: [tools/rwprobe/README.md](../tools/rwprobe/README.md)):
 
 1. Switch the VPN from FlClash to WAYD.
 2. Add `com.nathanhanapps.wayd.rwprobe` to the decrypted apps (WAYD user CA installed).
-3. 改写规则 → 导入规则插件 → `Download/wayd-probe-rules.plugin` → package `com.nathanhanapps.wayd.rwprobe`.
-4. 阻止列表 → import a one-line list `||example.org^` and enable it.
+3. 改写规则 → 导入规则插件 → `Download/WAYD/wayd-probe-rules.plugin` → package `com.nathanhanapps.wayd.rwprobe`.
+4. 阻止列表 → 导入文件 → `Download/WAYD/wayd-probe-blocklist.txt`, enable it.
 
 Then run the probe (`adb shell am start -n com.nathanhanapps.wayd.rwprobe/.MainActivity --ez run true`, read `/sdcard/Android/data/com.nathanhanapps.wayd.rwprobe/files/result.txt`; in Git Bash prefix adb with `MSYS_NO_PATHCONV=1`). Expected: steps 2, 3, 5, 6, 7, 8 show `INFO … yes`, no `FAIL`. A Sonnet subagent is enough for the run; it must not start a VPN, tap the UI, use root or touch other packages.
 
@@ -49,15 +59,15 @@ Full table: [todo/device-pass.md](todo/device-pass.md). Ask Nat to tap through; 
 
 Full prioritised list: [TODO.md](TODO.md).
 
-1. Probe run and device pass; fix what they find.
-2. Push and merge the branch; tag `v0.6.0` (versionCode 9) unless Nat prefers otherwise.
+1. Probe run and device pass (including the UI revision and the tile); fix what they find.
+2. Tag `v0.6.0` (bump to versionCode 9) unless Nat prefers otherwise; the branch is already merged.
 3. Rewrite phase 2 (response headers, JSON body edits; gzip dependency decision still open).
 4. Measure hostname coverage; run `HistoryEvalTest` against Gemma.
 
 ### Open questions for Nat
 
 - Add a gzip library for body edits?
-- Push the branch before or after the device pass?
+- Decryption app list: keep allowlist only, or add "recorded apps except these"?
 
 ## Status
 
