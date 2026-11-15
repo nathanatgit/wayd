@@ -1,6 +1,6 @@
 # Handoff
 
-_Last updated: 2026-11-14 · **v0.5.0** released from `main` (versionCode 8) · decisions through D-070._
+_Last updated: 2026-11-15 · **v0.5.0** released from `main` (versionCode 8) · decisions through D-070._
 
 WAYD (在干嘛, `com.nathanhanapps.wayd`) is a local-only Android privacy monitor. A `VpnService` forwards traffic and applies local blocks; optional recording keeps evidence on the phone; consent-gated decryption reads supported HTTPS; rules produce findings; on-device Gemma (or an approved external OpenAI-compatible server) explains them.
 
@@ -13,7 +13,7 @@ _Handed off 2026-11-15, 12:20._
 | | State |
 |---|---|
 | Released | **v0.5.0** (2026-11-14): D-060 to D-064. Release workflow and CI pass. |
-| Unreleased | Branch `feat/dns-list-blocking`, **local only, not pushed**, 12 commits ahead of `main`: D-065 DNS-stage block lists, app chat, eval test · D-066 rewrite rules (request side) · D-067 inferred hostnames, rule-plugin list import · D-068 redirect, list counters, `.gitattributes` · D-069 regex matching (new Rust `regex` dependency) · D-070 rewrite import from rule plugins · `tools/rwprobe` test app · docs and [TODO.md](TODO.md). The last commit is the D-070 work plus this handoff. |
+| Unreleased | Branch `feat/dns-list-blocking`, **local only, not pushed**, 13 commits ahead of `main`: D-065 DNS-stage block lists, app chat, eval test · D-066 rewrite rules (request side) · D-067 inferred hostnames, rule-plugin list import · D-068 redirect, list counters, `.gitattributes` · D-069 regex matching (new Rust `regex` dependency) · D-070 rewrite import from rule plugins · `tools/rwprobe` test app · docs and [TODO.md](TODO.md). The last commit is the D-070 work plus this handoff. |
 | On the phone | NX733J `320146880841`: clash debug with **everything through D-070** installed over `com.nathanhanapps.wayd.d049` on 2026-11-15 12:14, data kept (version still reads 0.5.0). Probe `com.nathanhanapps.wayd.rwprobe` installed. `Download/wayd-probe-rules.plugin` pushed for import. |
 | Last validation | `cargo test --lib --features mitm` 37 passed; full Gradle build with native rebuild (`test`, both debug assemblies, both lints) passes: `build/d070-validation.log`. |
 | Device evidence so far | One probe **baseline** run (2026-11-15, FlClash owned the VPN, no WAYD rules): 15 requests returned 200, no FAIL, every rule check "no". **No WAYD feature since v0.4.0 has been exercised on the phone.** |
