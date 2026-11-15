@@ -106,3 +106,10 @@ transport resources on flow/VPN teardown. Route outcome event 8 carries one byte
 (1 Direct, 2 Proxied, 3 Blocked, 4 Error); session aggregate counters remain live
 even when inspection recording is off. No route-history schema was added. See
 [routing scope and DNS limitations](14-OPTIONAL-ROUTING.md).
+
+## Block lists in the relay (D-064, D-065)
+
+- **DNS (UDP 53):** a query whose first question is a listed name is answered locally and not forwarded; everything else is relayed unchanged.
+- **TCP:** with a list installed, the relay waits ≤ 600 ms / 16 KiB for the hostname before dialing (not on ports 21, 22, 25, 110, 143, 587, 3306, 5432), then blocks a listed host or forwards.
+- **UDP other than DNS:** no hostname check; QUIC to a listed name is prevented only by the DNS answer.
+- Matcher and formats: [16-RULE-SETS-AND-REWRITE.md](16-RULE-SETS-AND-REWRITE.md).

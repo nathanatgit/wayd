@@ -167,18 +167,27 @@ class ExternalAiSettings @Inject constructor(
         _profiles.value = readProfiles()
     }
 
-    /** Saves the current server, model and stored key under [name] (replacing a profile of the same name). */
-    suspend fun saveProfile(name: String): Boolean = withContext(Dispatchers.IO) {
+    /**
+     * Saves the current server, model and stored key as a profile. [id] updates that profile; otherwise a profile with the same
+     * server and model, then one with the same name, is updated; otherwise a new one is added. A blank [name] keeps the old name
+     * or uses "host · model".
+     */
+    suspend fun saveProfile(name: String, id: String? = null): Boolean = withContext(Dispatchers.IO) {
         val url = ExternalAiUrl.normalise(prefs.getString(KEY_URL, "").orEmpty()) ?: return@withContext false
         val model = prefs.getString(KEY_MODEL, "").orEmpty().ifBlank { return@withContext false }
-        val label = name.trim().take(40).ifBlank { ExternalAiUrl.host(url) + " · " + model.take(24) }
         val existing = readProfiles()
-        if (existing.none { it.name == label } && existing.size >= MAX_PROFILES) return@withContext false
-        val id = existing.firstOrNull { it.name == label }?.id ?: java.util.UUID.randomUUID().toString().take(8)
+        val target = id?.let { i -> existing.firstOrNull { it.id == i } }
+            ?: existing.firstOrNull { it.baseUrl == url && it.model == model }
+            ?: existing.firstOrNull { name.isNotBlank() && it.name == name.trim().take(40) }
+        val label = name.trim().take(40).ifBlank { target?.name ?: (ExternalAiUrl.host(url) + " · " + model.take(24)) }
+        if (target == null && existing.size >= MAX_PROFILES) return@withContext false
+        val id = target?.id ?: java.util.UUID.randomUUID().toString().take(8)
         secrets.getString(KEY_SECRET, null).let { cipher ->
             if (cipher == null) secrets.edit().remove(KEY_SECRET + "_" + id).apply() else secrets.edit().putString(KEY_SECRET + "_" + id, cipher).apply()
         }
-        writeProfiles(existing.filterNot { it.id == id } + ExternalProfile(id, label, url, model, false))
+        // Keep the list order stable when a profile is updated in place.
+        val updated = ExternalProfile(id, label, url, model, false)
+        writeProfiles(if (target != null) existing.map { if (it.id == id) updated else it } else existing + updated)
         true
     }
 

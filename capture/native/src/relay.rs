@@ -180,7 +180,11 @@ async fn tcp_inner<S: AsyncRead + AsyncWrite + Unpin + Send>(id: u64, mut client
             if allow {
                 if let Some(r) = remote.take() {
                     let mut rec = crate::mitm::tls::Recording::new(client, first[..n].to_vec());
-                    match m.intercept_counted(&mut rec, r, id, &sink, Some(&control)).await {
+                    // Rewrite rules apply only to an attributed app; an unknown owner keeps the plain pump.
+                    let set = shared.rewrite();
+                    let owner = shared.blocking.metadata(id).0;
+                    let rewrite = (!set.is_empty() && !owner.is_empty()).then_some((set, owner));
+                    match m.intercept_counted(&mut rec, r, id, &sink, Some(&control), rewrite).await {
                         crate::mitm::tls::Outcome::Done(u, d) => {
                             sink.close(id, u, d);
                         }
@@ -360,10 +364,12 @@ async fn udp_inner<S: AsyncRead + AsyncWrite + Unpin>(id: u64, client: S, src: S
             let sock = Arc::new(sock);
             let act = Activity::new();
             act.touch();
-            let (mut cr, mut cw) = tokio::io::split(client);
+            let (mut cr, cw) = tokio::io::split(client);
+            // Shared so the upstream task can answer a listed DNS name locally while the downstream task relays real answers.
+            let cw = Arc::new(tokio::sync::Mutex::new(cw));
 
             let up_task = {
-                let (sock, up, sink, act) = (sock.clone(), up.clone(), sink.clone(), act.clone());
+                let (sock, up, sink, act, cw, shared) = (sock.clone(), up.clone(), sink.clone(), act.clone(), cw.clone(), shared.clone());
                 async move {
                     let mut buf = vec![0u8; 65535];
                     let mut first = true;
@@ -376,6 +382,18 @@ async fn udp_inner<S: AsyncRead + AsyncWrite + Unpin>(id: u64, client: S, src: S
                             sink.data(id, false, &buf[..n.min(1500)]);
                             first = false;
                         }
+                        // Block lists, DNS stage: a listed name gets a local answer and the query never leaves the phone. This also
+                        // covers QUIC and any other protocol that would connect to the resolved address.
+                        if is_dns {
+                            if let Some((name, end)) = crate::hostlist::dns_question(&buf[..n]) {
+                                if shared.blocking.dns_blocked(id, &name) {
+                                    let reply = crate::hostlist::dns_blocked_reply(&buf[..n], end);
+                                    sink.data(id, true, &reply);
+                                    if cw.lock().await.write_all(&reply).await.is_err() { break; }
+                                    continue;
+                                }
+                            }
+                        }
                         if sock.send(&buf[..n]).await.is_err() {
                             break;
                         }
@@ -384,7 +402,7 @@ async fn udp_inner<S: AsyncRead + AsyncWrite + Unpin>(id: u64, client: S, src: S
                 }
             };
             let down_task = {
-                let (sock, down, sink, act) = (sock.clone(), down.clone(), sink.clone(), act.clone());
+                let (sock, down, sink, act, cw) = (sock.clone(), down.clone(), sink.clone(), act.clone(), cw.clone());
                 async move {
                     let mut buf = vec![0u8; 65535];
                     let mut first = true;
@@ -404,7 +422,7 @@ async fn udp_inner<S: AsyncRead + AsyncWrite + Unpin>(id: u64, client: S, src: S
                             sink.data(id, true, &buf[..n.min(1500)]);
                             first = false;
                         }
-                        if cw.write_all(&buf[..n]).await.is_err() {
+                        if cw.lock().await.write_all(&buf[..n]).await.is_err() {
                             break;
                         }
                         down.fetch_add(n as u64, Ordering::Relaxed);

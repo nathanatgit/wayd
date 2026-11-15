@@ -34,11 +34,14 @@ Targets, not status. Current status per milestone: [HANDOFF.md](HANDOFF.md#statu
 ## M6 · Gemma 4
 - Model manager (mirror, hash, RAM check), LiteRT-LM engine, prompt builder, tools, schema validator; "Analyse with AI", result screen, overnight summary; prompt-injection suite. External provider per D-046.
 **Accept:** E2B analysis of a 10-item selection < 30 s on target device; 0 unvalidated claims shown; injection fixtures don't change output structure.
+- Added after the first acceptance (D-061 to D-065): per-item labels, whole-history check, chat with image/audio input, per-provider context budgets, external profiles. **Accept:** device pass in the handoff; `HistoryEvalTest` score recorded for E2B and E4B.
 
 ## M7 · Control
 - App/host/IP blocks at VPN level before upstream dispatch; session and persistent rules, Undo, live-flow closure; Controls inventory; reviewed JSON backup/import; adb helper with critical-package warnings.
 - Then content control on decrypted HTTP: fixed local replies, then bounded response edits; never scripts or global decryption. Semantics: [13-BLOCKING.md](13-BLOCKING.md).
 **Accept:** local-server fixtures prove blocks precede dispatch; session rules expire, persistent rules survive restart; unknown attribution/names stay visible; import cannot grant consent or widen scope. Content control has its own gate in 13-BLOCKING.
+- Block lists (D-064, D-065): Adblock/hosts import, hostname and DNS stages. **Accept:** a listed host is blocked for a live app over TCP and QUIC; load time, memory and connection delay measured on the target device.
+- Rewrite rules and rule exchange: [16-RULE-SETS-AND-REWRITE.md](16-RULE-SETS-AND-REWRITE.md).
 
 ## M8 · Decryption and root (consent-gated)
 - MITM with consent flow and per-app picker; root: NFLOG bypass detection → eBPF SSL capture → file access monitor → system CA module.

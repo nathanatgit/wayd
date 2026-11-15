@@ -16,9 +16,9 @@ See Status below and the handoff for implementation coverage; this list describe
 2. **Enrich** — maps traffic to apps (UID), domains, companies, countries and known trackers.
 3. **Correlate** — with Shizuku (adb) or root, adds non-network evidence: permission use (AppOps), alarms, per-app traffic history, file access.
 4. **Analyse** — a deterministic rule engine produces *findings* with evidence links.
-5. **Explain** — an on-device Gemma 4 model, or optionally an OpenAI-compatible server you configure (e.g. a local Ollama), explains selected findings/traffic and returns structured JSON that the UI visualises. The AI never decides severity or blocks anything; every claim must cite evidence ids.
-6. **Inspect APKs** — static analysis of installed apps (manifest, certificate, SDKs, embedded endpoints), linked to observed behaviour.
-7. **Act (M7 core)** — local exact app/host/IP blocking and reviewed rule transfer; research content control remains planned; no proxy or account required.
+5. **Explain** — an on-device Gemma 4 model, or optionally an OpenAI-compatible server you configure, explains findings, labels each destination, checks a whole connection history and answers questions in chat (text, images, audio). Output is schema-validated; the AI never decides severity or applies anything.
+6. **Inspect APKs** — static analysis of installed apps (manifest, certificate, SDKs, embedded endpoints) shown as a dashboard and linked by rules to observed connections and permission use.
+7. **Act** — per-app app/host/IP blocking, imported Adblock/hosts block lists (hostname and DNS stage), reviewed rule transfer, and pointers to AppOps / Thanox. Request-side rewrite rules for decrypted traffic (local answer, header and query edits) are built; response and body rewriting are designed. No proxy or account required.
 8. **Route (initial optional subset)** — Pinned Mihomo SOCKS5/HTTP CONNECT routing with FlClash-style whitelist/blacklist access control and encrypted profiles. Unsupported Clash options are rejected; full FlClash compatibility is not claimed. WAYD retains VPN ownership and enforces blocks before routing. See [routing design](docs/14-OPTIONAL-ROUTING.md).
 9. **Inspect and export** — open any recorded connection for its details (TLS, rule outcome, DNS, decrypted content as text/hex), and export as *WAYD detail JSON* (flows, DNS, permission history, findings, app facts, for analysis), a *PCAPdroid-compatible connections CSV*, or a *reconstructed PCAP* (WAYD stores metadata, not packets, so the PCAP is rebuilt from records and carries real payload only where HTTPS was decrypted).
 
@@ -48,11 +48,14 @@ See Status below and the handoff for implementation coverage; this list describe
 | [docs/09-UI-M3-EXPRESSIVE.md](docs/09-UI-M3-EXPRESSIVE.md) | Screens, navigation, Material 3 Expressive usage |
 | [docs/10-SECURITY-THREAT-MODEL.md](docs/10-SECURITY-THREAT-MODEL.md) | Threats, prompt injection, data protection |
 | [docs/11-ROADMAP.md](docs/11-ROADMAP.md) | Milestones with acceptance criteria |
-| [docs/13-BLOCKING.md](docs/13-BLOCKING.md) | Blocking and content-control design |
-| [docs/14-OPTIONAL-ROUTING.md](docs/14-OPTIONAL-ROUTING.md) | Optional Clash/Mihomo routing and access control |
 | [docs/12-TESTING.md](docs/12-TESTING.md) | Test strategy, ground-truth capture |
+| [docs/13-BLOCKING.md](docs/13-BLOCKING.md) | Per-app blocking and content-control design |
+| [docs/14-OPTIONAL-ROUTING.md](docs/14-OPTIONAL-ROUTING.md) | Optional Clash/Mihomo routing and access control |
+| [docs/15-RULE-EXAMPLES.md](docs/15-RULE-EXAMPLES.md) | Rule examples |
+| [docs/16-RULE-SETS-AND-REWRITE.md](docs/16-RULE-SETS-AND-REWRITE.md) | Block lists, rewrite rules, rule exchange, cost |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture decision log |
+| [docs/TODO.md](docs/TODO.md) | Prioritised to-do list; details under docs/todo/ |
 
 ## Status
 
-The current release is **v0.3.0**: working capture, local analysis, on-device and optional external AI, connection detail and exports, local blocking, and research HTTPS inspection. Coverage and acceptance gaps remain. **M7 core blocking, reviewed persistent-rule transfer and an initial optional Mihomo routing subset are implemented locally. Installed-app routing/transfer acceptance, research response controls and broader Clash compatibility remain open.** See [current handoff](docs/HANDOFF.md) and [roadmap](docs/11-ROADMAP.md).
+The current release is **v0.5.0** (2026-11-14): capture, local analysis, on-device and optional external AI (analysis, labels, history check, chat), connection detail and exports, per-app blocking, Adblock/hosts block lists, consent-gated HTTPS inspection, and optional Clash routing in the `clash` variant. Everything added since v0.4.0 is built and unit-tested but **not yet checked on a device**; hostname coverage is below target; response and body rewriting are not built. See the [handoff](docs/HANDOFF.md) for the exact state and the [roadmap](docs/11-ROADMAP.md).

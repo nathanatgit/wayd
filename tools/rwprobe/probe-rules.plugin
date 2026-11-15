@@ -1,0 +1,17 @@
+#!name=WAYD rwprobe rules
+#!desc=Rewrite rules for the WAYD test probe. Import under 工具 → 阻止与改写 → 改写规则 → 导入规则插件, app com.nathanhanapps.wayd.rwprobe.
+
+[Rewrite]
+# step 2: strip the fake advertising id, drop the fake device id, replace the user agent
+^https?://httpbin\.org/anything/.*idfa= query-del idfa
+^https?://httpbin\.org/anything/strip header-del X-Device-Id
+^https?://httpbin\.org/anything/strip header-replace User-Agent generic
+# steps 3 and 5: answer the upload locally (plain and chunked)
+^https?://httpbin\.org/anything/collect reject-dict
+# step 6: local redirect
+^https?://httpbin\.org/anything/old$ 307 https://httpbin.org/anything/new
+# step 7: regex with a word boundary, so /v2/adsense is left alone
+^https?://httpbin\.org/anything/v\d+/ads\b reject
+
+[MITM]
+hostname = httpbin.org

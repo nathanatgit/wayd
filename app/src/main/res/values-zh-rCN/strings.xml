@@ -255,11 +255,7 @@
     <string name="apk_not_scanned">暂无静态结果。扫描此应用可检查其已安装的 APK；隐藏或无法读取的应用可能不可用。</string>
     <string name="apk_scanned_at">静态快照时间：%1$s</string>
     <string name="apk_signer_note">证书主体为签名者自行声明的文本，不代表经过核实的公司身份。请比较 SHA-256 指纹以判断是否使用同一签名。</string>
-    <string name="apk_declared">已声明</string>
-    <string name="apk_used">已使用</string>
-    <string name="apk_sent">已发送</string>
     <string name="apk_link_note">已声明：APK 静态事实；已使用：最多 100 种已记录 AppOps；已发送：最多 200 个已记录主机名。观察结果来自保留的历史，计数不构成权限与发送内容之间的因果证据。</string>
-    <string name="apk_observed_ops">已记录操作：%1$s</string>
     <string name="apk_observed_hosts">已观察主机：%1$s</string>
     <string name="apk_contacted">保留的流量中也出现过完全相同的主机名</string>
     <string name="apk_permissions">权限（%1$d）</string>
@@ -289,14 +285,10 @@
     <string name="block_error">无法启用此规则。请检查 VPN、应用身份或共享 UID。原有生效策略已保留。</string>
     <string name="block_forever">一直阻止</string>
     <string name="block_history">连接历史与阻止</string>
-    <string name="block_history_limit">最近 200 条连接中有 %1$d 条匹配，最多显示 30 条。点按连接可查看消息或阻止。</string>
     <string name="block_inactive">未生效／等待有效会话或应用身份</string>
     <string name="block_ip_warning">此地址可能承载多个网站。阻止它可能影响此应用使用的其他服务。</string>
     <string name="block_outcome_blocked">已被本地策略阻止</string>
     <string name="block_outcome_error">已关闭：策略检查失败</string>
-    <string name="block_outcome_legacy">历史记录：无执行结果</string>
-    <string name="block_outcome_passed">已通过本地策略检查</string>
-    <string name="block_outcome_unknown">策略无法判定归属或主机名</string>
     <string name="block_persistent">保存至手动移除</string>
     <string name="block_remove">移除</string>
     <string name="block_removed">规则已移除。其他匹配的阻止规则仍可能生效。</string>
@@ -305,14 +297,14 @@
     <string name="block_session">直到『在干嘛』VPN 停止</string>
     <string name="block_this_time">本次阻止</string>
     <string name="block_undo">撤销上一条规则</string>
-    <string name="block_vpn_off">VPN 未运行。已保存的规则将在启动『在干嘛』时校验，临时阻止需要 VPN 正在运行。</string>
+    <string name="block_vpn_off">VPN 未运行</string>
+    <string name="block_vpn_off_help">已保存的规则将在启动『在干嘛』时校验，仅本次阻止需要 VPN 正在运行。</string>
 <string name="block_rules_title">阻止规则</string>
 <string name="block_rules_empty">没有已保存或临时规则。</string>
     <string name="tab_controls">管控</string>
     <string name="control_title">阻止与改写</string>
     <string name="control_intro">集中检查所有应用的管控规则，不受连接历史所选时间范围影响。</string>
-    <string name="control_summary">%1$d 条生效 · 共 %2$d 条规则</string>
-    <string name="control_vpn_on">VPN 正在运行。生效规则已安装到本地策略引擎。</string>
+    <string name="control_vpn_on">VPN 运行中</string>
     <string name="control_refresh">刷新状态</string>
     <string name="control_refresh_error">无法刷新规则，当前显示上次确认的状态。</string>
     <string name="control_search">搜索包名、主机名或 IP（字面文本）</string>
@@ -321,9 +313,6 @@
     <string name="control_inactive">未生效</string>
     <string name="control_loading">正在加载规则…</string>
     <string name="control_no_matches">没有符合搜索内容和状态筛选的规则。</string>
-    <string name="control_alterations">改写规则</string>
-    <string name="control_alterations_unavailable">响应替换与本地回复尚未开放，目前没有生效的改写规则。</string>
-    <string name="control_block_action">动作：阻止</string>
     <string name="control_target_app">目标：该应用所有可管控连接</string>
     <string name="control_target_host">目标：精确匹配可见主机名</string>
     <string name="control_target_ip">目标：精确匹配 IP 地址</string>
@@ -332,8 +321,6 @@
     <string name="control_status_disabled">未生效：规则已停用</string>
     <string name="control_status_waiting">未生效：VPN 已停止，启动时会校验应用身份和授权。</string>
     <string name="control_status_invalid">未生效：应用身份、用户空间、授权或目标未通过校验。</string>
-    <string name="control_details">检查规则详情</string>
-    <string name="control_hide_details">收起详情</string>
     <string name="control_rule_id">规则 %1$d · Android 用户 %2$d</string>
     <string name="control_created">创建时间：%1$s</string>
     <string name="control_identity">绑定的签名 SHA-256：%1$s</string>
@@ -530,7 +517,6 @@
     <string name="xai_test">测试连接</string>
     <string name="xai_test_ok">已连接 · %1$d 个模型</string>
     <string name="xai_ack">我了解数据会离开本机</string>
-    <string name="xai_remove">移除</string>
     <string name="xai_err_url">地址不可用</string>
     <string name="xai_err_auth">密钥被拒绝</string>
     <string name="xai_err_not_found">未找到（检查地址或模型）</string>
@@ -605,10 +591,6 @@
     <string name="history_messages">%1$d 条已记录消息</string>
     <string name="history_message_limit">显示此连接的前 %1$d 条消息。</string>
     <string name="history_block">阻止此目标</string>
-    <string name="history_related">%1$d 条相近的 TCP 记录</string>
-    <string name="history_related_decrypted">相关记录中包含解密内容</string>
-    <string name="history_related_note">同一应用和目标，开始时间相隔不超过 30 秒。这些是独立记录，不代表它们属于同一个 TCP 会话。</string>
-    <string name="history_tcp_record">TCP %1$d · %2$s</string>
     <string name="heatmap_title">近七天活动</string>
     <string name="heatmap_less">少</string>
     <string name="heatmap_more">多</string>
@@ -620,9 +602,6 @@
     <string name="heatmap_next_hour">下一小时</string>
     <string name="heatmap_previous_day">前一天</string>
     <string name="heatmap_next_day">后一天</string>
-    <string name="dz_manual_method">手动安装用户 CA</string>
-    <string name="dz_root_method">系统级信任 · 需要 root</string>
-    <string name="dz_method_prerequisite">请先开启 HTTPS 解密并完成同意步骤以创建证书，再选择下方的信任方式。</string>
     <string name="detail_dashboard_title">已记录流量</string>
     <string name="detail_dashboard_scan">APK 静态扫描</string>
     <string name="detail_dashboard_destinations">目的地分组</string>
@@ -746,8 +725,22 @@
     <string name="ai_effort_high">高</string>
     <string name="ai_effort_note">仅适用于外部服务器。低：精简提示，不重试。标准：回答未通过校验时重试一次。高：完整说明，服务器支持时进行更长的推理。</string>
     <string name="chat_title">就这些洞察询问 AI</string>
-    <string name="chat_empty">可询问某个应用做了什么、为何被标记，或附加截图、视频或语音提问。回答会引用此时段的报告。</string>
-    <string name="chat_hint">询问此时段…</string>
+    <string name="chat_title_app">就此应用询问 AI</string>
+    <string name="chat_help">可询问某个应用做了什么、为何被标记，或附加截图、视频或语音提问。回答会引用此时段的报告。附件只保留在本次对话的内存中，只发送给所选的 AI 提供方。</string>
+    <string-array name="chat_hints">
+        <item>哪个应用发送的数据最多？</item>
+        <item>为什么会被标记？</item>
+        <item>哪些主机像是追踪？</item>
+        <item>熄屏时发生了什么？</item>
+        <item>附上截图并提问</item>
+    </string-array>
+    <string-array name="chat_hints_app">
+        <item>这个应用在此时段做了什么？</item>
+        <item>它连接的哪些主机像是追踪？</item>
+        <item>它为什么被标记？</item>
+        <item>熄屏时它发送了什么？</item>
+        <item>附上截图并提问</item>
+    </string-array>
     <string name="chat_send">发送</string>
     <string name="chat_attach">添加附件</string>
     <string name="chat_attachment">附件</string>
@@ -760,7 +753,6 @@
     <string name="chat_recording">正在录音…最长 30 秒。再次点按麦克风停止。</string>
     <string name="chat_voice_label">语音提问（%1$d 秒）</string>
     <string name="chat_video_note">视频以少量静态帧发送，不包含声音。</string>
-    <string name="chat_media_note">附件仅在本次对话的内存中保留，只发送给所选的 AI 提供方。它们是你的媒体，不是 WAYD 证据。</string>
     <string name="chat_limit">分析深度限制了每个问题可携带的图片或音频数量（设置 → AI）。</string>
     <string name="chat_read_failed">无法读取或录制该项。</string>
     <string name="chat_mic_denied">未授予麦克风权限，语音提问不可用。文字和文件仍可使用。</string>
@@ -823,15 +815,12 @@
     <string name="apk_lists_title">完整列表（点按展开）</string>
     <string name="apk_related_hosts">可能相关的连接（%1$d）：%2$s</string>
     <string name="xai_profiles">已保存的配置</string>
-    <string name="xai_profiles_empty">将服务器和模型保存为配置，即可在多个之间切换。</string>
-    <string name="xai_profile_save">保存为配置</string>
     <string name="xai_profile_name">配置名称</string>
     <string name="xai_profile_delete">删除配置</string>
     <string name="ai_depth_auto_note_local">自动：Gemma E2B → 小，Gemma E4B → 中。本机始终使用为 Gemma 编写的精简提示，并重试一次。</string>
     <string name="ai_depth_auto_note_external">自动：大。小型自托管模型可选择小或中。</string>
     <string name="blist_title">阻止列表（Adblock / hosts）</string>
     <string name="blist_intro">导入 Adblock 风格或 hosts 列表，对 WAYD 覆盖的所有应用阻止其中的主机名。仅主机名规则生效；页面、路径和元素隐藏规则会计为不适用。上方你自己的应用规则始终优先。</string>
-    <string name="blist_vpn_off">WAYD VPN 运行时列表才会载入引擎。</string>
     <string name="blist_old_engine">此版本的网络引擎尚不支持阻止列表。</string>
     <string name="blist_rejected">引擎拒绝了列表文件，当前没有生效的列表。</string>
     <string name="blist_loaded">运行中的引擎已载入 %1$d 条列表规则</string>
@@ -851,4 +840,52 @@
     <string name="blist_failed">没有可用的列表：其中没有受支持的规则、文件过大、无法读取，或不是 HTTPS。</string>
     <string name="blist_imported">已导入。请查看数量后再启用。</string>
     <string name="block_outcome_list">被阻止列表阻止</string>
+    <string name="rw_title">改写规则</string>
+    <string name="rw_intro">在某个应用的请求发出前进行修改：本地应答请求、移除或设置请求头，或移除查询参数。规则仅作用于 WAYD 已为该应用解密的连接（设置 → HTTPS 解密），且仅限 HTTP/1.1 请求；规则不会开启解密。被阻止的连接不会被改写。</string>
+    <string name="rw_old_engine">此版本的网络引擎尚不支持改写规则。</string>
+    <string name="rw_rejected">引擎拒绝了改写规则，当前没有生效的规则。</string>
+    <string name="rw_add">添加改写规则</string>
+    <string name="rw_import">导入规则插件</string>
+    <string name="rw_import_none">该文件中没有可导入的改写规则。</string>
+    <string name="rw_import_summary">可导入 %1$d 条改写规则 · 跳过 %2$d 行（脚本、响应或正文修改、不支持的匹配）。</string>
+    <string name="rw_import_hosts">这些规则生效需要解密以下主机：%1$s</string>
+    <string name="rw_imported">已导入 %1$d 条规则。</string>
+    <string name="rw_invalid">该规则无效或已达上限，未做任何更改。</string>
+    <string name="rw_hits">本次运行已应用 %1$d 次</string>
+    <string name="rw_consent">保存即记录你允许 WAYD 修改此应用已解密的请求。应用可能出现异常；关闭规则即可撤销。</string>
+    <string name="rw_pkg">应用包名</string>
+    <string name="rw_host">主机名</string>
+    <string name="rw_subdomains">包含子域名</string>
+    <string name="rw_method">方法（留空 = 任意）</string>
+    <string name="rw_pattern">要匹配的路径和查询</string>
+    <string name="rw_match_prefix">开头匹配</string>
+    <string name="rw_match_exact">完全匹配</string>
+    <string name="rw_match_contains">包含</string>
+    <string name="rw_match_regex">正则</string>
+    <string name="rw_pattern_regex">匹配完整网址的正则（不支持环视和反向引用）</string>
+    <string name="rw_action_reject">本地应答</string>
+    <string name="rw_action_header_remove">移除请求头</string>
+    <string name="rw_action_header_set">设置请求头</string>
+    <string name="rw_action_query_remove">移除查询参数</string>
+    <string name="rw_arg_name">名称</string>
+    <string name="rw_action_redirect">重定向</string>
+    <string name="rw_arg_redirect">“302 https://…”或“307 https://…”</string>
+    <string name="rw_arg_header_set">请求头，格式为“名称: 值”</string>
+    <string name="help_label">说明</string>
+    <string name="history_ai_short">AI 检查</string>
+    <string name="control_tile_rules">应用规则</string>
+    <string name="control_tile_lists">阻止列表</string>
+    <string name="control_tile_rewrite">改写规则</string>
+    <string name="control_tile_list_hits">列表拦截</string>
+    <string name="control_tile_dns">DNS 本地应答</string>
+    <string name="control_state_review">待审核</string>
+    <string name="control_state_disabled">已停用</string>
+    <string name="rw_active_short">已载入</string>
+    <string name="rw_import_unreadable">无法读取该文件（或文件超过 2 MB）。</string>
+    <string name="xai_profile_add">添加配置</string>
+    <string name="xai_profile_new">新配置</string>
+    <string name="xai_profile_delete_body">删除此配置及其保存的密钥？</string>
+    <string name="xai_save_failed">未保存：请检查地址，或删除一个配置（最多 12 个）。</string>
+    <string name="dz_apps">要解密的应用</string>
+    <string name="dz_apps_count">%1$d 个</string>
 </resources>

@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -268,12 +269,17 @@ private fun ModelRow(
 fun ExternalAiScreen(onBack: () -> Unit, vm: ExternalAiViewModel = hiltViewModel()) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     val test by vm.test.collectAsStateWithLifecycle()
+    val profiles by vm.profiles.collectAsStateWithLifecycle()
+    val active = profiles.firstOrNull { it.baseUrl == ui.baseUrl && it.model == ui.model }
+    // Adding a profile starts an empty form; saving it adds a profile and makes it the current server.
+    var adding by rememberSaveable { mutableStateOf(false) }
     var url by rememberSaveable { mutableStateOf(ui.baseUrl) }
     var model by rememberSaveable { mutableStateOf(ui.model) }
     var key by rememberSaveable { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf(active?.name.orEmpty()) }
     var failed by remember { mutableStateOf(false) }
     val validUrl = ExternalAiUrl.normalise(url) != null
-    val dirty = url.trim() != ui.baseUrl || model.trim() != ui.model || key.isNotBlank()
+    val dirty = adding || url.trim() != ui.baseUrl || model.trim() != ui.model || key.isNotBlank() || (name.isNotBlank() && name.trim() != active?.name)
     // Load the model names once the address is valid and typing has paused; nothing to press.
     androidx.compose.runtime.LaunchedEffect(url) {
         if (ExternalAiUrl.normalise(url) == null) vm.autoLoad(url) else {
@@ -291,38 +297,46 @@ fun ExternalAiScreen(onBack: () -> Unit, vm: ExternalAiViewModel = hiltViewModel
             Text(stringResource(R.string.xai_warning), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
         }
 
-        // Saved profiles: tap to switch server + model; each server keeps its own acknowledgement.
-        val profiles by vm.profiles.collectAsStateWithLifecycle()
-        var naming by remember { mutableStateOf(false) }
-        // A switch replaces the stored server, so the form follows it.
-        androidx.compose.runtime.LaunchedEffect(ui.baseUrl, ui.model) { url = ui.baseUrl; model = ui.model; key = "" }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(stringResource(R.string.xai_profiles), style = MaterialTheme.typography.labelLarge)
-            if (profiles.isEmpty()) Text(stringResource(R.string.xai_profiles_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            else LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(profiles, key = { it.id }) { p ->
-                    androidx.compose.material3.InputChip(
-                        selected = p.baseUrl == ui.baseUrl && p.model == ui.model, onClick = { vm.useProfile(p.id) }, label = { Text(p.name, maxLines = 1) },
-                        trailingIcon = {
-                            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.xai_profile_delete), Modifier.size(18.dp).clickable { vm.deleteProfile(p.id) })
-                        },
-                    )
-                }
-            }
-            TextButton(onClick = { naming = true }, enabled = ui.configured && !dirty) { Text(stringResource(R.string.xai_profile_save)) }
+        // Switching profile replaces the stored server, so the form follows it; "add" clears it.
+        androidx.compose.runtime.LaunchedEffect(ui.baseUrl, ui.model, adding, active?.name) {
+            if (adding) { url = ""; model = ""; key = ""; name = "" } else { url = ui.baseUrl; model = ui.model; key = ""; name = active?.name.orEmpty() }
         }
-        if (naming) {
-            var name by remember { mutableStateOf("") }
+        var deleting by remember { mutableStateOf<com.nathanhanapps.wayd.ai.ExternalProfile?>(null) }
+        InsetGroup(stringResource(R.string.xai_profiles)) {
+            profiles.forEach { p ->
+                val selected = !adding && p.id == active?.id
+                com.nathanhanapps.wayd.feature.common.ItemRow(
+                    p.name, ExternalAiUrl.host(p.baseUrl) + " · " + p.model,
+                    leading = { AiBrandIcon(aiBrandOf(p.model, ExternalAiUrl.host(p.baseUrl))) },
+                    onClick = { adding = false; if (p.id != active?.id) vm.useProfile(p.id) },
+                    trailing = {
+                        if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        IconButton(onClick = { deleting = p }) { Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.xai_profile_delete)) }
+                    },
+                )
+                GroupDivider()
+            }
+            com.nathanhanapps.wayd.feature.common.ActionRow(Icons.Filled.Add, stringResource(R.string.xai_profile_add), enabled = !adding && profiles.size < 12) { adding = true }
+        }
+        deleting?.let { p ->
             AlertDialog(
-                onDismissRequest = { naming = false },
-                title = { Text(stringResource(R.string.xai_profile_save)) },
-                text = { OutlinedTextField(name, { name = it.take(40) }, label = { Text(stringResource(R.string.xai_profile_name)) }, placeholder = { Text(ui.host + " · " + ui.model.take(24)) }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
-                confirmButton = { TextButton(onClick = { vm.saveProfile(name) { naming = false } }) { Text(stringResource(R.string.cx_save)) } },
-                dismissButton = { TextButton(onClick = { naming = false }) { Text(stringResource(R.string.ai_cancel)) } },
+                onDismissRequest = { deleting = null },
+                title = { Text(p.name) },
+                text = { Text(stringResource(R.string.xai_profile_delete_body)) },
+                confirmButton = { TextButton(onClick = { vm.deleteProfile(p.id); deleting = null }) { Text(stringResource(R.string.xai_profile_delete), color = MaterialTheme.colorScheme.error) } },
+                dismissButton = { TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.ai_cancel)) } },
             )
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                if (adding) stringResource(R.string.xai_profile_new) else active?.name ?: stringResource(R.string.xai_profile_new),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            OutlinedTextField(
+                name, { name = it.take(40) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.xai_profile_name)) },
+                placeholder = { if (url.isNotBlank()) Text(ExternalAiUrl.host(url) + " · " + model.take(24)) },
+            )
             OutlinedTextField(
                 url, { url = it; failed = false }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.xai_url)) },
                 placeholder = { Text("http://192.168.1.5:11434/v1") }, isError = url.isNotBlank() && !validUrl,
@@ -353,6 +367,15 @@ fun ExternalAiScreen(onBack: () -> Unit, vm: ExternalAiViewModel = hiltViewModel
             }
         }
 
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Button(
+                onClick = { vm.save(url, model, key, name, if (adding) null else active?.id) { ok -> failed = !ok; if (ok) { key = ""; adding = false } } },
+                enabled = validUrl && model.isNotBlank() && dirty,
+            ) { Text(stringResource(R.string.cx_save)) }
+            if (adding) TextButton(onClick = { adding = false }) { Text(stringResource(R.string.ai_cancel)) }
+            if (failed) Text(stringResource(R.string.xai_save_failed), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+        }
+
         InsetGroup {
             SwitchRow(Icons.Filled.Warning, stringResource(R.string.xai_ack), ui.acknowledged, enabled = ui.configured && !dirty) { vm.acknowledge(it) }
         }
@@ -360,12 +383,6 @@ fun ExternalAiScreen(onBack: () -> Unit, vm: ExternalAiViewModel = hiltViewModel
         // Same panel as on-device, separate values: an external server is often a larger model that benefits from more context.
         val externalDepth by vm.depths.external.collectAsStateWithLifecycle()
         AiDepthPanel(externalDepth, external = true) { vm.depths.set(external = true, depth = it) }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = { vm.save(url, model, key) { ok -> failed = !ok; if (ok) key = "" } }, enabled = validUrl && model.isNotBlank() && dirty) { Text(stringResource(R.string.cx_save)) }
-            if (ui.configured) TextButton(onClick = { vm.remove(); url = ""; model = ""; key = "" }) { Text(stringResource(R.string.xai_remove), color = MaterialTheme.colorScheme.error) }
-            if (failed) Text(stringResource(R.string.xai_err_url), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
-        }
     }
 }
 

@@ -65,7 +65,7 @@ pub fn normalize_host(s: &str) -> Option<String> {
 }
 
 struct Meta { owner: Option<String>, host: Option<String>, ip: IpAddr, control: Arc<FlowControl> }
-struct State { policy: Policy, list: crate::hostlist::HostList, flows: HashMap<u64, Meta> }
+struct State { policy: Policy, list: crate::hostlist::HostList, flows: HashMap<u64, Meta>, list_blocks: u64, dns_answers: u64 }
 
 /// Per-app rules first, then the global block lists (hostname only). A list block reports the reserved LIST_RULE id.
 fn blocked(s: &State, m: &Meta) -> Option<Decision> {
@@ -113,7 +113,7 @@ pub struct Blocking(Mutex<State>);
 
 impl Blocking {
     pub fn new() -> Self {
-        Self(Mutex::new(State { policy: Policy { revision: 0, rules: Vec::new() }, list: Default::default(), flows: HashMap::new() }))
+        Self(Mutex::new(State { policy: Policy { revision: 0, rules: Vec::new() }, list: Default::default(), flows: HashMap::new(), list_blocks: 0, dns_answers: 0 }))
     }
 
     pub fn install(&self, text: &str) -> bool {
@@ -133,6 +133,20 @@ impl Blocking {
 
     pub fn close(&self, id: u64) { self.0.lock().unwrap().flows.remove(&id); }
     pub fn active(&self) -> bool { let s = self.0.lock().unwrap(); !s.policy.rules.is_empty() || !s.list.is_empty() }
+
+    /// DNS stage of the global lists: true when the queried name is listed for this flow's owner (usually the system resolver,
+    /// so app-scoped entries rarely apply here; the TCP hostname check still covers them).
+    pub fn dns_blocked(&self, id: u64, name: &str) -> bool {
+        let mut s = self.0.lock().unwrap();
+        if s.list.is_empty() { return false; }
+        let Some(host) = normalize_host(name) else { return false; };
+        let hit = s.list.blocks(&host, s.flows.get(&id).and_then(|m| m.owner.as_deref()));
+        if hit { s.dns_answers += 1; }
+        hit
+    }
+
+    /// (connections blocked by a list, DNS names answered locally) since the engine started.
+    pub fn list_stats(&self) -> (u64, u64) { let s = self.0.lock().unwrap(); (s.list_blocks, s.dns_answers) }
 
     /// True when a global list is installed: every named TCP connection is then worth the bounded hostname wait.
     pub fn list_active(&self) -> bool { !self.0.lock().unwrap().list.is_empty() }
@@ -173,10 +187,13 @@ impl Blocking {
     }
 
     pub fn outcome(&self, id: u64, error: bool) -> Decision {
-        let s = self.0.lock().unwrap();
+        let mut s = self.0.lock().unwrap();
         let mut d = Decision { kind: if error { 2 } else { 5 }, revision: s.policy.revision, rule: 0 };
         if let Some(m) = s.flows.get(&id) {
-            if let Some(d) = blocked(&s, m) { return d; }
+            if let Some(d) = blocked(&s, m) {
+                if d.rule == crate::hostlist::LIST_RULE { s.list_blocks += 1; }
+                return d;
+            }
             if !error && (!s.policy.rules.is_empty() || !s.list.is_empty()) {
                 if m.owner.is_none() { d.kind = 3; }
                 else if m.host.is_none() && (!s.list.is_empty() || s.policy.rules.iter().any(|r| r.kind == "HOST" && m.owner.as_deref() == Some(&r.owner))) { d.kind = 4; }

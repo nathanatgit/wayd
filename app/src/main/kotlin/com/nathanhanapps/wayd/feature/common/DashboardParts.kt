@@ -40,6 +40,17 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import com.nathanhanapps.wayd.R
 
 /** Compact dashboard building blocks shared by Home and the Clash extension. */
 
@@ -104,11 +115,33 @@ fun StatTile(value: String, label: String, modifier: Modifier = Modifier, accent
     }
 }
 
-/** iOS-style inset group: rounded container, rows separated by hairlines. */
+/**
+ * A small "?" that shows [text] when tapped. Explanations live here instead of standing paragraphs, so screens stay short;
+ * the text is still one tap away and read by screen readers through the button label.
+ */
 @Composable
-fun InsetGroup(header: String? = null, content: @Composable ColumnScope.() -> Unit) {
+fun HelpHint(text: String, modifier: Modifier = Modifier) {
+    var open by remember { mutableStateOf(false) }
+    Box(modifier) {
+        IconButton(onClick = { open = true }, modifier = Modifier.size(32.dp)) {
+            Icon(painterResource(R.drawable.ic_help), contentDescription = stringResource(R.string.help_label), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.widthIn(max = 300.dp)) {
+            Text(text, Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+/** iOS-style inset group: rounded container, rows separated by hairlines. [help] puts a "?" beside the header. */
+@Composable
+fun InsetGroup(header: String? = null, help: String? = null, trailing: (@Composable () -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (header != null) Text(header, Modifier.padding(start = 12.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (header != null) Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(header, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (help != null) HelpHint(help)
+            Spacer(Modifier.weight(1f))
+            trailing?.invoke()
+        }
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainer), content = content)
     }
 }
@@ -117,15 +150,74 @@ fun InsetGroup(header: String? = null, content: @Composable ColumnScope.() -> Un
 fun GroupDivider() = HorizontalDivider(Modifier.padding(start = 52.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
 
 @Composable
-fun SwitchRow(icon: ImageVector, title: String, checked: Boolean, enabled: Boolean = true, value: String? = null, onChange: (Boolean) -> Unit) {
+fun SwitchRow(icon: ImageVector, title: String, checked: Boolean, enabled: Boolean = true, value: String? = null, help: String? = null, onChange: (Boolean) -> Unit) {
     Row(
         Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.Switch) { onChange(!checked) }.padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (help != null) HelpHint(help)
+        }
         if (value != null) Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         Switch(checked, onChange, enabled = enabled, modifier = Modifier.semantics { contentDescription = title })
+    }
+}
+
+/** A row that does something (add, import, save): icon and label in the accent colour, no chevron. */
+@Composable
+fun ActionRow(icon: ImageVector, title: String, enabled: Boolean = true, destructive: Boolean = false, onClick: () -> Unit) {
+    val color = when {
+        !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+        destructive -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.primary
+    }
+    Row(
+        Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = 14.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/**
+ * Two-line item inside an [InsetGroup]: optional leading content, title, subtitle, and a trailing control (switch, menu).
+ * Tapping the body runs [onClick] when given.
+ */
+@Composable
+fun ItemRow(
+    title: String,
+    subtitle: String? = null,
+    caption: String? = null,
+    leading: (@Composable () -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    Row(
+        Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
+            .padding(start = 14.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        leading?.invoke()
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (caption != null) Text(caption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        trailing?.invoke()
+    }
+}
+
+/** Page heading with an optional "?" and trailing actions, for top-level tool pages. */
+@Composable
+fun PageHeader(title: String, help: String? = null, actions: @Composable () -> Unit = {}) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, style = MaterialTheme.typography.headlineMedium)
+        if (help != null) HelpHint(help)
+        Spacer(Modifier.weight(1f))
+        actions()
     }
 }
 

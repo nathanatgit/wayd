@@ -5,7 +5,24 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,7 +77,7 @@ import com.nathanhanapps.wayd.ai.MediaKind
  */
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-fun InsightsChatCard(window: String, vm: InsightsChatViewModel = hiltViewModel()) {
+fun InsightsChatCard(window: String, scope: ChatScope? = null, title: String = stringResource(R.string.chat_title), vm: InsightsChatViewModel = hiltViewModel()) {
     val messages by vm.messages.collectAsStateWithLifecycle()
     val attachments by vm.attachments.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -76,60 +93,96 @@ fun InsightsChatCard(window: String, vm: InsightsChatViewModel = hiltViewModel()
     val pickAudio = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(vm::attachAudio) }
     val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> micDenied = !granted; if (granted) vm.startVoice() }
 
-    fun send(q: String) { vm.send(window, q); text = "" }
+    fun send(q: String) { vm.send(window, q, scope); text = "" }
 
-    AiAssistCard(stringResource(R.string.chat_title)) {
-        val shown = messages.filter { it.window == window }
-        if (shown.isEmpty()) Text(stringResource(R.string.chat_empty), style = MaterialTheme.typography.bodySmall)
+    val shown = messages.filter { it.window == (scope?.key ?: window) }
+    AiAssistCard(
+        title,
+        help = stringResource(R.string.chat_help),
+        action = if (shown.isNotEmpty() && !busy) ({ TextButton(onClick = vm::clear) { Text(stringResource(R.string.chat_clear)) } }) else null,
+    ) {
         shown.forEach { m -> ChatExchange(m, busy && m.outcome == null, vm) { q -> send(q) } }
-
-        if (attachments.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            attachments.forEach { a ->
-                InputChip(selected = false, onClick = { vm.remove(a.key) }, label = { Text(a.title, maxLines = 1) },
-                    trailingIcon = { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.chat_remove), Modifier.size(16.dp)) })
-            }
-        }
-        if (attachments.any { it.kind == MediaKind.IMAGE && it.media.size > 1 }) Text(stringResource(R.string.chat_video_note), style = MaterialTheme.typography.labelSmall)
-        if (recording) Text(stringResource(R.string.chat_recording), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
-
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            Box {
-                IconButton(onClick = { menu = true }, enabled = !busy) { Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.chat_attach)) }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.chat_attach_photo)) }, onClick = {
-                        menu = false; pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.chat_attach_video)) }, onClick = {
-                        menu = false; pickVideo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
-                    })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.chat_attach_audio)) }, onClick = { menu = false; pickAudio.launch(arrayOf("audio/*")) })
-                }
-            }
-            IconButton(onClick = {
-                when {
-                    recording -> vm.stopVoice()
-                    ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> vm.startVoice()
-                    else -> askMic.launch(Manifest.permission.RECORD_AUDIO)
-                }
-            }, enabled = !busy) {
-                Icon(MicIcon, contentDescription = stringResource(if (recording) R.string.chat_voice_stop else R.string.chat_voice_start),
-                    tint = if (recording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSecondaryContainer)
-            }
-            OutlinedTextField(text, { text = it.take(500) }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.chat_hint)) }, maxLines = 4, enabled = !busy)
-            IconButton(onClick = { send(text) }, enabled = !busy && (text.isNotBlank() || attachments.any { it.kind == MediaKind.AUDIO } || recording)) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(R.string.chat_send))
-            }
-        }
         if (busy) {
             val phase by vm.phase.collectAsStateWithLifecycle()
             PhaseNotice(phase)
             LinearProgressIndicator(Modifier.fillMaxWidth())
-            TextButton(onClick = vm::cancel) { Text(stringResource(R.string.ai_cancel)) }
         }
         notice?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         if (micDenied) Text(stringResource(R.string.chat_mic_denied), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-        Text(stringResource(R.string.chat_media_note), style = MaterialTheme.typography.labelSmall)
-        if (messages.isNotEmpty() && !busy) TextButton(onClick = vm::clear) { Text(stringResource(R.string.chat_clear)) }
+
+        val hints = stringArrayResource(if (scope != null) R.array.chat_hints_app else R.array.chat_hints).toList()
+        val canSend = !busy && (text.isNotBlank() || attachments.any { it.kind == MediaKind.AUDIO } || recording)
+        val scheme = MaterialTheme.colorScheme
+        Surface(
+            Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), color = scheme.surface, contentColor = scheme.onSurface,
+            border = BorderStroke(1.dp, scheme.outlineVariant),
+        ) {
+            Column(Modifier.padding(start = 6.dp, end = 6.dp, top = 12.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (attachments.isNotEmpty()) FlowRow(Modifier.padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    attachments.forEach { a ->
+                        InputChip(selected = false, onClick = { vm.remove(a.key) }, label = { Text(a.title, maxLines = 1) },
+                            trailingIcon = { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.chat_remove), Modifier.size(16.dp)) })
+                    }
+                }
+                if (attachments.any { it.kind == MediaKind.IMAGE && it.media.size > 1 }) Text(stringResource(R.string.chat_video_note), Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.labelSmall)
+                Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp).heightIn(min = 28.dp), contentAlignment = Alignment.CenterStart) {
+                    BasicTextField(
+                        text, { text = it.take(500) }, Modifier.fillMaxWidth(), enabled = !busy, maxLines = 6,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = scheme.onSurface), cursorBrush = SolidColor(scheme.primary),
+                    )
+                    if (text.isEmpty()) RotatingHint(if (recording) listOf(stringResource(R.string.chat_recording)) else hints, recording)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box {
+                        IconButton(onClick = { menu = true }, enabled = !busy) { Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.chat_attach)) }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.chat_attach_photo)) }, onClick = {
+                                menu = false; pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.chat_attach_video)) }, onClick = {
+                                menu = false; pickVideo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+                            })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.chat_attach_audio)) }, onClick = { menu = false; pickAudio.launch(arrayOf("audio/*")) })
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = {
+                        when {
+                            recording -> vm.stopVoice()
+                            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> vm.startVoice()
+                            else -> askMic.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    }, enabled = !busy) {
+                        Icon(MicIcon, contentDescription = stringResource(if (recording) R.string.chat_voice_stop else R.string.chat_voice_start),
+                            tint = if (recording) scheme.error else scheme.onSurfaceVariant)
+                    }
+                    if (busy) FilledIconButton(onClick = vm::cancel) { Icon(StopIcon, contentDescription = stringResource(R.string.ai_cancel)) }
+                    else FilledIconButton(onClick = { send(text) }, enabled = canSend) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(R.string.chat_send)) }
+                }
+            }
+        }
+    }
+}
+
+/** Grey example questions that roll upward one after another while the box is empty. */
+@Composable
+private fun RotatingHint(hints: List<String>, alert: Boolean) {
+    var index by remember(hints) { mutableIntStateOf(0) }
+    LaunchedEffect(hints) {
+        while (hints.size > 1) {
+            delay(3200)
+            index = (index + 1) % hints.size
+        }
+    }
+    AnimatedContent(
+        targetState = hints.getOrElse(index) { "" },
+        transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
+        label = "chatHint",
+    ) { hint ->
+        Text(
+            hint, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            color = if (alert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+        )
     }
 }
 
@@ -162,6 +215,14 @@ private fun ChatExchange(m: ChatMessage, working: Boolean, vm: InsightsChatViewM
         }
     }
 }
+
+/** Rounded square "stop" glyph for cancelling an answer in progress. */
+private val StopIcon = ImageVector.Builder("Stop", 24.dp, 24.dp, 24f, 24f).apply {
+    path(fill = SolidColor(Color.Black)) {
+        moveTo(8f, 7f); horizontalLineTo(16f); curveTo(16.55f, 7f, 17f, 7.45f, 17f, 8f); verticalLineTo(16f); curveTo(17f, 16.55f, 16.55f, 17f, 16f, 17f)
+        horizontalLineTo(8f); curveTo(7.45f, 17f, 7f, 16.55f, 7f, 16f); verticalLineTo(8f); curveTo(7f, 7.45f, 7.45f, 7f, 8f, 7f); close()
+    }
+}.build()
 
 /** Microphone glyph (the core icon set has none); tinted by the caller. */
 private val MicIcon = ImageVector.Builder("Mic", 24.dp, 24.dp, 24f, 24f).apply {

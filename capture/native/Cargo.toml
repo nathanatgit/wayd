@@ -19,13 +19,15 @@ tokio-rustls = { version = "0.26", default-features = false, features = ["ring",
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "ring", "x509-parser"], optional = true }
 time = { version = "0.3", optional = true }
 httparse = { version = "1", optional = true }
+# Linear-time regex for rewrite URL patterns (D-069). No look-around or back-references by design; small feature set to keep the library size down.
+regex = { version = "=1.13.1", default-features = false, features = ["std", "unicode-perl"], optional = true }
 webpki-roots = { version = "1", optional = true }
 rustls-pemfile = { version = "2", optional = true }
 md-5 = { version = "0.10", optional = true }
 
 [features]
 default = []
-mitm = ["dep:rustls", "dep:tokio-rustls", "dep:rcgen", "dep:time", "dep:httparse", "dep:webpki-roots", "dep:rustls-pemfile", "dep:md-5"]
+mitm = ["dep:rustls", "dep:tokio-rustls", "dep:rcgen", "dep:time", "dep:httparse", "dep:regex", "dep:webpki-roots", "dep:rustls-pemfile", "dep:md-5"]
 
 [profile.release]
 opt-level = "s"

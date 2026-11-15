@@ -99,6 +99,10 @@ interface InterceptAppDao {
 
 @Dao
 interface FlowDao {
+    /** Addresses that showed a name of their own (SNI / HTTP Host) recently; seeds the name memory at VPN start (D-067). Blocking call: background threads only. */
+    @Query("SELECT dstIp, host, startAt FROM Flow WHERE host IS NOT NULL AND hostSource IN ('SNI', 'HTTP_HOST') AND startAt >= :since ORDER BY startAt DESC LIMIT :limit")
+    fun namedAddresses(since: Long, limit: Int): List<NamedAddress>
+
     @Query("SELECT * FROM Flow WHERE pkg = :pkg AND startAt >= :start AND startAt < :end ORDER BY startAt DESC, id DESC LIMIT 200")
     fun observeAppHistory(pkg: String, start: Long, end: Long): KFlow<List<Flow>>
 
@@ -272,3 +276,6 @@ interface AiAnalysisDao {
     @Query("DELETE FROM AiAnalysis")
     suspend fun deleteAll()
 }
+
+/** One address and the name a recorded connection to it showed. */
+data class NamedAddress(val dstIp: String, val host: String, val startAt: Long)

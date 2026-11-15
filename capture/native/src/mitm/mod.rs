@@ -7,6 +7,7 @@
 
 pub mod ca;
 pub mod http1;
+pub mod rewrite;
 pub mod tls;
 
 #[cfg(test)]

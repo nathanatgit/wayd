@@ -48,6 +48,7 @@ import com.nathanhanapps.wayd.analysis.Destination
 import com.nathanhanapps.wayd.analysis.InsightKind
 import com.nathanhanapps.wayd.analysis.UNKNOWN_PKG
 import com.nathanhanapps.wayd.core.db.Finding
+import com.nathanhanapps.wayd.feature.ai.chatEvidence
 import com.nathanhanapps.wayd.feature.analysis.AppDetailViewModel
 import com.nathanhanapps.wayd.feature.analysis.AppIcon
 import com.nathanhanapps.wayd.feature.analysis.Badge
@@ -83,8 +84,11 @@ import java.util.Date
 /** App identity stays visible; the report and its actions form one scrollable, themed page. */
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-fun AppDetailScreen(onBack: () -> Unit, onOpenMessages: (pkg: String, window: String) -> Unit, onOpenScanner: (String) -> Unit, onSelectWindow: (String) -> Unit, vm: AppDetailViewModel = hiltViewModel()) {
+fun AppDetailScreen(onBack: () -> Unit, onOpenMessages: (pkg: String, window: String) -> Unit, onOpenScanner: (String) -> Unit, onSelectWindow: (String) -> Unit, vm: AppDetailViewModel = hiltViewModel(), labelVm: com.nathanhanapps.wayd.feature.analysis.LabelViewModel = hiltViewModel()) {
     val state by vm.report.collectAsStateWithLifecycle()
+    // Same screen-scoped label snapshot the history section uses; here it feeds the app chat.
+    val labelContext by labelVm.context.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(vm.pkg, vm.windowKey) { labelVm.select(vm.pkg, vm.windowKey) }
     val context = LocalContext.current
     val name = if (vm.pkg == UNKNOWN_PKG) stringResource(R.string.app_unknown) else vm.labels.label(vm.pkg)
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, modifier = Modifier.fillMaxSize()) {
@@ -115,6 +119,12 @@ fun AppDetailScreen(onBack: () -> Unit, onOpenMessages: (pkg: String, window: St
             ) {
                 // AI assistance leads the page so it reads as the guide to the evidence below; rules still decide severity.
                 if (vm.pkg != UNKNOWN_PKG) item(key = "ai") { com.nathanhanapps.wayd.feature.ai.AiSection() }
+                labelContext?.takeIf { it.hosts.isNotEmpty() }?.let { ctx ->
+                    item(key = "chat") {
+                        val scope = remember(ctx) { com.nathanhanapps.wayd.feature.ai.ChatScope("app:${vm.pkg}|${vm.windowKey}", "$name (${vm.pkg}), window ${vm.windowKey}") { ctx.chatEvidence() } }
+                        com.nathanhanapps.wayd.feature.ai.InsightsChatCard(vm.windowKey, scope, stringResource(R.string.chat_title_app))
+                    }
+                }
                 item {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(Windows.TODAY to R.string.window_today, Windows.YESTERDAY to R.string.window_yesterday, Windows.WEEK to R.string.window_week).forEach { (key, label) ->

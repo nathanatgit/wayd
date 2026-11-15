@@ -84,6 +84,16 @@ Order of sections:
 
 Report is a stored, versioned object so it renders instantly and can be AI-summarised later.
 
-## Connection labels (D-051)
+## Labels, relations and attention (D-061 to D-063)
 
-Each connection gets one label from rules: Danger (cited by a HIGH finding), Warn (MEDIUM), Sensitive (LOW/INFO finding with data types), Ad (ADS/ANALYTICS tracker host), else Normal; highest wins. AI purpose guesses appear only as a separate hint next to it.
+Deterministic, in `analysis/LabelRules.kt` and `LabelRelations.kt`. They describe and order; findings keep their own severity. The earlier Danger/Warn/Sensitive/Ad/Normal connection labels (D-051) are removed.
+
+| Output | How it is computed |
+|---|---|
+| **Role** of a host | curated suffix list → tracker list category → whole-word hostname match ("by name") → UNKNOWN. Vocabulary: FUNCTIONAL, LOGIN, LOCATION, PUSH, ANALYTICS, DIAGNOSTICS, ADS, MEDIA, CONTENT, UPDATE, CARRIER, SYSTEM, UNKNOWN. |
+| **Advice** per (app, host) | needs an attributed TCP SNI/HTTP-Host record with bytes. ADS/ANALYTICS/DIAGNOSTICS → try a temporary block; SYSTEM/CARRIER/UNKNOWN → insufficient; other roles → may affect function. Carries reasons (role source, no host evidence, no bytes, unattributed, screen-off share, upload-heavy, already blocked). |
+| **Relations** to the APK | permission used while the host's records were open: USED_TOGETHER if it fits the role, else SAME_TIME; declared permission that fits the role: DECLARED; component or SDK sharing role words, host words or company: NAME_MATCH. Never causation. |
+| **Attention** | score from rule finding on the host (HIGH 4, MEDIUM 3, LOW 1), tracking role (2, or 1 if by name), relations (2 / 1), screen-off majority (1), upload-heavy on a tracking or unknown host (1). ≥ 5 ACT, ≥ 3 REVIEW, ≥ 1 NOTE. Platform hosts cap at NOTE without a finding; a blocked host is NONE. |
+| **Suggestions** | block trial; AppOps restrict <permission/op>; Thanox redirect (ad activity) or disable (tracking/push service or receiver). Pointers only. |
+
+The AI may add its own role, links and advice next to these (06-AI-GEMMA.md); it never changes them.

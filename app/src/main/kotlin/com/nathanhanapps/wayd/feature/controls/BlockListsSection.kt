@@ -4,6 +4,19 @@ import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import com.nathanhanapps.wayd.feature.common.ActionRow
+import com.nathanhanapps.wayd.feature.common.GroupDivider
+import com.nathanhanapps.wayd.feature.common.HelpHint
+import com.nathanhanapps.wayd.feature.common.InsetGroup
+import com.nathanhanapps.wayd.feature.common.ItemRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -60,6 +73,9 @@ class BlockListsViewModel @Inject constructor(
     val lists = store.lists
     val busy = MutableStateFlow(false)
     val notice = MutableStateFlow<Int?>(null)
+    val stats = MutableStateFlow<Pair<Long, Long>?>(null)
+
+    fun refreshStats() { stats.value = runCatching { blocking.listStats() }.getOrNull() }
 
     private fun run(block: suspend () -> Boolean) {
         if (busy.value) return
@@ -132,45 +148,44 @@ fun BlockListsSection(vm: BlockListsViewModel = hiltViewModel()) {
     var enabling by remember { mutableStateOf<BlockListInfo?>(null) }
     var deleting by remember { mutableStateOf<BlockListInfo?>(null) }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(vm::importFile) }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { vm.refreshStats() }
 
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.blist_title), style = MaterialTheme.typography.titleMedium)
-            Text(stringResource(R.string.blist_intro), style = MaterialTheme.typography.bodySmall)
-            val e = entries
-            Text(
-                when {
-                    !policy.running -> stringResource(R.string.blist_vpn_off)
-                    e == null -> stringResource(R.string.blist_old_engine)
-                    e < 0 -> stringResource(R.string.blist_rejected)
-                    else -> stringResource(R.string.blist_loaded, e)
-                },
-                style = MaterialTheme.typography.labelMedium,
-                color = if (policy.running && (e == null || e < 0)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { pick.launch(arrayOf("text/*", "application/octet-stream")) }, enabled = !busy) { Text(stringResource(R.string.blist_import_file)) }
-                TextButton(onClick = { adding = true }, enabled = !busy) { Text(stringResource(R.string.blist_add_url)) }
-            }
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            notice?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall) }
-            lists.forEach { l ->
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(l.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
-                        Text(stringResource(R.string.blist_row, l.applied, l.skipped), style = MaterialTheme.typography.bodySmall)
-                        Text(stringResource(R.string.blist_updated, DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(l.updatedAt))), style = MaterialTheme.typography.labelSmall)
-                    }
-                    Switch(checked = l.enabled, enabled = !busy, onCheckedChange = { on -> if (on) enabling = l else vm.setEnabled(l.id, false) })
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (l.url != null) TextButton(onClick = { vm.update(l) }, enabled = !busy) { Text(stringResource(R.string.blist_update)) }
-                    TextButton(onClick = { deleting = l }, enabled = !busy) { Text(stringResource(R.string.block_remove)) }
-                }
-            }
+    val e = entries
+    Column { InsetGroup(
+        stringResource(R.string.blist_title), help = stringResource(R.string.blist_intro),
+        trailing = { if (policy.running && e != null && e >= 0) Text(stringResource(R.string.blist_loaded, e), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 12.dp)) },
+    ) {
+        // Only an engine problem is worth a line; "VPN off" is in the summary above.
+        if (policy.running && (e == null || e < 0)) {
+            Text(stringResource(if (e == null) R.string.blist_old_engine else R.string.blist_rejected), Modifier.padding(14.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            GroupDivider()
         }
+        lists.forEach { l ->
+            var menu by remember(l.id) { mutableStateOf(false) }
+            ItemRow(
+                l.name,
+                subtitle = stringResource(R.string.blist_row, l.applied, l.skipped),
+                caption = stringResource(R.string.blist_updated, DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(l.updatedAt))),
+                onClick = { menu = true },
+                trailing = {
+                    Switch(checked = l.enabled, enabled = !busy, onCheckedChange = { on -> if (on) enabling = l else vm.setEnabled(l.id, false) })
+                    Box {
+                        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.ai_more)) }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            if (l.url != null) DropdownMenuItem(text = { Text(stringResource(R.string.blist_update)) }, enabled = !busy, onClick = { menu = false; vm.update(l) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.block_remove)) }, enabled = !busy, onClick = { menu = false; deleting = l })
+                        }
+                    }
+                },
+            )
+            GroupDivider()
+        }
+        ActionRow(Icons.Filled.Add, stringResource(R.string.blist_import_file), enabled = !busy) { pick.launch(arrayOf("text/*", "application/octet-stream")) }
+        GroupDivider()
+        ActionRow(Icons.Filled.Add, stringResource(R.string.blist_add_url), enabled = !busy) { adding = true }
+        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
     }
+    notice?.let { Text(stringResource(it), Modifier.padding(start = 12.dp, top = 6.dp), style = MaterialTheme.typography.bodySmall, color = if (it == R.string.blist_failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) } }
     enabling?.let { l ->
         AlertDialog(
             onDismissRequest = { enabling = null },
@@ -194,10 +209,9 @@ fun BlockListsSection(vm: BlockListsViewModel = hiltViewModel()) {
         var url by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { adding = false },
-            title = { Text(stringResource(R.string.blist_add_url)) },
+            title = { Row(verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.blist_add_url)); HelpHint(stringResource(R.string.blist_url_note)) } },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.blist_url_note), style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(name, { name = it.take(60) }, label = { Text(stringResource(R.string.blist_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(url, { url = it.take(500) }, label = { Text(stringResource(R.string.blist_url)) }, placeholder = { Text("https://") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }

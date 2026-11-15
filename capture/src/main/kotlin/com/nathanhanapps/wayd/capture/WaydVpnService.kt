@@ -209,6 +209,10 @@ class WaydVpnService : VpnService() {
         val active = mitm != null && runCatching {
             net.nativeConfigureMitm(h, mitm.certPem, mitm.keyPem, mitm.excludedHosts.joinToString(","))
         }.getOrDefault(false)
+        // Seed the address → name memory from the last day of recorded connections, so apps that reuse cached addresses after a
+        // VPN restart (no new DNS query to see) still get a name. Best effort: an empty map is the old behaviour.
+        val names = DnsIpMap()
+        runCatching { flows.namedAddresses(System.currentTimeMillis() - DnsIpMap.LEARNED_MS, 4000).forEach { names.learn(it.dstIp, it.host, it.startAt) } }
         val t = FlowTracker(
             sessionId, AndroidUidResolver(this), sink, AndroidCaptureEnv(this),
             gate = if (active) provider?.gate()?.let { gate ->
@@ -219,6 +223,7 @@ class WaydVpnService : VpnService() {
             policyHost = blocking::host,
             recording = { recording.window },
             country = routing::country,
+            dnsMap = names,
         )
         val buf = ByteArray(POLL_BUF)
         var lastFlush = SystemClock.elapsedRealtime()

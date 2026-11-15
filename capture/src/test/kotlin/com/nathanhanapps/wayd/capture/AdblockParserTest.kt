@@ -30,6 +30,16 @@ class AdblockParserTest {
         assertEquals(11, r.skipped) // the bare "0.0.0.0 0.0.0.0" hosts line has no host to add and is not a rule
     }
 
+    @Test fun rulePluginLinesImportDomainRejectsOnly() {
+        val r = parse(
+            "#!name=Example", "#!desc=demo", "[Rule]", "DOMAIN,ads.example.com,REJECT", "DOMAIN-SUFFIX,tracker.test,REJECT-DROP // note",
+            "DOMAIN-SUFFIX,list.example.net", "DOMAIN-KEYWORD,adservice,REJECT", "DOMAIN,direct.example.com,DIRECT", "IP-CIDR,1.2.3.0/24,REJECT,no-resolve",
+            "[Rewrite]", "^https?://api.example.com/ads reject-200", "[MITM]", "hostname = api.example.com",
+        )
+        assertEquals(listOf("=\tads.example.com", ".\ttracker.test", ".\tlist.example.net"), r.lines)
+        assertEquals(5, r.skipped)
+    }
+
     @Test fun duplicatesCollapse() {
         val r = parse("||a.example^", "||a.example^", "a.example")
         assertEquals(listOf(".\ta.example"), r.lines)

@@ -1,22 +1,29 @@
 # 07 · APK scanner
 
-## Implementation status · 2026-11-10
+## Implementation status (2026-11-14)
 
-`apkscan/` implements a user-started WorkManager scan (maximum two APKs concurrently) over visible installed packages plus packages observed in retained traffic. Apps → APK scanner lists stored results (including system apps); a package-name field permits an explicit lookup when the ROM hides the installed-app list. Individual app pages link to their static snapshot. Cancel preserves completed packages. Unavailable package counts are shown; a successful batch does not mean every installed app was visible.
+`apkscan/` runs a user-started WorkManager scan (two APKs at a time) over visible installed packages plus packages seen in retained traffic. Cancel keeps completed packages. A finished batch does not mean every installed app was visible; unavailable counts are shown.
 
-Implemented: base/split binary manifests and receiver actions; PackageManager permissions/components/exported flags, shared UID and current signing certificates; declared NSC XML (including trust anchors, domains and pin declarations); defined-class SDK prefixes; possible host literals; native library names and protector heuristics. DEX readers accept 035/037–040, skip non-ASCII string evidence and retain hosts without paths/credentials/query values. Reflection type presence is not a hidden-API call-site finding. Certificates show SHA-256 plus subject, with no verified company attribution claim.
+| | |
+|---|---|
+| **Reads** | base/split binary manifests and receiver actions; PackageManager permissions, components (Activities, services, receivers, providers), exported flags, shared UID, current signing certificates; declared NSC XML (trust anchors, domains, pins); SDKs by defined-class prefix; possible host literals; native library names; protector heuristics |
+| **DEX** | formats 035, 037–040; non-ASCII string evidence skipped; hosts kept without path, credentials or query |
+| **Not claimed** | reflection type presence is not a hidden-API call-site finding; certificates show SHA-256 and subject with no verified company attribution; static presence is not execution, a grant, or proof of which component made a connection |
+| **Not implemented** | root odex/VDEX extraction, non-ASCII endpoints, hidden-API call sites, complete licensed tracker signatures, automatic NSC/MITM feasibility verdicts |
+| **Open** | all-app performance and carrier/vendor signer identification need device evidence; full-inventory scan through Shizuku |
 
-Bounds per package: 64 APK paths, 50,000 ZIP entries per path, 4 MiB manifest, 64 DEX entries, 32 MiB per DEX / 96 MiB DEX read budget, 500,000 string IDs, 4,096 characters per examined string, 256 hosts per DEX, about 4,096 facts plus bounded coverage records. Malformed entries and limits become coverage facts. No extracted APK files are retained. NSC is limited to 10,000 parser events. Cache uses scanner/version/update/file metadata; explicit per-app rescan bypasses cache. WorkManager concurrency is capped at two.
+**Bounds per package:** 64 APK paths; 50,000 ZIP entries per path; 4 MiB manifest; 64 DEX entries; 32 MiB per DEX and 96 MiB DEX budget; 500,000 string IDs; 4,096 characters per string; 256 hosts per DEX; about 4,096 facts plus bounded coverage records; NSC 10,000 parser events. Malformed entries and hit limits become coverage facts. No extracted APK files are kept.
 
-The original extraction table below remains the broader specification. Not implemented: root odex/VDEX extraction, non-ASCII endpoint extraction, hidden-API call-site analysis, complete licensed tracker signatures, automatic NSC/MITM feasibility verdicts or AI component explanation. The Declared/Used/Sent panel shows independent observations over retained history, with up to 100 operation types / 200 hosts; only exact static/observed host matches are highlighted. No three-way causal claim is made. All-app performance and carrier/vendor signer identification require device acceptance evidence.
+**Cache:** keyed by scanner version, app version/update time and file metadata; a per-app rescan bypasses it. Cache v2 (D-061) added Activities (`ApkFactKind.ACTIVITY`, existing TEXT column, no schema change); older snapshots need a rescan to show them.
 
-## Descriptive markers (D-061, 2026-11-12)
+## How the result is shown and used
 
-The scanner now also reads declared Android Activities (`GET_ACTIVITIES`) into `ApkFactKind.ACTIVITY`; this is an additional value in the existing TEXT-backed fact kind, not a Room table/column change. Cache v2 invalidates the earlier scanner cache. Existing snapshots need a user-started rescan to show Activities. Activities, services, receivers, providers and SDKs can be explained as possible features; static presence is not execution evidence or proof of which component initiated a connection.
+- **APK page** (D-063): overview tiles, sensitive-capability chips (marked "used" from recorded permission use and "N connections" from today's related destinations), endpoint purpose share, SDK chips; every fact list collapsed under its own header. A package-name field allows a lookup when the ROM hides the app list.
+- **Links to behaviour:** rules relate each destination host to declared permissions, components and SDKs (`LabelRelations`, see [06-AI-GEMMA.md](06-AI-GEMMA.md) and D-063). Only exact static/observed host matches are highlighted as "contacted". No causal claim is made.
+- **AI:** each eligible fact has "Ask AI about this item" (one item per request, bounded context, exact fact ids, links marked as possible). No whole-APK batch inference; model output never changes severity, consent or policy.
+- **Export:** JSON keeps a 400-fact bound per app but samples across fact kinds, with `apkFactCount` and `apkFactsTruncated`; each fact carries `id`, `versionCode`, `kind`, `key`, `value`, `evidence`. Truncation is not a negative result. Links describe the latest stored scan; which APK version produced past traffic is unknown.
 
-Each eligible fact has Labels and evidence → Explain labels with AI. Permissions get a built-in capability explanation and an optional AI explanation. Endpoints get a controlled role and optional AI permission/feature relationships. AI relationships use exact fact IDs, are marked possible associations, and open the referenced APK evidence. Connections in app history/details use the same markers and separate neutral algorithm/AI blocking suggestions. No model output changes severity, consent or policy. Inference is explicit per item, not an automatic whole-APK batch; its context is a disclosed bounded selection. See docs/06-AI-GEMMA.md.
-
-JSON exports retain the 400-fact bound but select across fact kinds so endpoint-heavy APKs cannot omit all permission/SDK/component evidence. Each app includes `apkFactCount` and `apkFactsTruncated`; selected facts include `id`, `versionCode`, `kind`, `key`, `value` and `evidence`. Truncation is not a negative scan result. APK links describe the latest stored scan; historical APK-version identity remains unknown.
+The extraction table below remains the broader specification.
 
 ## Inputs
 

@@ -2,7 +2,8 @@ package com.nathanhanapps.wayd.core.model
 
 enum class Privilege { NONE, ADB, ROOT }
 enum class Proto { TCP, UDP }
-enum class HostSource { DNS, SNI, HTTP_HOST, QUIC_SNI }
+/** INFERRED: no name on this connection; the address was seen with this name on another connection (SNI / HTTP Host). Weaker than DNS; never a block target. */
+enum class HostSource { DNS, SNI, HTTP_HOST, QUIC_SNI, INFERRED }
 enum class NetType { WIFI, CELLULAR, OTHER }
 enum class TrackerCategory { ADS, ANALYTICS, CRASH, PUSH, CDN, OS, CARRIER, FIRST_PARTY, UNKNOWN }
 enum class CaptureSource { VPN, NFLOG, BYPASS }

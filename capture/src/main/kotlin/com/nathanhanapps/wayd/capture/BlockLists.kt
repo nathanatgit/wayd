@@ -40,6 +40,9 @@ object AdblockParser {
             if (line.isEmpty() || line[0] == '!' || line[0] == '[' || (line[0] == '#' && !line.startsWith("##"))) continue
             when {
                 "##" in line || "#@#" in line || "#?#" in line || "#$#" in line -> skipped++ // cosmetic rules need a page
+                // Rule-plugin / rule-set lines (D-067): DOMAIN and DOMAIN-SUFFIX with no policy or a REJECT policy. Section headers and
+                // `#!` metadata are ignored above; other rule types and policies are counted as skipped.
+                PLUGIN_RULE.matches(line) -> add(pluginRule(line))
                 line.startsWith("@@||") -> add(rule(line.substring(4), exception = true))
                 line.startsWith("||") -> add(rule(line.substring(2), exception = false))
                 line[0] == '/' || line[0] == '|' || line.startsWith("@@") -> skipped++ // regex, anchored URLs, other exceptions
@@ -55,6 +58,19 @@ object AdblockParser {
             }
         }
         return Result(out.toList(), out.size, skipped)
+    }
+
+    private val PLUGIN_RULE = Regex("[A-Z][A-Z0-9-]*,.*")
+
+    private fun pluginRule(line: String): String? {
+        val f = line.substringBefore("//").split(',').map { it.trim() }
+        if (f.size < 2 || (f.size >= 3 && !f[2].uppercase().startsWith("REJECT"))) return null
+        val h = host(f[1]) ?: return null
+        return when (f[0]) {
+            "DOMAIN" -> "=\t$h"
+            "DOMAIN-SUFFIX" -> ".\t$h"
+            else -> null
+        }
     }
 
     /** `host^` plus optional `$important` / `$app=a|b`. Any other modifier needs request context a VPN does not have. */

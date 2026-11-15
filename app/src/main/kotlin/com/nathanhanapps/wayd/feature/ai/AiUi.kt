@@ -55,22 +55,34 @@ import com.nathanhanapps.wayd.core.model.DataType
 import com.nathanhanapps.wayd.feature.analysis.Badge
 
 /**
- * The one visual identity for AI assistance (app analysis, item labels, chat): a tonal card with the AI mark, a title and the
- * standing reminder that rules decide severity. Content inside is always the AI's opinion, never a rule result.
+ * The one visual identity for AI assistance (app analysis, item labels, chat): a tonal card led by the mark of the model that
+ * answers, the title, and an optional [action] in the same row. Content inside is always the AI's opinion, never a rule result;
+ * that reminder sits behind the "?" ([help]) rather than on every card.
  */
 @Composable
-fun AiAssistCard(title: String, modifier: Modifier = Modifier, subtitle: String? = stringResource(R.string.ai_card_subtitle), content: @Composable ColumnScope.() -> Unit) {
+fun AiAssistCard(
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    help: String? = stringResource(R.string.ai_card_subtitle),
+    action: (@Composable () -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit = {},
+) {
     androidx.compose.material3.Surface(
         modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                AiMark()
                 Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.titleMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(title, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.titleMedium)
+                        if (help != null) com.nathanhanapps.wayd.feature.common.HelpHint(help)
+                    }
                     subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)) }
                 }
+                action?.invoke()
             }
             content()
         }
@@ -81,23 +93,27 @@ fun AiAssistCard(title: String, modifier: Modifier = Modifier, subtitle: String?
 @Composable
 fun AiSection(vm: AiAnalysisViewModel = hiltViewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
-    AiAssistCard(stringResource(R.string.ai_title)) {
-        when (val s = state) {
-            AiUiState.Idle -> Button(onClick = { vm.analyse() }) { Text(stringResource(R.string.ai_analyse)) }
+    val s = state
+    AiAssistCard(
+        stringResource(R.string.ai_title),
+        action = {
+            when (s) {
+                AiUiState.Idle -> Button(onClick = { vm.analyse() }) { Text(stringResource(R.string.ai_analyse)) }
+                AiUiState.Running -> androidx.compose.material3.TextButton(onClick = vm::cancel) { Text(stringResource(R.string.ai_cancel)) }
+                AiUiState.NoEvidence -> OutlinedButton(onClick = { vm.analyse() }) { Text(stringResource(R.string.ai_retry)) }
+                is AiUiState.Done -> OutlinedButton(onClick = { vm.analyse(useCache = false) }) { Text(stringResource(R.string.ai_retry)) }
+            }
+        },
+    ) {
+        when (s) {
+            AiUiState.Idle -> Unit
             AiUiState.Running -> {
                 val phase by vm.phase.collectAsStateWithLifecycle()
                 PhaseNotice(phase)
                 LinearProgressIndicator(Modifier.fillMaxWidth())
-                OutlinedButton(onClick = vm::cancel) { Text(stringResource(R.string.ai_cancel)) }
             }
-            AiUiState.NoEvidence -> {
-                Text(stringResource(R.string.ai_no_evidence), style = MaterialTheme.typography.bodyMedium)
-                OutlinedButton(onClick = { vm.analyse() }) { Text(stringResource(R.string.ai_retry)) }
-            }
-            is AiUiState.Done -> {
-                AiOutcomeView(s.outcome)
-                OutlinedButton(onClick = { vm.analyse(useCache = false) }) { Text(stringResource(R.string.ai_retry)) }
-            }
+            AiUiState.NoEvidence -> Text(stringResource(R.string.ai_no_evidence), style = MaterialTheme.typography.bodyMedium)
+            is AiUiState.Done -> AiOutcomeView(s.outcome)
         }
     }
 }

@@ -175,7 +175,14 @@ class ExternalAiViewModel @Inject constructor(
     val saved: StateFlow<Boolean> = _saved.asStateFlow()
     private var job: Job? = null
 
-    init { viewModelScope.launch { settings.load() } }
+    init {
+        viewModelScope.launch {
+            settings.load()
+            // A server saved before profiles existed shows up as the first profile, so it can be switched away from and back.
+            val ui = settings.state.value
+            if (ui.configured && settings.profiles.value.none { it.baseUrl == ui.baseUrl && it.model == ui.model }) settings.saveProfile("")
+        }
+    }
 
     /** Asks the server for its model list: proves the address and key work, and offers the names to pick from. */
     fun testConnection(url: String, model: String, key: String) {
@@ -210,22 +217,27 @@ class ExternalAiViewModel @Inject constructor(
         }
     }
 
-    fun save(url: String, model: String, key: String, onResult: (Boolean) -> Unit) = viewModelScope.launch {
-        val ok = settings.save(url, model, key.takeIf { it.isNotBlank() })
+    /**
+     * Stores the server and keeps it as a profile: [profileId] updates the profile being edited, null adds a new one. Every saved
+     * server is a profile, so adding another never replaces the first.
+     */
+    fun save(url: String, model: String, key: String, name: String, profileId: String?, onResult: (Boolean) -> Unit) = viewModelScope.launch {
+        val ok = settings.save(url, model, key.takeIf { it.isNotBlank() }) && settings.saveProfile(name, profileId)
         _saved.value = ok
         onResult(ok)
     }
 
     fun acknowledge(on: Boolean) = viewModelScope.launch { settings.setAcknowledged(on) }
 
-    fun remove() = viewModelScope.launch { settings.clear(); _test.value = ExternalTest.Idle }
-
     val profiles = settings.profiles
-
-    /** Saves the current (already saved) server and model as a named profile. */
-    fun saveProfile(name: String, onResult: (Boolean) -> Unit) = viewModelScope.launch { onResult(settings.saveProfile(name)) }
 
     fun useProfile(id: String) = viewModelScope.launch { settings.useProfile(id); _test.value = ExternalTest.Idle }
 
-    fun deleteProfile(id: String) = viewModelScope.launch { settings.deleteProfile(id) }
+    /** Deletes a profile; deleting the one in use also forgets the current server, key and acknowledgement. */
+    fun deleteProfile(id: String) = viewModelScope.launch {
+        val ui = settings.state.value
+        val active = settings.profiles.value.firstOrNull { it.id == id }?.let { it.baseUrl == ui.baseUrl && it.model == ui.model } == true
+        settings.deleteProfile(id)
+        if (active) { settings.clear(); _test.value = ExternalTest.Idle }
+    }
 }

@@ -1,5 +1,25 @@
 package com.nathanhanapps.wayd.feature.controls
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import com.nathanhanapps.wayd.feature.analysis.StatGrid
+import com.nathanhanapps.wayd.feature.analysis.StatTile
+import com.nathanhanapps.wayd.feature.common.GroupDivider
+import com.nathanhanapps.wayd.feature.common.HelpHint
+import com.nathanhanapps.wayd.feature.common.InsetGroup
+import com.nathanhanapps.wayd.feature.common.ItemRow
+import com.nathanhanapps.wayd.feature.common.PageHeader
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -95,63 +115,100 @@ fun ControlsScreen(onOpenApp: (String) -> Unit, vm: ControlsViewModel = hiltView
             (query.isBlank() || rule.pkg.orEmpty().contains(query, true) || rule.host.orEmpty().contains(query, true))
     }.sortedWith(compareByDescending<BlockRule> { it.id in policy.activeIds }.thenByDescending { it.createdAt })
 
+    var detailId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val listsVm: BlockListsViewModel = hiltViewModel()
+    val rewriteVm: RewriteViewModel = hiltViewModel()
+    val lists by listsVm.lists.collectAsStateWithLifecycle()
+    val stats by listsVm.stats.collectAsStateWithLifecycle()
+    val rewrites by rewriteVm.rules.collectAsStateWithLifecycle()
+    val scheme = MaterialTheme.colorScheme
+
     LazyColumn(
         Modifier.fillMaxSize().padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
     ) {
         item {
-            Text(stringResource(R.string.control_title), style = MaterialTheme.typography.headlineMedium)
-            Text(stringResource(R.string.control_intro), style = MaterialTheme.typography.bodyMedium)
+            PageHeader(stringResource(R.string.control_title), help = stringResource(R.string.control_intro)) {
+                IconButton(onClick = { vm.refresh(); listsVm.refreshStats(); rewriteVm.refreshHits() }, enabled = !busy) {
+                    Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.control_refresh))
+                }
+            }
         }
+        // Summary in the dashboard style: one status line and the numbers of each rule set.
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(stringResource(R.string.control_summary, effective, policy.rules.size), style = MaterialTheme.typography.titleMedium)
-                    Text(stringResource(if (policy.running) R.string.control_vpn_on else R.string.block_vpn_off), style = MaterialTheme.typography.bodySmall)
-                    Text(stringResource(R.string.block_coverage), style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = vm::refresh, enabled = !busy) { Text(stringResource(R.string.control_refresh)) }
+            Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = scheme.primaryContainer, contentColor = scheme.onPrimaryContainer) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(Modifier.size(10.dp).clip(CircleShape).background(if (policy.running) scheme.primary else scheme.outline))
+                        Text(stringResource(if (policy.running) R.string.control_vpn_on else R.string.block_vpn_off), style = MaterialTheme.typography.titleMedium)
+                        if (!policy.running) HelpHint(stringResource(R.string.block_vpn_off_help))
+                    }
+                    StatGrid(
+                        listOf(
+                            StatTile("$effective / ${policy.rules.size}", stringResource(R.string.control_tile_rules)),
+                            StatTile("${lists.count { it.enabled }} / ${lists.size}", stringResource(R.string.control_tile_lists)),
+                            StatTile("${rewrites.count { it.enabled }} / ${rewrites.size}", stringResource(R.string.control_tile_rewrite)),
+                            StatTile(stats?.first?.toString() ?: "–", stringResource(R.string.control_tile_list_hits), scheme.error),
+                            StatTile(stats?.second?.toString() ?: "–", stringResource(R.string.control_tile_dns)),
+                        ),
+                        labelLines = 1,
+                    )
                     notice?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall) }
                 }
             }
         }
-        item {
-            PolicyTransferSection()
-        }
         // Global block lists are a separate rule set from the per-app rules below (D-064).
-        item { BlockListsSection() }
+        item { BlockListsSection(listsVm) }
+        // Rewrite rules are the second, separate rule set: they change decrypted requests instead of blocking connections.
+        item { RewriteSection(rewriteVm) }
         item {
-            Text(stringResource(R.string.block_rules_title), style = MaterialTheme.typography.titleLarge)
-            OutlinedTextField(
-                value = query, onValueChange = { query = it.take(253) },
-                label = { Text(stringResource(R.string.control_search)) },
-                modifier = Modifier.fillMaxWidth(), singleLine = true,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("ALL" to R.string.control_all, "EFFECTIVE" to R.string.control_effective, "INACTIVE" to R.string.control_inactive).forEach { (key, label) ->
-                    FilterChip(selected = filter == key, onClick = { filter = key }, label = { Text(stringResource(label)) })
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = query, onValueChange = { query = it.take(253) },
+                    placeholder = { Text(stringResource(R.string.control_search)) },
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(28.dp),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("ALL" to R.string.control_all, "EFFECTIVE" to R.string.control_effective, "INACTIVE" to R.string.control_inactive).forEach { (key, label) ->
+                        FilterChip(selected = filter == key, onClick = { filter = key }, label = { Text(stringResource(label)) })
+                    }
+                }
+                InsetGroup(stringResource(R.string.block_rules_title), help = stringResource(R.string.block_coverage)) {
+                    when {
+                        !ready && busy -> ItemRow(stringResource(R.string.control_loading))
+                        shown.isEmpty() -> ItemRow(stringResource(if (policy.rules.isEmpty()) R.string.block_rules_empty else R.string.control_no_matches))
+                    }
+                    shown.forEachIndexed { i, rule ->
+                        if (i > 0) GroupDivider()
+                        val active = rule.id in policy.activeIds
+                        ItemRow(
+                            rule.pkg?.let(vm.labels::label).orEmpty().ifBlank { rule.pkg.orEmpty() },
+                            subtitle = if (rule.matchKind == "APP") stringResource(R.string.block_app) else rule.host.orEmpty(),
+                            caption = stringResource(ruleState(rule, active)) + " · " + stringResource(if (rule.id < 0) R.string.block_session else R.string.block_persistent),
+                            leading = { Box(Modifier.size(10.dp).clip(CircleShape).background(if (active) scheme.primary else if (rule.needsImportReview) scheme.tertiary else scheme.outline)) },
+                            onClick = { detailId = rule.id },
+                        )
+                    }
                 }
             }
-            if (!ready && busy) Text(stringResource(R.string.control_loading))
-            else if (ready && shown.isEmpty()) Text(stringResource(if (policy.rules.isEmpty()) R.string.block_rules_empty else R.string.control_no_matches))
         }
-        items(shown, key = { it.id }) { rule ->
-            RuleCard(
-                rule, rule.id in policy.activeIds, policy.running, busy,
-                appLabel = rule.pkg?.let(vm.labels::label).orEmpty(),
-                onOpenApp = { rule.pkg?.let(onOpenApp) },
-                onRemove = { removingId = rule.id },
-                onReview = { reviewingId = rule.id },
-            )
-        }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(stringResource(R.string.control_alterations), style = MaterialTheme.typography.titleLarge)
-                    Text(stringResource(R.string.control_alterations_unavailable), style = MaterialTheme.typography.bodyMedium)
+        item { PolicyTransferSection() }
+    }
+    policy.rules.firstOrNull { it.id == detailId }?.let { rule ->
+        AlertDialog(
+            onDismissRequest = { detailId = null },
+            title = { Text(rule.pkg?.let(vm.labels::label).orEmpty().ifBlank { rule.pkg.orEmpty() }) },
+            text = { RuleDetails(rule, rule.id in policy.activeIds, policy.running) },
+            confirmButton = {
+                Row {
+                    if (rule.needsImportReview) TextButton(onClick = { detailId = null; reviewingId = rule.id }, enabled = !busy) { Text(stringResource(R.string.policy_review)) }
+                    TextButton(onClick = { detailId = null; rule.pkg?.let(onOpenApp) }, enabled = !rule.pkg.isNullOrBlank()) { Text(stringResource(R.string.control_app_history)) }
+                    TextButton(onClick = { detailId = null; removingId = rule.id }, enabled = !busy) { Text(stringResource(R.string.block_remove), color = scheme.error) }
                 }
-            }
-        }
+            },
+        )
     }
     policy.rules.firstOrNull { it.id == removingId }?.let { rule ->
         AlertDialog(
@@ -184,44 +241,38 @@ fun ControlsScreen(onOpenApp: (String) -> Unit, vm: ControlsViewModel = hiltView
     }
 }
 
+/** Short state for the rule list; the details dialog carries the full reason. */
+private fun ruleState(rule: BlockRule, active: Boolean): Int = when {
+    active -> R.string.control_effective
+    rule.needsImportReview -> R.string.control_state_review
+    !rule.enabled -> R.string.control_state_disabled
+    else -> R.string.control_inactive
+}
+
 @Composable
-private fun RuleCard(rule: BlockRule, effective: Boolean, running: Boolean, busy: Boolean, appLabel: String, onOpenApp: () -> Unit, onRemove: () -> Unit, onReview: () -> Unit) {
-    var details by rememberSaveable(rule.id) { mutableStateOf(false) }
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(appLabel.ifBlank { rule.pkg.orEmpty() }, style = MaterialTheme.typography.titleMedium)
-            Text(rule.pkg.orEmpty(), style = MaterialTheme.typography.labelSmall)
-            Text(stringResource(R.string.control_block_action), style = MaterialTheme.typography.labelLarge)
-            val targetLabel = when (rule.matchKind) {
-                "APP" -> R.string.control_target_app
-                "HOST" -> R.string.control_target_host
-                "IP" -> R.string.control_target_ip
-                else -> R.string.control_target_unknown
-            }
-            Text(stringResource(targetLabel), style = MaterialTheme.typography.labelMedium)
-            if (rule.matchKind != "APP") SelectionContainer { Text(rule.host.orEmpty()) }
-            Text(stringResource(if (rule.id < 0) R.string.block_session else R.string.block_persistent), style = MaterialTheme.typography.bodySmall)
-            val status = when {
-                effective -> R.string.control_status_effective
-                rule.needsImportReview -> R.string.policy_pending_review
-                !rule.enabled -> R.string.control_status_disabled
-                !running -> R.string.control_status_waiting
-                else -> R.string.control_status_invalid
-            }
+private fun RuleDetails(rule: BlockRule, effective: Boolean, running: Boolean) {
+    val targetLabel = when (rule.matchKind) {
+        "APP" -> R.string.control_target_app
+        "HOST" -> R.string.control_target_host
+        "IP" -> R.string.control_target_ip
+        else -> R.string.control_target_unknown
+    }
+    val status = when {
+        effective -> R.string.control_status_effective
+        rule.needsImportReview -> R.string.policy_pending_review
+        !rule.enabled -> R.string.control_status_disabled
+        !running -> R.string.control_status_waiting
+        else -> R.string.control_status_invalid
+    }
+    SelectionContainer {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(rule.pkg.orEmpty(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(targetLabel), style = MaterialTheme.typography.labelLarge)
+            if (rule.matchKind != "APP") Text(rule.host.orEmpty())
             Text(stringResource(status), color = if (effective) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton(onClick = { details = !details }) { Text(stringResource(if (details) R.string.control_hide_details else R.string.control_details)) }
-            if (details) SelectionContainer {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(stringResource(R.string.control_rule_id, rule.id, rule.userId))
-                    Text(stringResource(R.string.control_created, DateFormat.getDateTimeInstance().format(Date(rule.createdAt))))
-                    Text(stringResource(R.string.control_identity, rule.signingSha256.ifEmpty { stringResource(R.string.control_unbound) }))
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onOpenApp, enabled = !rule.pkg.isNullOrBlank()) { Text(stringResource(R.string.control_app_history)) }
-                TextButton(onClick = onRemove, enabled = !busy) { Text(stringResource(R.string.block_remove)) }
-            }
-            if (rule.needsImportReview) TextButton(onClick = onReview, enabled = !busy) { Text(stringResource(R.string.policy_review)) }
+            Text(stringResource(R.string.control_rule_id, rule.id, rule.userId), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.control_created, DateFormat.getDateTimeInstance().format(Date(rule.createdAt))), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.control_identity, rule.signingSha256.ifEmpty { stringResource(R.string.control_unbound) }), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
