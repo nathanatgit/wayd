@@ -12,7 +12,7 @@ Read [AGENTS.md](../AGENTS.md) first, then this file, then the doc for the modul
 |---|---|
 | Released | **v0.5.0** (2026-11-14): `wayd-v0.5.0.apk`, `wayd-clash-v0.5.0.apk`, D-060 to D-064. Release workflow and CI both pass. |
 | Unreleased | Branch `feat/dns-list-blocking` (D-065 to D-069), committed locally, **not pushed**: DNS-stage block lists, app-page AI chat, history-prompt eval test, **rewrite rules phase 1** (request side), name memory for unnamed connections, rule-plugin list import, docs revised. To-do list: [TODO.md](TODO.md). |
-| On the phone | NX733J `320146880841`: clash debug **0.5.0 + D-065 to D-069** installed over `com.nathanhanapps.wayd.d049` on 2026-11-15, data kept; test probe `com.nathanhanapps.wayd.rwprobe` installed ([tools/rwprobe](../tools/rwprobe/README.md)). Nothing was opened or tested after install. |
+| On the phone | NX733J `320146880841`: clash debug **0.5.0 + D-065 to D-068** installed over `com.nathanhanapps.wayd.d049` on 2026-11-15 11:35, data kept. **Not yet installed:** D-069 (regex rules) and the test probe `com.nathanhanapps.wayd.rwprobe` ([tools/rwprobe](../tools/rwprobe/README.md)); both APKs are built, the phone dropped off adb. Nothing was opened or tested after install. |
 | Last validation | `cargo test --lib --features mitm` 37 passed; full Gradle build with native rebuild (`test`, both debug assemblies, both lints) passes: `build/d069-validation.log`. |
 
 ### Not checked on a device (everything since D-061)
