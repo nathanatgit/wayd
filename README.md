@@ -15,3 +15,13 @@
 - App specific traffic blocking
 - Traffic editing
 - LLM analysis: local Gemma4 or OpenAI compatible API.
+
+# Big Thanks and credit to
+
+https://github.com/iTXTech/Daedalus
+
+https://github.com/Loyalsoldier/surge-rules
+
+https://github.com/chen08209/FlClash
+
+
