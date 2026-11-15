@@ -289,7 +289,8 @@ where
                         last_report = std::time::Instant::now();
                     }
                     resp.feed(&ub[..n]);
-                    for m in resp.take() { inflight = inflight.saturating_sub(1); emit(sink, id, &m); }
+                    // 1xx responses (100 Continue) are interim: the request is still in flight.
+                    for m in resp.take() { if !(100..200).contains(&m.status) { inflight = inflight.saturating_sub(1); } emit(sink, id, &m); }
                 }
                 _ => { u_open = false; let _ = aw.shutdown().await; }
             },

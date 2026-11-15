@@ -863,5 +863,8 @@
     <string name="rw_action_header_set">设置请求头</string>
     <string name="rw_action_query_remove">移除查询参数</string>
     <string name="rw_arg_name">名称</string>
+    <string name="rw_action_redirect">重定向</string>
+    <string name="rw_arg_redirect">“302 https://…”或“307 https://…”</string>
+    <string name="blist_stats">本次运行：列表阻止 %1$d 条连接 · 本地应答 %2$d 个 DNS 名称</string>
     <string name="rw_arg_header_set">请求头，格式为“名称: 值”</string>
 </resources>

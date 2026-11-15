@@ -1,1 +1,11 @@
-*.sh text eol=lf
+# Store text with LF and check it out with LF on every platform, so Windows commits stop converting line endings.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.webp binary
+*.so binary
+*.jar binary
+*.apk binary
+*.mmdb binary
+*.litertlm binary

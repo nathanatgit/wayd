@@ -41,7 +41,7 @@ jobs:
 
       - name: Rust tests
         working-directory: capture/native
-        run: cargo test --features mitm
+        run: cargo test --lib && cargo test --features mitm
 
       - name: Unit tests
         run: ./gradlew test -PskipNative

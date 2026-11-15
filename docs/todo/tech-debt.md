@@ -4,11 +4,9 @@
 
 | # | Task | Notes |
 |---|---|---|
-| 1 | Add `.gitattributes` (`* text=auto eol=lf`, binary types marked). | Every commit on Windows prints dozens of "LF will be replaced by CRLF" warnings. Normalise once in its own commit. |
-| 2 | AGENTS.md says tests use JUnit5/Kotest; the tests in the repo use JUnit 4 (`org.junit.Test`). | Correct the line or migrate; pick one. |
 | 3 | Rust warnings on the Windows host build (unused `tcp`/`udp`, `set_mitm`). | They are Android-only entry points; gate with `cfg` or `allow(dead_code)` so real warnings stand out. |
+| 5 | CI: upload the lint report as an artifact. | `ci.yml` runs lint but keeps no report. |
 | 4 | Release commits: bump the version in the `chore: release` commit, not in the feature commit. | v0.5.0's release commit is empty. |
-| 5 | CI: run `cargo test --lib` without features too, and upload the lint report. | `ci.yml` runs only `--features mitm`. |
 | 6 | Unused code after the history rewrite: `RelatedTcp` (analysis) if nothing else uses it. | Check with a search before deleting. |
 | 7 | `docs/00`–`04`, `08`, `14` were not reviewed line by line in the 2026-11-14 doc pass. | Read them against the code once; fix stale statements. |
 

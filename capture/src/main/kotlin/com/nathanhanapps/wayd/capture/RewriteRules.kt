@@ -21,7 +21,7 @@ import org.json.JSONObject
  * decrypts for that app with the existing decryption consent; a rule cannot switch decryption on.
  *
  * [action]: `REJECT` ([arg] `204`, `200-empty`, `200-json`), `HEADER_REMOVE` (header name), `HEADER_SET` (`Name: value`),
- * `QUERY_REMOVE` (parameter name). [match]: `PREFIX`, `EXACT` or `CONTAINS` against the request path and query.
+ * `QUERY_REMOVE` (parameter name), `REDIRECT` (`302 <url>` or `307 <url>`). [match]: `PREFIX`, `EXACT` or `CONTAINS` against the request path and query.
  */
 data class RewriteRule(
     val id: Long,
@@ -45,6 +45,7 @@ data class RewriteRule(
             pattern.isNotEmpty() && pattern.length <= 2048 && text(pattern) && when (action) {
                 "REJECT" -> arg in setOf("204", "200-empty", "200-json")
                 "HEADER_REMOVE", "QUERY_REMOVE" -> token.matches(arg)
+                "REDIRECT" -> arg.split(" ", limit = 2).let { it.size == 2 && it[0] in setOf("302", "307") && (it[1].startsWith("https://") || it[1].startsWith("http://")) && it[1].length <= 2048 && it[1].none { c -> c.code <= 0x20 || c.code == 0x7f } }
                 "HEADER_SET" -> arg.split(": ", limit = 2).let { it.size == 2 && token.matches(it[0]) && it[1].length <= 1024 && it[1].none { c -> c.code < 0x20 || c.code == 0x7f } }
                 else -> false
             }

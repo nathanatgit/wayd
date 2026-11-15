@@ -53,7 +53,7 @@ App traffic forwarding itself is the product and is not an exception. Routing mu
 - Version catalog (`gradle/libs.versions.toml`); pin exact versions; note alpha dependencies in `docs/DECISIONS.md`.
 - Room + SQLCipher; every schema change ships a migration and an exported schema JSON.
 - DI: Hilt (D-008). Package layout: `com.nathanhanapps.wayd.<module>.<feature>`.
-- Tests: JUnit5/Kotest for pure logic; fixtures under `src/test/resources`. Formatting: ktlint / Spotless default rules.
+- Tests: JUnit 4 (`org.junit.Test`) for pure logic, as the existing suites use; fixtures under `src/test/resources`. Formatting: ktlint / Spotless default rules.
 
 ## Local build (Windows) — follow in order
 

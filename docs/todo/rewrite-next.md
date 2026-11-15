@@ -1,16 +1,14 @@
 # To-do · Rewrite rules, rule exchange, Controls layout
 
-Design: [16-RULE-SETS-AND-REWRITE.md](../16-RULE-SETS-AND-REWRITE.md). Built so far (D-066): request-side local answer, header remove/set, query remove; `mitm/rewrite.rs`, `RewriteRules.kt`, `RewriteSection.kt`.
+Design: [16-RULE-SETS-AND-REWRITE.md](../16-RULE-SETS-AND-REWRITE.md). Built so far (D-066, D-068): request-side local answer, redirect, header remove/set, query remove; `mitm/rewrite.rs`, `RewriteRules.kt`, `RewriteSection.kt`.
 
 ## Phase 2 (P1)
 
 | Task | Notes |
 |---|---|
 | Response header remove/set | Needs a response-side head stage and a queue pairing each response with the request that matched. Reuse the request framer's states; add close-delimited bodies, HEAD and 204/304. |
-| Redirect (302 / 307) | A local answer with `Location`; reuses the reject path. |
 | JSON body set/remove | Buffer bodies ≤ 1 MiB, `Content-Type: application/json` only; fix `Content-Length`; gzip decode/encode first (dependency decision below). |
 | Ordering with pipelined requests | Today a local answer waits for in-flight responses; a request pipelined after a rejected one can be answered out of order. Either stop forwarding later requests until the local answer is sent, or document and leave. |
-| `100 Continue` | Currently counted as a finished response. Skip 1xx when counting. |
 
 ## Decisions needed from Nat
 

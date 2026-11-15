@@ -4,7 +4,7 @@ Everything built after v0.4.0 has only unit tests and builds behind it. This is 
 
 ## Setup
 
-1. Build without `-PskipNative` and install over `com.nathanhanapps.wayd.d049` (check `output-metadata.json`). The build on the phone from 2026-11-14 lacks D-066 and D-067.
+1. Build without `-PskipNative` and install over `com.nathanhanapps.wayd.d049` (check `output-metadata.json`). The build on the phone from 2026-11-14 lacks D-066 to D-068.
 2. `setprop log.tag I` while testing, `setprop log.tag S` afterwards.
 
 ## Checks

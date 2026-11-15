@@ -863,5 +863,8 @@ That content can include things other people sent you or that were sent about th
     <string name="rw_action_header_set">Set header</string>
     <string name="rw_action_query_remove">Remove query parameter</string>
     <string name="rw_arg_name">Name</string>
+    <string name="rw_action_redirect">Redirect</string>
+    <string name="rw_arg_redirect">“302 https://…” or “307 https://…”</string>
+    <string name="blist_stats">This run: %1$d connections blocked by lists · %2$d DNS names answered locally</string>
     <string name="rw_arg_header_set">Header as “Name: value”</string>
 </resources>

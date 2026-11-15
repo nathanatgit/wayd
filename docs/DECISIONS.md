@@ -309,3 +309,10 @@ Nat asked to implement the alter feature. Scope kept to the request side so noth
 - `INFERRED` is an added enum value in the existing TEXT column (no schema change). It is never a block target (block targets still need SNI / HTTP Host) and it counts as a hostname in the coverage panel, so that figure now includes inferred names.
 - **List import** also accepts rule-plugin / rule-set lines: `DOMAIN,host` and `DOMAIN-SUFFIX,host` with no policy or a `REJECT…` policy become block-list entries; other rule types, other policies and the rewrite / MITM / script sections are counted as skipped.
 - Not measured: the effect on hostname coverage needs a capture on the phone.
+
+**D-068 · 2026-11-15 · redirect rule, interim-response fix, list counters, housekeeping (Nat)**
+
+- **Rewrite:** new action `REDIRECT` (`302 <url>` or `307 <url>`, http/https only), answered locally like a reject with `X-WAYD-Rewrite: redirect`. `1xx` responses no longer count as a finished response when deciding when a local answer may be sent.
+- **Block lists:** the engine counts connections blocked by a list and DNS names answered locally per VPN run (`nativeListStats`); Controls → Block lists shows both.
+- **Housekeeping:** `.gitattributes` stores and checks out text with LF (ends the CRLF warnings on Windows); AGENTS.md names JUnit 4, which the suites actually use; CI runs the Rust tests with and without the decryption feature.
+- No schema, permission or dependency change. Policy ABI stays 4.

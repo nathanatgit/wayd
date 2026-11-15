@@ -60,6 +60,9 @@ class BlockListsViewModel @Inject constructor(
     val lists = store.lists
     val busy = MutableStateFlow(false)
     val notice = MutableStateFlow<Int?>(null)
+    val stats = MutableStateFlow<Pair<Long, Long>?>(null)
+
+    fun refreshStats() { stats.value = runCatching { blocking.listStats() }.getOrNull() }
 
     private fun run(block: suspend () -> Boolean) {
         if (busy.value) return
@@ -132,6 +135,8 @@ fun BlockListsSection(vm: BlockListsViewModel = hiltViewModel()) {
     var enabling by remember { mutableStateOf<BlockListInfo?>(null) }
     var deleting by remember { mutableStateOf<BlockListInfo?>(null) }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(vm::importFile) }
+    val stats by vm.stats.collectAsStateWithLifecycle()
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { vm.refreshStats() }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -152,6 +157,7 @@ fun BlockListsSection(vm: BlockListsViewModel = hiltViewModel()) {
                 TextButton(onClick = { pick.launch(arrayOf("text/*", "application/octet-stream")) }, enabled = !busy) { Text(stringResource(R.string.blist_import_file)) }
                 TextButton(onClick = { adding = true }, enabled = !busy) { Text(stringResource(R.string.blist_add_url)) }
             }
+            stats?.let { (blocked, dns) -> Text(stringResource(R.string.blist_stats, blocked, dns), style = MaterialTheme.typography.labelMedium) }
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             notice?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall) }
             lists.forEach { l ->

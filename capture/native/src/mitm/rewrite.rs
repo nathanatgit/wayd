@@ -17,6 +17,8 @@ pub enum Action {
     HeaderRemove(String),
     HeaderSet(String, String),
     QueryRemove(String),
+    /// Answer locally with a 302 or 307 to a fixed URL.
+    Redirect(u16, String),
 }
 
 #[derive(Clone, Debug)]
@@ -78,6 +80,12 @@ impl RewriteSet {
                     Action::HeaderSet(name.into(), value.into())
                 }
                 "QUERY_REMOVE" if token(f[7]) => Action::QueryRemove(f[7].into()),
+                "REDIRECT" => {
+                    let (code, url) = f[7].split_once(' ')?;
+                    let code: u16 = code.parse().ok()?;
+                    if !matches!(code, 302 | 307) || !(url.starts_with("https://") || url.starts_with("http://")) || url.len() > 2048 || url.bytes().any(|c| c <= 0x20 || c == 0x7f) { return None; }
+                    Action::Redirect(code, url.into())
+                }
                 _ => return None,
             };
             rules.push(Rule { id, owner: f[1].into(), host: f[2].into(), method: f[3].to_ascii_uppercase(), kind: f[4].into(), pattern: f[5].into(), action });
@@ -183,11 +191,17 @@ impl ReqStage {
             if h.name.eq_ignore_ascii_case("upgrade") { upgrade = true; }
         }
         let matched: Vec<&Rule> = self.rules.iter().filter(|r| r.matches(method, target)).collect();
-        let reject = matched.iter().find_map(|r| match &r.action { Action::Reject(kind) => Some((r.id, kind.clone())), _ => None });
+        let head_request = method.eq_ignore_ascii_case("HEAD");
+        // The first local-answer rule (reject or redirect) decides; the request and its body then never reach the server.
+        let reject = matched.iter().find_map(|r| match &r.action {
+            Action::Reject(kind) => Some((r.id, local_response(kind, head_request))),
+            Action::Redirect(code, url) => Some((r.id, redirect_response(*code, url))),
+            _ => None,
+        });
         let drop = reject.is_some() && !upgrade;
-        if let (Some((id, kind)), false) = (&reject, upgrade) {
+        if let (Some((id, reply)), false) = (&reject, upgrade) {
             out.hits.push(*id);
-            out.local.push(local_response(kind, method.eq_ignore_ascii_case("HEAD")));
+            out.local.push(reply.clone());
         } else if matched.is_empty() || upgrade {
             out.forward.extend_from_slice(head);
             out.forwarded += 1;
@@ -202,7 +216,7 @@ impl ReqStage {
                         kept.push((name.clone(), value.clone().into_bytes()));
                     }
                     Action::QueryRemove(name) => new_target = remove_query(&new_target, name),
-                    Action::Reject(_) => {}
+                    Action::Reject(_) | Action::Redirect(..) => {}
                 }
                 out.hits.push(r.id);
             }
@@ -284,6 +298,11 @@ fn local_response(kind: &str, head_request: bool) -> Vec<u8> {
     }
 }
 
+fn redirect_response(code: u16, url: &str) -> Vec<u8> {
+    let reason = if code == 307 { "Temporary Redirect" } else { "Found" };
+    format!("HTTP/1.1 {code} {reason}\r\nLocation: {url}\r\nContent-Length: 0\r\nX-WAYD-Rewrite: redirect\r\n\r\n").into_bytes()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,6 +362,19 @@ mod tests {
         assert_eq!(o.hits, vec![1, 2, 3]);
         s.hit(&o.hits);
         assert!(s.hits_text().contains("2\t1"));
+    }
+
+    #[test]
+    fn redirect_answers_locally_and_validates_its_target() {
+        let s = set(&["4\t0:com.example.app\tapi.example.com\tGET\tEXACT\t/old\tREDIRECT\t307 https://api.example.com/new"]);
+        let mut st = s.stage(OWNER, "api.example.com").unwrap();
+        let o = st.feed(b"GET /old HTTP/1.1\r\nHost: api.example.com\r\n\r\n");
+        assert!(o.forward.is_empty());
+        let r = text(&o.local[0]);
+        assert!(r.starts_with("HTTP/1.1 307 Temporary Redirect\r\nLocation: https://api.example.com/new\r\n") && r.contains("X-WAYD-Rewrite: redirect"), "{r}");
+        for bad in ["301 https://a.example/x", "302 ftp://a.example/x", "302 https://a.example/x y", "302"] {
+            assert!(RewriteSet::parse(&format!("WAYDRW1\n4\t0:a.b\tx.com\t\tPREFIX\t/\tREDIRECT\t{bad}\n")).is_none(), "{bad}");
+        }
     }
 
     #[test]

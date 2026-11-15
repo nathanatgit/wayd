@@ -1,12 +1,12 @@
 # To-do · Block lists (P2)
 
-Built: Adblock/hosts/rule-plugin import, per-list consent, hashed matcher, TCP hostname stage, DNS stage (D-064, D-065, D-067). Design and limits: [16-RULE-SETS-AND-REWRITE.md](../16-RULE-SETS-AND-REWRITE.md).
+Built: Adblock/hosts/rule-plugin import, per-list consent, hashed matcher, TCP hostname stage, DNS stage, per-run counters (D-064, D-065, D-067, D-068). Design and limits: [16-RULE-SETS-AND-REWRITE.md](../16-RULE-SETS-AND-REWRITE.md).
 
 ## Tasks
 
 | # | Task | Notes |
 |---|---|---|
-| 1 | Hit counters per list and overall (blocked connections, locally answered DNS queries). | The engine knows only "a list matched"; keeping a list id per entry costs memory. Start with totals and the top blocked hosts. |
+| 1 | Hit counters per list and top blocked hosts. | Totals per VPN run exist (D-068). Per-list counts need a list id per entry, which costs memory. |
 | 2 | Show locally answered DNS names. | Today they are visible only as a `0.0.0.0` answer in a DNS record, and only when recording is on. Add a small "blocked names" view fed by an engine counter. |
 | 3 | Per-app exception. | "Never apply lists to this app" for apps a list breaks. One line per app in the compiled file (`@app`), checked before the list. |
 | 4 | Optional update schedule per list. | Off by default; daily at most, on unmetered network and charging. Needs Nat's approval: it is a scheduled download (AGENTS.md rule 1 allows only user-initiated ones today). |

@@ -65,7 +65,7 @@ Per app, on decrypted HTTP/1.1 only (the engine already forces HTTP/1.1 on decry
 | `HEADER_REMOVE` / `HEADER_SET` on the request | drop or replace named headers | 1 (done) |
 | `HEADER_REMOVE` / `HEADER_SET` on the response | drop or replace named headers | 2 |
 | `QUERY_REMOVE` | drop named query parameters | 1 (done) |
-| `REDIRECT` (302 / 307) | local redirect | 2 |
+| `REDIRECT` (302 / 307) | local redirect | 2 (done, D-068) |
 | `BODY_JSON_SET` / `BODY_JSON_REMOVE` | edit JSON fields by pointer | 2 |
 | `BODY_REPLACE` (literal or bounded regex) | text bodies ≤ 1 MiB with a time budget | 3 |
 

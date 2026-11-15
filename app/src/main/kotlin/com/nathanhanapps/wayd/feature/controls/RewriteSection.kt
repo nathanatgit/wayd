@@ -116,6 +116,7 @@ private fun actionText(r: RewriteRule): String = when (r.action) {
     "REJECT" -> stringResource(R.string.rw_action_reject) + " (" + r.arg + ")"
     "HEADER_REMOVE" -> stringResource(R.string.rw_action_header_remove) + ": " + r.arg
     "HEADER_SET" -> stringResource(R.string.rw_action_header_set) + ": " + r.arg
+    "REDIRECT" -> stringResource(R.string.rw_action_redirect) + ": " + r.arg
     else -> stringResource(R.string.rw_action_query_remove) + ": " + r.arg
 }
 
@@ -149,14 +150,14 @@ private fun AddRewriteDialog(onDismiss: () -> Unit, onAdd: (String, String, Bool
                 OutlinedTextField(pattern, { pattern = it.take(2048) }, label = { Text(stringResource(R.string.rw_pattern)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("REJECT" to R.string.rw_action_reject, "HEADER_REMOVE" to R.string.rw_action_header_remove, "HEADER_SET" to R.string.rw_action_header_set,
-                        "QUERY_REMOVE" to R.string.rw_action_query_remove).forEach { (k, label) ->
+                        "QUERY_REMOVE" to R.string.rw_action_query_remove, "REDIRECT" to R.string.rw_action_redirect).forEach { (k, label) ->
                         FilterChip(action == k, { action = k; arg = if (k == "REJECT") "204" else "" }, { Text(stringResource(label)) })
                     }
                 }
                 if (action == "REJECT") FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("204", "200-empty", "200-json").forEach { k -> FilterChip(arg == k, { arg = k }, { Text(k) }) }
                 } else OutlinedTextField(arg, { arg = it.take(1200) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                    label = { Text(stringResource(if (action == "HEADER_SET") R.string.rw_arg_header_set else R.string.rw_arg_name)) })
+                    label = { Text(stringResource(when (action) { "HEADER_SET" -> R.string.rw_arg_header_set; "REDIRECT" -> R.string.rw_arg_redirect; else -> R.string.rw_arg_name })) })
             }
         },
         confirmButton = { TextButton(onClick = { onAdd(pkg, host, subdomains, method, match, pattern, action, arg) }, enabled = draft.valid()) { Text(stringResource(R.string.cx_save)) } },

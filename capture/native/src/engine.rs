@@ -452,3 +452,16 @@ pub fn native_rewrite_hits<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, hand
         jni::objects::JString::from_str(env, "")
     }).resolve::<jni::errors::LogErrorAndDefault>()
 }
+
+/// `blocked\tdnsAnswered`: connections blocked by a block list and DNS names answered locally since the engine started.
+#[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
+pub fn native_list_stats<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, handle: jlong) -> jni::objects::JString<'l> {
+    env.with_env(|env| -> jni::errors::Result<jni::objects::JString<'l>> {
+        let text = if handle == 0 { String::new() } else {
+            // SAFETY: BlockingRules serializes all bridge calls with engine destruction.
+            let (blocked, dns) = unsafe { &*(handle as *const Engine) }.shared.blocking.list_stats();
+            format!("{blocked}\t{dns}")
+        };
+        jni::objects::JString::from_str(env, &text)
+    }).resolve::<jni::errors::LogErrorAndDefault>()
+}

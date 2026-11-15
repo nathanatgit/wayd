@@ -105,6 +105,11 @@ class BlockingRules @Inject constructor(
         _listEntries.value = if (handle != 0L && listsSupported) net?.nativeSetBlockList(handle, lists.activePath()) else null
     }
 
+    /** (connections blocked by a list, DNS names answered locally) in this VPN run; null when the VPN is off or the engine is older. */
+    fun listStats(): Pair<Long, Long>? = synchronized(bridge) {
+        if (handle == 0L || !rewriteSupported) null else net?.nativeListStats(handle)?.split("	")?.takeIf { it.size == 2 }?.let { (it[0].toLongOrNull() ?: 0L) to (it[1].toLongOrNull() ?: 0L) }
+    }
+
     /** Caller holds [bridge]. */
     private fun pushRewrite() {
         _rewriteInstalled.value = if (handle != 0L && rewriteSupported) net?.nativeSetRewrite(handle, rewrites.wire(userId)) else null
