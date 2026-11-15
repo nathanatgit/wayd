@@ -254,8 +254,8 @@ public class MainActivity extends Activity {
     private void save() {
         try {
             File f = new File(getExternalFilesDir(null), "result.txt");
-            synchronized (log) { log.append("saved ").append(f.getAbsolutePath()).append('
-'); }
+            // The marker is part of the file, so a reader can tell the run finished.
+            synchronized (log) { log.append("saved ").append(f.getAbsolutePath()).append("\n"); }
             try (FileOutputStream o = new FileOutputStream(f)) {
                 synchronized (log) { o.write(log.toString().getBytes(StandardCharsets.UTF_8)); }
             }
