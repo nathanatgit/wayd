@@ -7,7 +7,6 @@
     <string name="dz_decrypt">Decrypt HTTPS content</string>
     <string name="dz_apply_hint">Changes apply the next time you start recording. Apps that do not trust the certificate keep working and are shown as metadata only.</string>
     <string name="dz_ca_failed">Could not create the certificate. Nothing was changed.</string>
-    <string name="dz_pick_apps">Choose apps (%1$d selected)</string>
     <string name="dz_ca_title">Certificate</string>
     <string name="dz_ca_body">Most apps only trust a user-installed certificate if they opt in (browsers usually do). Install it as a user certificate, or save the file and install it from Settings → Security.</string>
     <string name="dz_install_user">Save and open Security settings</string>

@@ -177,14 +177,25 @@ fun AppBlockingSection(vm: AppBlockingViewModel = hiltViewModel(), labelVm: Labe
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                // AI check of the whole history sits in the header, so it is one tap even while the panel is collapsed.
+                if (progress == null) androidx.compose.material3.FilledTonalButton(
+                    onClick = { expanded = true; labelVm.checkHistory() }, enabled = labelContext?.hosts?.isNotEmpty() == true,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 10.dp, end = 14.dp),
+                ) {
+                    com.nathanhanapps.wayd.feature.ai.AiMark(size = 18.dp)
+                    androidx.compose.foundation.layout.Spacer(Modifier.size(6.dp))
+                    Text(stringResource(R.string.history_ai_short))
+                }
                 Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (expanded) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // AI check for the whole history leads the panel, in the shared AI card.
-                    com.nathanhanapps.wayd.feature.ai.AiAssistCard(stringResource(R.string.history_ai_title)) {
-                        val p = progress
+                    val p = progress
+                    if (p != null || historyNotice != null) com.nathanhanapps.wayd.feature.ai.AiAssistCard(
+                        stringResource(R.string.history_ai_title), help = stringResource(R.string.history_ai_body),
+                        action = if (p != null) ({ TextButton(onClick = labelVm::cancelHistory) { Text(stringResource(R.string.ai_cancel)) } }) else null,
+                    ) {
                         if (p != null) {
                             val phase by labelVm.phase.collectAsStateWithLifecycle()
                             com.nathanhanapps.wayd.feature.ai.PhaseNotice(phase)
@@ -192,20 +203,17 @@ fun AppBlockingSection(vm: AppBlockingViewModel = hiltViewModel(), labelVm: Labe
                                 Text(stringResource(R.string.history_ai_progress, minOf(p.first + 1, p.second), p.second), style = MaterialTheme.typography.labelMedium)
                                 LinearProgressIndicator(progress = { p.first.toFloat() / p.second }, modifier = Modifier.fillMaxWidth())
                             } else LinearProgressIndicator(Modifier.fillMaxWidth())
-                            TextButton(onClick = labelVm::cancelHistory) { Text(stringResource(R.string.ai_cancel)) }
-                        } else {
-                            Text(stringResource(R.string.history_ai_body), style = MaterialTheme.typography.bodySmall)
-                            androidx.compose.material3.FilledTonalButton(onClick = labelVm::checkHistory, enabled = labelContext?.hosts?.isNotEmpty() == true) {
-                                Text(stringResource(R.string.history_ai_check))
-                            }
                         }
                         historyNotice?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall) }
                     }
-                    Text(stringResource(R.string.block_coverage), style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { selected = BlockTarget("APP", "*") }, enabled = !busy) { Text(stringResource(R.string.block_app)) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { selected = BlockTarget("APP", "*") }, enabled = !busy) { Text(stringResource(R.string.block_app)) }
+                        com.nathanhanapps.wayd.feature.common.HelpHint(stringResource(R.string.block_coverage))
+                        androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+                        if (!policy.running) Text(stringResource(R.string.block_vpn_off), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     notice?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall) }
                     undo?.let { id -> TextButton(onClick = { vm.remove(id) }, enabled = !busy) { Text(stringResource(R.string.block_undo)) } }
-                    if (!policy.running) Text(stringResource(R.string.block_vpn_off), style = MaterialTheme.typography.bodySmall)
                     rules.forEach { r ->
                         Row(Modifier.fillMaxWidth()) {
                             Column(Modifier.weight(1f)) {

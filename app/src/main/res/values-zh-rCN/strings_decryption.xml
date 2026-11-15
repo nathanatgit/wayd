@@ -7,7 +7,6 @@
     <string name="dz_decrypt">解密 HTTPS 内容</string>
     <string name="dz_apply_hint">下次开始记录时生效。不信任该证书的应用仍可正常使用，只会显示为“仅元数据”。</string>
     <string name="dz_ca_failed">无法创建证书，未做任何更改。</string>
-    <string name="dz_pick_apps">选择应用（已选 %1$d 个）</string>
     <string name="dz_ca_title">证书</string>
     <string name="dz_ca_body">大多数应用只有在主动选择信任时才接受用户安装的证书（浏览器通常会）。可安装为用户证书，或保存文件后在 设置 → 安全 中安装。</string>
     <string name="dz_install_user">保存并打开安全设置</string>

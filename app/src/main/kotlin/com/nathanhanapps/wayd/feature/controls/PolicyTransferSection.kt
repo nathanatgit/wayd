@@ -4,6 +4,13 @@ import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
+import com.nathanhanapps.wayd.feature.common.ActionRow
+import com.nathanhanapps.wayd.feature.common.GroupDivider
+import com.nathanhanapps.wayd.feature.common.InsetGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -128,23 +135,21 @@ fun PolicyTransferSection(vm: PolicyTransferViewModel = hiltViewModel()) {
     var sensitive by remember { mutableStateOf(false) }
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json"), vm::save)
     val open = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument(), vm::load)
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(stringResource(R.string.policy_title))
-            Text(stringResource(R.string.policy_intro))
-            Row {
-                TextButton(onClick = {
-                    selected = policy.rules.filter { it.id > 0 }.map { it.id }.toSet()
-                    sensitive = false
-                    exporting = true
-                }, enabled = !busy && policy.rules.any { it.id > 0 }) { Text(stringResource(R.string.policy_export)) }
-                TextButton(onClick = { open.launch(arrayOf("application/json", "text/plain")) }, enabled = !busy) {
-                    Text(stringResource(R.string.policy_import))
-                }
+    Column {
+        InsetGroup(stringResource(R.string.policy_title), help = stringResource(R.string.policy_intro)) {
+            ActionRow(Icons.Filled.Share, stringResource(R.string.policy_export), enabled = !busy && policy.rules.any { it.id > 0 }) {
+                selected = policy.rules.filter { it.id > 0 }.map { it.id }.toSet()
+                sensitive = false
+                exporting = true
             }
-            if (undo.isNotEmpty()) TextButton(onClick = { vm.undo() }, enabled = !busy) { Text(stringResource(R.string.policy_undo)) }
-            notice?.let { Text(stringResource(it)) }
+            GroupDivider()
+            ActionRow(Icons.Filled.Add, stringResource(R.string.policy_import), enabled = !busy) { open.launch(arrayOf("application/json", "text/plain")) }
+            if (undo.isNotEmpty()) {
+                GroupDivider()
+                ActionRow(Icons.Filled.Refresh, stringResource(R.string.policy_undo), enabled = !busy) { vm.undo() }
+            }
         }
+        notice?.let { Text(stringResource(it), Modifier.padding(start = 12.dp, top = 6.dp), style = androidx.compose.material3.MaterialTheme.typography.bodySmall) }
     }
     if (exporting) AlertDialog(
         onDismissRequest = { if (!busy) exporting = false },

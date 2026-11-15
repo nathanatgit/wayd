@@ -46,6 +46,18 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nathanhanapps.wayd.R
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Warning
+import com.nathanhanapps.wayd.feature.common.ActionRow
+import com.nathanhanapps.wayd.feature.common.GroupDivider
+import com.nathanhanapps.wayd.feature.common.InsetGroup
+import com.nathanhanapps.wayd.feature.common.NavRow
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -82,56 +94,38 @@ fun DangerZone(vm: DangerZoneViewModel = hiltViewModel()) {
     }
 
     val canManageCa = st.consented && st.caReady && !st.busy
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(stringResource(R.string.dz_warn_title), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
-        Text(stringResource(R.string.dz_intro), style = MaterialTheme.typography.bodyMedium)
-        SwitchRow(stringResource(R.string.dz_decrypt), st.enabled && st.consented, enabled = !st.busy) { on ->
-            if (!st.consented) { if (on) step = 1 } else scope.launch { c.setEnabled(on) }
-        }
-        if (failed) Text(stringResource(R.string.dz_ca_failed), color = MaterialTheme.colorScheme.error)
-        if (st.consented && st.caReady) {
-            Text(stringResource(R.string.dz_apply_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Button(onClick = { picker = true }, enabled = !st.busy) {
-                Text(stringResource(R.string.dz_pick_apps, st.apps.size))
+    // Same inset-group layout as AI settings: the switch and app list first, then the certificate, then removal.
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            InsetGroup {
+                DzSwitchRow(Icons.Filled.Lock, stringResource(R.string.dz_decrypt), st.enabled && st.consented, enabled = !st.busy,
+                    help = stringResource(R.string.dz_intro) + "\n\n" + stringResource(R.string.dz_apply_hint)) { on ->
+                    if (!st.consented) { if (on) step = 1 } else scope.launch { c.setEnabled(on) }
+                }
+                GroupDivider()
+                NavRow(Icons.AutoMirrored.Filled.List, stringResource(R.string.dz_apps), stringResource(R.string.dz_apps_count, st.apps.size), enabled = st.consented && st.caReady && !st.busy) { picker = true }
             }
-        } else {
-            Text(stringResource(R.string.dz_method_prerequisite), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (failed) Text(stringResource(R.string.dz_ca_failed), Modifier.padding(start = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
-        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(R.string.dz_manual_method), style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(R.string.dz_ca_body), style = MaterialTheme.typography.bodyMedium)
-                OutlinedButton(
-                    onClick = { openSettingsAfter = true; certPicker.launch(c.certificateFileName()) },
-                    enabled = canManageCa, modifier = Modifier.fillMaxWidth(),
-                ) { Text(stringResource(R.string.dz_install_user)) }
-                OutlinedButton(
-                    onClick = { openSettingsAfter = false; certPicker.launch(c.certificateFileName()) },
-                    enabled = canManageCa, modifier = Modifier.fillMaxWidth(),
-                ) { Text(stringResource(R.string.dz_export)) }
-                certStatus?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
-            }
-        }
-        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(R.string.dz_root_method), style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(R.string.dz_system_ca_note), style = MaterialTheme.typography.bodyMedium)
-                SwitchRow(stringResource(R.string.dz_system_ca), st.systemCa, enabled = canManageCa) { on ->
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            InsetGroup(stringResource(R.string.dz_ca_title), help = stringResource(R.string.dz_ca_body)) {
+                ActionRow(Icons.Filled.Settings, stringResource(R.string.dz_install_user), enabled = canManageCa) { openSettingsAfter = true; certPicker.launch(c.certificateFileName()) }
+                GroupDivider()
+                ActionRow(Icons.Filled.Share, stringResource(R.string.dz_export), enabled = canManageCa) { openSettingsAfter = false; certPicker.launch(c.certificateFileName()) }
+                GroupDivider()
+                DzSwitchRow(Icons.Filled.Warning, stringResource(R.string.dz_system_ca), st.systemCa, enabled = canManageCa, help = stringResource(R.string.dz_system_ca_note)) { on ->
                     if (on) confirmSystem = true else scope.launch { c.removeSystemCa() }
                 }
-                st.message?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
+            certStatus?.let { Text(stringResource(it), Modifier.padding(start = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+            st.message?.let { Text(it, Modifier.padding(start = 12.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         }
-        if (st.consented && st.caReady) {
-            OutlinedButton(onClick = { scope.launch { c.deleteCapturedContent() } }, enabled = !st.busy) {
-                Text(stringResource(R.string.dz_delete_content))
+        if (st.consented || st.caReady) InsetGroup {
+            if (st.consented && st.caReady) {
+                ActionRow(Icons.Filled.Delete, stringResource(R.string.dz_delete_content), enabled = !st.busy) { scope.launch { c.deleteCapturedContent() } }
+                GroupDivider()
             }
-        }
-        if (st.consented || st.caReady) {
-            Button(
-                onClick = { confirmRemove = true }, enabled = !st.busy,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-            ) { Text(stringResource(R.string.dz_remove)) }
+            ActionRow(Icons.Filled.Close, stringResource(R.string.dz_remove), enabled = !st.busy, destructive = true) { confirmRemove = true }
         }
     }
 
@@ -200,8 +194,10 @@ fun DangerZone(vm: DangerZoneViewModel = hiltViewModel()) {
         Dialog(onDismissRequest = { picker = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Surface(Modifier.fillMaxSize()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.dz_picker_title), style = MaterialTheme.typography.titleLarge)
-                    Text(stringResource(R.string.dz_picker_note), style = MaterialTheme.typography.bodySmall)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.dz_picker_title), style = MaterialTheme.typography.titleLarge)
+                        com.nathanhanapps.wayd.feature.common.HelpHint(stringResource(R.string.dz_picker_note))
+                    }
                     if (apps.isEmpty()) Text(stringResource(R.string.dz_picker_empty), style = MaterialTheme.typography.bodyMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(
@@ -266,12 +262,8 @@ fun DangerZone(vm: DangerZoneViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun SwitchRow(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
-    }
-}
+private fun DzSwitchRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, checked: Boolean, enabled: Boolean = true, help: String? = null, onChange: (Boolean) -> Unit) =
+    com.nathanhanapps.wayd.feature.common.SwitchRow(icon, label, checked, enabled = enabled, help = help, onChange = onChange)
 
 /** A full-screen step that back/outside taps cannot dismiss; [requireScroll] forces reading to the end. */
 @Composable
