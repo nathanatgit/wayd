@@ -81,4 +81,15 @@
     <string name="routing_consent">I allow the imported profile to route these apps’ permitted traffic through its configured proxies when enabled. Proxy operators may observe metadata and unencrypted traffic. Credentials stay encrypted on this device and are excluded from rule backups. Import replaces the previous profile and saves disabled. No inspection stores or CA keys are passed to the transport. This library runs under WAYD’s app UID; it is not a separate security sandbox.</string>
     <string name="routing_delete">Delete routing profile</string>
     <string name="routing_delete_warning">Delete the encrypted profile and its encryption key, and revoke its app routing grants? This does not delete inspection history or block rules.</string>
+    <string name="cx_err_rule_invalid">A %1$s rule cannot be read.</string>
+    <string name="cx_err_geoip_required">GEOIP rules need the GeoIP database: download it first.</string>
+    <string name="cx_err_group">A proxy group is invalid or refers to itself.</string>
+    <string name="cx_err_proxy_options">A proxy uses options WAYD does not support.</string>
+    <string name="cx_err_profile_large">The profile with its resources is too large.</string>
+    <string name="cx_err_geodata_required">Rules need the %1$s database: download it first.</string>
+    <string name="cx_err_geodata_invalid">The downloaded file is not a valid rule database; the previous one is kept.</string>
+    <string name="cx_err_no_profile">Import and select a profile first</string>
+    <string name="cx_err_no_apps">Choose at least one app under Access control first</string>
+    <string name="cx_err_no_consent">Open Access control and tap Save to grant routing consent first</string>
+    <string name="cx_err_app_changed">A chosen app was reinstalled or changed; choose it again under Access</string>
 </resources>

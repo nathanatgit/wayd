@@ -74,13 +74,28 @@ object PromptBuilder {
         ).toString()
     }
 
+    /**
+     * Round-robin by id kind (f:, p:, m:, a:, r:, x:, k:, …) in the original order. A plain take(N) kept only the first kind on the
+     * Small budget: chat lost every company and screen-off record, and app analysis lost every decrypted message and APK fact.
+     */
+    internal fun fairTake(evidence: List<EvidenceItem>, items: Int): List<EvidenceItem> {
+        if (evidence.size <= items) return evidence
+        val queues = evidence.groupBy { it.id.substringBefore(':') }.values.map { ArrayDeque(it) }
+        val picked = HashSet<EvidenceItem>()
+        while (picked.size < items && queues.any { it.isNotEmpty() }) {
+            for (q in queues) if (q.isNotEmpty() && picked.size < items) picked += q.removeFirst()
+        }
+        return evidence.filter { it in picked }
+    }
+
     fun build(req: AiRequest, limits: PromptLimits = PromptLimits(MAX_ITEMS, MAX_ITEM_CHARS)): Prompt {
-        val evidence = req.evidence.take(limits.items.coerceAtMost(MAX_ITEMS))
+        val evidence = fairTake(req.evidence, limits.items.coerceAtMost(MAX_ITEMS))
         val itemChars = limits.itemChars.coerceAtMost(MAX_ITEM_CHARS)
         val system = buildString {
             AiIdentity.lines(req.locale).forEach(::appendLine)
             appendLine("Cite the evidence id of every claim in evidence_ids; user_actions are only suggestions.")
             appendLine("If the evidence is insufficient, use verdict \"unknown\" and say so in open_questions.")
+            appendLine("Ids: f: connections, p: permission use, m: decrypted messages (the strongest evidence of what is sent), a: APK static-scan declarations (what the app can do, never proof that it did).")
             appendLine("Free-text values are summary, note, text, reason and open_questions; never mix languages.")
             appendLine("Be brief: at most 6 entries per list, one entry per distinct data type or host, never repeat an entry, cite at most 4 evidence ids per entry.")
             appendLine("Reply with ONE valid JSON object (no trailing commas, no code fences) and nothing else, matching this schema exactly:")

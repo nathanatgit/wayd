@@ -6,7 +6,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
+import com.nathanhanapps.wayd.feature.common.SubPage
+import com.nathanhanapps.wayd.feature.common.SwitchRow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -19,15 +22,12 @@ import com.nathanhanapps.wayd.feature.common.GroupDivider
 import com.nathanhanapps.wayd.feature.common.HelpHint
 import com.nathanhanapps.wayd.feature.common.InsetGroup
 import com.nathanhanapps.wayd.feature.common.ItemRow
-import com.nathanhanapps.wayd.feature.common.PageHeader
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -63,7 +63,7 @@ import java.util.Date
 import javax.inject.Inject
 
 @HiltViewModel
-class ControlsViewModel @Inject constructor(val blocking: BlockingRules, val labels: AppLabels) : ViewModel() {
+class ControlsViewModel @Inject constructor(val blocking: BlockingRules, val labels: AppLabels, val routing: com.nathanhanapps.wayd.capture.RoutingBridge) : ViewModel() {
     val busy = MutableStateFlow(false)
     val ready = MutableStateFlow(false)
     val notice = MutableStateFlow<Int?>(null)
@@ -96,9 +96,14 @@ class ControlsViewModel @Inject constructor(val blocking: BlockingRules, val lab
     }
 }
 
-/** One inventory, independent of report windows and per-app history. Active IDs are native-acknowledged. */
+/**
+ * Request module (D-071): per-app connection blocks and rewrite rules, independent of report windows and per-app history.
+ * Active IDs are native-acknowledged. The module switch gates rewrites only; connection blocks always apply.
+ */
 @Composable
-fun ControlsScreen(onOpenApp: (String) -> Unit, vm: ControlsViewModel = hiltViewModel()) {
+fun RequestRulesScreen(onBack: () -> Unit, onOpenApp: (String) -> Unit, onOpenRewriteSet: (Long) -> Unit, vm: ControlsViewModel = hiltViewModel()) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val modules by vm.blocking.modules.state.collectAsStateWithLifecycle()
     val policy by vm.blocking.state.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val ready by vm.ready.collectAsStateWithLifecycle()
@@ -116,53 +121,40 @@ fun ControlsScreen(onOpenApp: (String) -> Unit, vm: ControlsViewModel = hiltView
     }.sortedWith(compareByDescending<BlockRule> { it.id in policy.activeIds }.thenByDescending { it.createdAt })
 
     var detailId by rememberSaveable { mutableStateOf<Long?>(null) }
-    val listsVm: BlockListsViewModel = hiltViewModel()
     val rewriteVm: RewriteViewModel = hiltViewModel()
-    val lists by listsVm.lists.collectAsStateWithLifecycle()
-    val stats by listsVm.stats.collectAsStateWithLifecycle()
-    val rewrites by rewriteVm.rules.collectAsStateWithLifecycle()
+    val rewrites by rewriteVm.sets.collectAsStateWithLifecycle()
     val scheme = MaterialTheme.colorScheme
 
-    LazyColumn(
-        Modifier.fillMaxSize().padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
-    ) {
-        item {
-            PageHeader(stringResource(R.string.control_title), help = stringResource(R.string.control_intro)) {
-                IconButton(onClick = { vm.refresh(); listsVm.refreshStats(); rewriteVm.refreshHits() }, enabled = !busy) {
-                    Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.control_refresh))
-                }
+    SubPage(stringResource(R.string.rules_request), onBack) {
+        InsetGroup {
+            SwitchRow(Icons.Filled.Edit, stringResource(R.string.rw_title), modules.request, help = stringResource(R.string.rules_request_help)) { on ->
+                scope.launch { runCatching { vm.blocking.setRequestModule(on) } }
             }
         }
-        // Summary in the dashboard style: one status line and the numbers of each rule set.
-        item {
-            Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = scheme.primaryContainer, contentColor = scheme.onPrimaryContainer) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Box(Modifier.size(10.dp).clip(CircleShape).background(if (policy.running) scheme.primary else scheme.outline))
-                        Text(stringResource(if (policy.running) R.string.control_vpn_on else R.string.block_vpn_off), style = MaterialTheme.typography.titleMedium)
-                        if (!policy.running) HelpHint(stringResource(R.string.block_vpn_off_help))
+        // Summary in the dashboard style: one status line and the numbers of this module.
+        Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = scheme.primaryContainer, contentColor = scheme.onPrimaryContainer) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(if (policy.running) scheme.primary else scheme.outline))
+                    Text(stringResource(if (policy.running) R.string.control_vpn_on else R.string.block_vpn_off), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                    if (!policy.running) HelpHint(stringResource(R.string.block_vpn_off_help))
+                    IconButton(onClick = { vm.refresh() }, enabled = !busy) {
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.control_refresh))
                     }
-                    StatGrid(
-                        listOf(
-                            StatTile("$effective / ${policy.rules.size}", stringResource(R.string.control_tile_rules)),
-                            StatTile("${lists.count { it.enabled }} / ${lists.size}", stringResource(R.string.control_tile_lists)),
-                            StatTile("${rewrites.count { it.enabled }} / ${rewrites.size}", stringResource(R.string.control_tile_rewrite)),
-                            StatTile(stats?.first?.toString() ?: "–", stringResource(R.string.control_tile_list_hits), scheme.error),
-                            StatTile(stats?.second?.toString() ?: "–", stringResource(R.string.control_tile_dns)),
-                        ),
-                        labelLines = 1,
-                    )
-                    notice?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall) }
                 }
+                StatGrid(
+                    listOf(
+                        StatTile("$effective / ${policy.rules.size}", stringResource(R.string.control_tile_rules)),
+                        StatTile(if (modules.request) "${rewrites.count { it.enabled }} / ${rewrites.size}" else stringResource(R.string.rules_off), stringResource(R.string.rw_tile_sets)),
+                    ),
+                    columns = 2, labelLines = 1,
+                )
+                notice?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall) }
             }
         }
-        // Global block lists are a separate rule set from the per-app rules below (D-064).
-        item { BlockListsSection(listsVm) }
-        // Rewrite rules are the second, separate rule set: they change decrypted requests instead of blocking connections.
-        item { RewriteSection(rewriteVm) }
-        item {
+        // Rewrite rules change decrypted requests; the per-app rules below block whole connections.
+        RewriteSection(onOpenRewriteSet, rewriteVm)
+        run {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = query, onValueChange = { query = it.take(253) },
@@ -194,7 +186,7 @@ fun ControlsScreen(onOpenApp: (String) -> Unit, vm: ControlsViewModel = hiltView
                 }
             }
         }
-        item { PolicyTransferSection() }
+        PolicyTransferSection()
     }
     policy.rules.firstOrNull { it.id == detailId }?.let { rule ->
         AlertDialog(

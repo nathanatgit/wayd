@@ -35,6 +35,25 @@ class LabelContractTest {
         assertNotNull(LabelContract.parse(reply().put("evidence_ids", JSONArray(listOf("f:7", "a:1", "a:2"))).toString(), req))
     }
 
+    @Test fun perRequestSchemaOnlyAllowsWhatParseAccepts() {
+        val s = JSONObject(LabelContract.schemaFor(req)).getJSONObject("properties")
+        assertEquals(JSONArray(listOf("a:1")).toString(), s.getJSONObject("permission_refs").getJSONObject("items").getJSONArray("enum").toString())
+        assertEquals(JSONArray(listOf("a:2")).toString(), s.getJSONObject("feature_refs").getJSONObject("items").getJSONArray("enum").toString())
+        assertFalse(s.getJSONObject("evidence_ids").getJSONObject("items").getJSONArray("enum").toString().contains("f:7"))
+        assertEquals(3, s.getJSONObject("advice").getJSONArray("enum").length())
+        // A permission target: role and advice are fixed and no links are possible.
+        val perm = JSONObject(LabelContract.schemaFor(req.copy(target = "a:1", subject = "a:1"))).getJSONObject("properties")
+        assertEquals("[\"UNKNOWN\"]", perm.getJSONObject("role").getJSONArray("enum").toString())
+        assertEquals("[\"INSUFFICIENT\"]", perm.getJSONObject("advice").getJSONArray("enum").toString())
+        assertEquals(0, perm.getJSONObject("permission_refs").getInt("maxItems"))
+        // No domain block possible: advice fixed even for a connection.
+        val noBlock = JSONObject(LabelContract.schemaFor(req.copy(domainBlockAvailable = false))).getJSONObject("properties")
+        assertEquals("[\"INSUFFICIENT\"]", noBlock.getJSONObject("advice").getJSONArray("enum").toString())
+        // The template has no default values a small model could copy.
+        assertFalse(LabelContract.prompt(req, compact = true).system.contains("\"role\":\"UNKNOWN\""))
+        assertTrue(LabelContract.prompt(req.copy(locale = "zh-CN"), compact = true).user.trimEnd().endsWith("（简体中文）。"))
+    }
+
     @Test fun fourPermissionAndFourFeatureLinksFitTheSchema() {
         val many = (1..4).map { LabelEvidence("a:${10 + it}", LabelEvidenceKind.PERMISSION, "p$it") } + (1..4).map { LabelEvidence("a:${20 + it}", LabelEvidenceKind.FEATURE, "c$it") }
         val r = req.copy(evidence = evidence + many)

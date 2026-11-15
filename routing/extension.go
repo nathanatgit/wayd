@@ -6,11 +6,14 @@ package routing
 // supplied by the explicitly initiated Android import/update operation.
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
-	"net"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -23,7 +26,8 @@ import (
 	R "github.com/metacubex/mihomo/rules"
 	RC "github.com/metacubex/mihomo/rules/common"
 	RP "github.com/metacubex/mihomo/rules/provider"
-	"github.com/oschwald/maxminddb-golang"
+	"github.com/metacubex/mihomo/component/resource"
+	"github.com/metacubex/mihomo/tunnel"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -51,15 +55,12 @@ type ExtensionOverview struct {
 	Overrides []string          `json:"overrides"`
 	Mode      string            `json:"mode"`
 }
-type extensionRule struct {
-	target string
-	match  func(*C.Metadata) bool
-}
 type extensionEngine struct {
-	proxies map[string]C.Proxy
-	rules   []extensionRule
-	mode    string
-	geo     *maxminddb.Reader
+	proxies   map[string]C.Proxy
+	rules     []C.Rule
+	subRules  map[string][]C.Rule
+	providers map[string]P.RuleProvider
+	mode      string
 }
 
 func decodeSource(data []byte) (map[string]any, error) {
@@ -197,26 +198,65 @@ func resourceRequests(raw map[string]any) ([]ResourceRequest, error) {
 			out = append(out, ResourceRequest{kind + ":" + name, u, kind})
 		}
 	}
-	rules, _ := stringsOf(raw["rules"])
-	for _, r := range rules {
-		if strings.HasPrefix(r, "GEOIP,") && !strings.HasPrefix(strings.ToLower(r), "geoip,lan,") {
-			geoURL := "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/release/country.mmdb"
-			if urls, ok := raw["geox-url"].(map[string]any); ok {
-				if u, ok := urls["mmdb"].(string); ok {
-					geoURL = u
-				}
-			}
-			parsed, e := url.Parse(geoURL)
-			if e != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil {
-				return nil, ErrProfile
-			}
-			out = append(out, ResourceRequest{"geoip", geoURL, "geoip"})
-			break
+	// Data files the rules need, wherever a rule sits (top level, AND/OR/NOT, SUB-RULE). Rules inside downloaded classical
+	// providers are only known after the download; a missing file then fails the check instead of downloading.
+	need := geoNeeds(ruleTexts(raw))
+	for _, g := range []struct{ kind, key, def string }{
+		{"geoip", "mmdb", "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/release/country.mmdb"},
+		{"geosite", "geosite", "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/release/geosite.dat"},
+		{"asn", "asn", "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/release/GeoLite2-ASN.mmdb"},
+	} {
+		if !need[g.kind] {
+			continue
 		}
+		u := g.def
+		if urls, ok := raw["geox-url"].(map[string]any); ok {
+			if v, ok := urls[g.key].(string); ok && v != "" {
+				u = v
+			}
+		}
+		parsed, e := url.Parse(u)
+		if e != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil {
+			return nil, ErrProfile
+		}
+		out = append(out, ResourceRequest{g.kind, u, g.kind})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out, nil
 }
+// ruleTexts returns every rule line of the profile: "rules" and all "sub-rules".
+func ruleTexts(raw map[string]any) []string {
+	lines, _ := stringsOf(raw["rules"])
+	if subs, ok := raw["sub-rules"].(map[string]any); ok {
+		for _, v := range subs {
+			more, _ := stringsOf(v)
+			lines = append(lines, more...)
+		}
+	}
+	return lines
+}
+
+// geoNeeds reports which data files rule lines need. It looks for the keywords anywhere in a line, so rules nested in
+// AND/OR/NOT payloads count too. GEOIP,LAN needs no database.
+func geoNeeds(lines []string) map[string]bool {
+	need := map[string]bool{}
+	for _, l := range lines {
+		u := strings.ToUpper(l)
+		if strings.Contains(u, "GEOSITE,") {
+			need["geosite"] = true
+		}
+		if strings.Contains(u, "IP-ASN,") {
+			need["asn"] = true
+		}
+		for _, part := range strings.Split(u, "GEOIP,")[1:] {
+			if !strings.HasPrefix(part, "LAN,") && !strings.HasPrefix(part, "LAN)") && part != "LAN" {
+				need["geoip"] = true
+			}
+		}
+	}
+	return need
+}
+
 func InspectExtension(data []byte) (ExtensionOverview, error) {
 	b, e := decodeBundle(data)
 	if e != nil {
@@ -289,7 +329,7 @@ func safeProxy(v any) bool {
 	}
 	return true
 }
-func newExtension(data []byte) (engine *Engine, err error) {
+func newExtension(data []byte, activate bool) (engine *Engine, err error) {
 	stage := "source"
 	defer func() {
 		if errors.Is(err, ErrProfile) {
@@ -309,29 +349,31 @@ func newExtension(data []byte) (engine *Engine, err error) {
 		return nil, err
 	}
 	for _, r := range requests {
-		sharedGeo.RLock()
-		geoReady := sharedGeo.reader != nil
-		sharedGeo.RUnlock()
-		if len(b.Resources[r.Key]) == 0 && !(r.Key == "geoip" && geoReady) {
-			return nil, errors.New("resources_required")
+		switch r.Kind {
+		case "geoip":
+			sharedGeo.RLock()
+			ready := sharedGeo.reader != nil
+			sharedGeo.RUnlock()
+			if !ready || !geoHomeSet() {
+				return nil, errors.New("geoip_resource_required")
+			}
+		case "geosite", "asn":
+			if !geoReady(r.Kind) {
+				return nil, errors.New(r.Kind + "_resource_required")
+			}
+		default:
+			if len(b.Resources[r.Key]) == 0 {
+				return nil, errors.New("resources_required")
+			}
 		}
 	}
-	x := &extensionEngine{proxies: map[string]C.Proxy{}, mode: b.Mode}
-	sharedGeo.RLock()
-	x.geo = sharedGeo.reader
-	sharedGeo.RUnlock()
+	x := &extensionEngine{proxies: map[string]C.Proxy{}, mode: b.Mode, subRules: map[string][]C.Rule{}, providers: map[string]P.RuleProvider{}}
 	success := false
 	defer func() {
 		if !success {
 			x.close()
 		}
 	}()
-	if data := b.Resources["geoip"]; len(data) > 0 {
-		x.geo, err = maxminddb.FromBytes(data)
-		if err != nil {
-			return nil, ErrProfile
-		}
-	}
 	for _, s := range []struct {
 		name string
 		a    C.ProxyAdapter
@@ -501,84 +543,41 @@ func newExtension(data []byte) (engine *Engine, err error) {
 		x.proxies["GLOBAL"] = adapter.NewProxy(g)
 	}
 	stage = "rule_provider_payload"
-	sets := map[string]func(*C.Metadata) bool{}
 	if providers, ok := raw["rule-providers"].(map[string]any); ok {
 		for name, v := range providers {
-			p := v.(map[string]any)
-			var payload []string
+			p, ok := v.(map[string]any)
+			if !ok || !label(name) {
+				return nil, ErrProfile
+			}
+			data := b.Resources["rule-providers:"+name]
+			if needs := geoNeeds(providerLines(p, data)); needs["geosite"] && !geoReady("geosite") {
+				return nil, errors.New("geosite_resource_required")
+			} else if needs["asn"] && !geoReady("asn") {
+				return nil, errors.New("asn_resource_required")
+			} else if needs["geoip"] && !geoHomeSet() {
+				return nil, errors.New("geoip_resource_required")
+			}
+			mapping := map[string]any{"behavior": p["behavior"], "format": p["format"]}
 			if p["type"] == "inline" {
-				payload, err = stringsOf(p["payload"])
+				mapping["type"] = "inline"
+				mapping["payload"] = p["payload"]
 			} else {
-				data := b.Resources["rule-providers:"+name]
-				format := stringValue(p["format"])
-				if format == "text" {
-					for _, line := range strings.Split(string(data), "\n") {
-						line = strings.TrimSpace(line)
-						if line != "" && !strings.HasPrefix(line, "#") {
-							payload = append(payload, line)
-						}
-					}
-				} else if format == "m rs" || format == "mrs" {
-					return nil, errors.New("mrs_resource_unsupported")
-				} else {
-					source, e := decodeYaml(data, 8*1024*1024)
-					if e != nil {
-						return nil, e
-					}
-					payload, err = stringsOf(source["payload"])
+				// Mihomo's own provider (yaml, text or mrs) reads the file WAYD downloaded. A file vehicle never fetches.
+				path, e := writeProviderFile(name, data)
+				if e != nil {
+					return nil, e
 				}
+				mapping["type"] = "file"
+				mapping["path"] = path
 			}
-			if err != nil {
-				return nil, err
+			rp, e := RP.ParseRuleProvider(name, mapping, R.ParseRule, func(string) resource.BundleFile { return nil })
+			if e != nil {
+				return nil, errors.New("invalid_rule_provider_entry")
 			}
-			if len(payload) > 200000 {
-				return nil, ErrProfile
+			if e := rp.Initial(); e != nil {
+				return nil, errors.New("invalid_rule_provider_entry")
 			}
-			behavior := stringValue(p["behavior"])
-			if behavior == "domain" || behavior == "ipcidr" {
-				var strategy interface {
-					Match(*C.Metadata, C.RuleMatchHelper) bool
-					Count() int
-					Reset()
-					Insert(string)
-					FinishInsert()
-				}
-				if behavior == "domain" {
-					strategy = RP.NewDomainStrategy()
-				} else {
-					strategy = RP.NewIPCidrStrategy()
-				}
-				strategy.Reset()
-				for _, line := range payload {
-					strategy.Insert(line)
-				}
-				if strategy.Count() != len(payload) {
-					return nil, errors.New("invalid_rule_provider_entry")
-				}
-				strategy.FinishInsert()
-				sets[name] = func(m *C.Metadata) bool { return strategy.Match(m, C.RuleMatchHelper{}) }
-			} else if behavior == "classical" {
-				compiled := []extensionRule{}
-				for _, entry := range payload {
-					kind, value, _, opts := RC.ParseRulePayload(entry, false)
-					r, e := x.compile(kind, value, "", opts)
-					if e != nil {
-						return nil, e
-					}
-					compiled = append(compiled, r)
-				}
-				sets[name] = func(m *C.Metadata) bool {
-					for _, r := range compiled {
-						if r.match(m) {
-							return true
-						}
-					}
-					return false
-				}
-			} else {
-				return nil, ErrProfile
-			}
-
+			x.providers[name] = rp
 		}
 	}
 	stage = "rules"
@@ -586,78 +585,125 @@ func newExtension(data []byte) (engine *Engine, err error) {
 	if err != nil || len(lines) == 0 {
 		return nil, ErrProfile
 	}
-	for _, line := range lines {
-		tp, payload, target, params := RC.ParseRulePayload(line, true)
-		if x.proxies[target] == nil {
-			return nil, ErrProfile
+	// Sub-rules first, so SUB-RULE lines can refer to them; Mihomo resolves the names when a connection is matched.
+	if subs, ok := raw["sub-rules"].(map[string]any); ok {
+		for name := range subs {
+			x.subRules[name] = nil
 		}
-		if tp == "RULE-SET" {
-			entries, ok := sets[payload]
-			if !ok {
-				return nil, ErrProfile
-			}
-			x.rules = append(x.rules, extensionRule{target, entries})
-		} else {
-			r, e := x.compile(tp, payload, target, params)
+		for name, v := range subs {
+			entries, e := stringsOf(v)
 			if e != nil {
 				return nil, e
 			}
-			x.rules = append(x.rules, r)
+			for _, line := range entries {
+				r, e := x.compile(line)
+				if e != nil {
+					return nil, e
+				}
+				x.subRules[name] = append(x.subRules[name], r)
+			}
 		}
 	}
-	// Unlike Clash's implicit Direct default, require explicit final policy.
-	if !strings.HasPrefix(lines[len(lines)-1], "MATCH,") {
-		return nil, errors.New("final_match_required")
+	for _, line := range lines {
+		r, e := x.compile(line)
+		if e != nil {
+			return nil, e
+		}
+		x.rules = append(x.rules, r)
 	}
 	adapters := map[string]C.ProxyAdapter{}
 	for name, p := range x.proxies {
 		adapters[name] = p
 	}
+	if activate {
+		// RULE-SET rules, including ones nested in logic rules, look providers up in Mihomo's registry. Only the engine that
+		// routes registers them; validating another profile never replaces the running one's providers.
+		tunnel.UpdateRules(x.rules, x.subRules, x.providers)
+	}
 	success = true
 	return &Engine{adapters: adapters, extension: x}, nil
 }
-func (x *extensionEngine) compile(tp, payload, target string, params []string) (extensionRule, error) {
-	if tp == "GEOIP" {
-		code := strings.ToLower(payload)
-		if code != "lan" && x.geo == nil {
-			return extensionRule{}, errors.New("geoip_resource_required")
+
+// compile parses one rule line with Mihomo's parser, so every Mihomo rule type is accepted. The target must be a known
+// proxy or group, or, for SUB-RULE, a sub-rule name. Rules needing a data file compile only after WAYD verified it, so
+// Mihomo never starts a download of its own.
+func (x *extensionEngine) compile(line string) (C.Rule, error) {
+	tp, payload, target, params := RC.ParseRulePayload(line, true)
+	if tp == "SUB-RULE" {
+		if _, ok := x.subRules[target]; !ok {
+			return nil, errors.New("invalid_rule:SUB-RULE")
 		}
-		return extensionRule{target, func(m *C.Metadata) bool {
-			ip := m.DstIP
-			if code == "lan" {
-				return ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast()
-			}
-			var result any
-			if x.geo.Lookup(net.IP(ip.AsSlice()), &result) != nil {
-				return false
-			}
-			switch r := result.(type) {
-			case string:
-				return strings.EqualFold(r, code)
-			case []any:
-				for _, v := range r {
-					if s, ok := v.(string); ok && strings.EqualFold(s, code) {
-						return true
-					}
-				}
-			case map[string]any:
-				if c, ok := r["country"].(map[string]any); ok {
-					return strings.EqualFold(stringValue(c["iso_code"]), code)
-				}
-			}
-			return false
-		}}, nil
+	} else if x.proxies[target] == nil {
+		return nil, errors.New("invalid_rule:" + ruleKeyword(tp))
 	}
-	switch tp {
-	case "GEOSITE", "IP-ASN", "SRC-IP-ASN", "SRC-GEOIP", "RULE-SET", "SUB-RULE":
-		return extensionRule{}, errors.New("rule_resource_or_metadata_unsupported")
+	if tp == "RULE-SET" {
+		if _, ok := x.providers[payload]; !ok {
+			return nil, errors.New("invalid_rule:RULE-SET")
+		}
 	}
-	r, err := R.ParseRule(tp, payload, target, params, nil)
+	need := geoNeeds([]string{line})
+	switch {
+	case need["geosite"] && !geoReady("geosite"):
+		return nil, errors.New("geosite_resource_required")
+	case need["asn"] && !geoReady("asn"):
+		return nil, errors.New("asn_resource_required")
+	case need["geoip"] && !geoHomeSet():
+		return nil, errors.New("geoip_resource_required")
+	}
+	r, err := R.ParseRule(tp, payload, target, params, x.subRules)
 	if err != nil {
-		return extensionRule{}, errors.New("invalid_rule")
+		return nil, errors.New("invalid_rule:" + ruleKeyword(tp))
 	}
-	return extensionRule{target, func(m *C.Metadata) bool { ok, _ := r.Match(m, C.RuleMatchHelper{}); return ok }}, nil
+	return r, nil
 }
+
+// providerLines returns the rule text of a classical provider (inline payload, or a downloaded yaml/text file) for the
+// data-file check. Domain and ipcidr providers, and MRS files, never contain rules that need data files.
+func providerLines(p map[string]any, data []byte) []string {
+	if stringValue(p["behavior"]) != "classical" {
+		return nil
+	}
+	if p["type"] == "inline" {
+		lines, _ := stringsOf(p["payload"])
+		return lines
+	}
+	if stringValue(p["format"]) == "text" {
+		return strings.Split(string(data), "\n")
+	}
+	source, e := decodeYaml(data, 8*1024*1024)
+	if e != nil {
+		return nil
+	}
+	lines, _ := stringsOf(source["payload"])
+	return lines
+}
+
+func geoHomeSet() bool {
+	geoHome.RLock()
+	defer geoHome.RUnlock()
+	return geoHome.dir != ""
+}
+
+// writeProviderFile stores a downloaded rule-provider file under the resource folder, named by a hash of the provider name
+// so profile text never becomes a path.
+func writeProviderFile(name string, data []byte) (string, error) {
+	if len(data) == 0 {
+		return "", errors.New("resources_required")
+	}
+	geoHome.RLock()
+	dir := geoHome.dir
+	geoHome.RUnlock()
+	if dir == "" {
+		return "", errors.New("invalid_geodata_dir")
+	}
+	sum := sha256.Sum256([]byte(name))
+	path := filepath.Join(dir, "providers", hex.EncodeToString(sum[:12]))
+	if os.MkdirAll(filepath.Dir(path), 0o700) != nil || os.WriteFile(path, data, 0o600) != nil {
+		return "", ErrProfile
+	}
+	return path, nil
+}
+
 func (x *extensionEngine) selectRoute(m Metadata) (Route, error) {
 	if !m.Destination.IsValid() || m.Destination.Port() == 0 || (m.Host != "" && !domain(m.Host)) || (m.Owner != "" && !validOwner(m.Owner)) {
 		return Route{}, ErrMetadata
@@ -678,9 +724,13 @@ func (x *extensionEngine) resolve(meta *C.Metadata) (Route, error) {
 	case "global":
 		target = "GLOBAL"
 	default:
+		// As in Clash: the first matching rule decides; nothing matching means DIRECT. SUB-RULE returns the adapter its
+		// matching sub-rule chose.
+		target = "DIRECT"
+		helper := C.RuleMatchHelper{}
 		for _, r := range x.rules {
-			if r.match(meta) {
-				target = r.target
+			if ok, adapter := r.Match(meta, helper); ok {
+				target = adapter
 				break
 			}
 		}
@@ -720,6 +770,9 @@ func ExtensionCommand(profile, request []byte) (result []byte) {
 			result = []byte(`{"error":"invalid_profile"}`)
 		}
 	}()
+	if v, ok := geodataCommand(request); ok {
+		return v
+	}
 	if v, ok := geoCommand(request); ok {
 		return v
 	}
@@ -767,7 +820,7 @@ func ExtensionCommand(profile, request []byte) (result []byte) {
 		if e != nil {
 			return fail("invalid_profile")
 		}
-		engine, e := newExtension(data)
+		engine, e := newExtension(data, false)
 		if e != nil {
 			return fail("invalid_profile")
 		}
@@ -784,6 +837,15 @@ func ExtensionCommand(profile, request []byte) (result []byte) {
 		v, _ := json.Marshal(map[string]any{"bundle": data, "delays": delays})
 		return v
 	}
+	if q.Action == "check" {
+		// Compiles the stored profile without activating it, so the screen can say why enabling failed.
+		engine, e := newExtension(profile, false)
+		if e != nil {
+			return fail(e.Error())
+		}
+		engine.Close()
+		return []byte(`{"ok":true}`)
+	}
 	if q.Action == "prepare" || q.Action == "configure" {
 		for k, v := range q.Resources {
 			b.Resources[k] = v
@@ -798,7 +860,7 @@ func ExtensionCommand(profile, request []byte) (result []byte) {
 		if e != nil {
 			return fail("profile_too_large")
 		}
-		engine, e := newExtension(data)
+		engine, e := newExtension(data, false)
 		if e != nil {
 			return fail(e.Error())
 		}
@@ -807,4 +869,17 @@ func ExtensionCommand(profile, request []byte) (result []byte) {
 		return v
 	}
 	return fail("unsupported_command")
+}
+
+// ruleKeyword returns tp when it is a plain rule keyword (letters, digits, '-'), so an error never echoes arbitrary profile text.
+func ruleKeyword(tp string) string {
+	if len(tp) == 0 || len(tp) > 24 {
+		return "?"
+	}
+	for _, c := range tp {
+		if !(c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-') {
+			return "?"
+		}
+	}
+	return tp
 }

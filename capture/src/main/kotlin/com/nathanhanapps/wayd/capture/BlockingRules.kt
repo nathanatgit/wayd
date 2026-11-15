@@ -53,6 +53,8 @@ class BlockingRules @Inject constructor(
     private val db: WaydDatabase,
     private val lists: BlockListStore,
     private val rewrites: RewriteStore,
+    private val dnsRules: DnsRuleStore,
+    val modules: RuleModules,
 ) {
     private val mutex = Mutex()
     private val bridge = Any()
@@ -64,6 +66,10 @@ class BlockingRules @Inject constructor(
     private var installed = emptyList<BlockRule>()
     private var listsSupported = false
     private var rewriteSupported = false
+    private var dnsSupported = false
+    private val _dnsEntries = MutableStateFlow<Long?>(null)
+    /** Entries the running engine loaded from the DNS rules; null when the VPN is off or the engine predates them, -1 if rejected. */
+    val dnsEntries = _dnsEntries.asStateFlow()
     private val _rewriteInstalled = MutableStateFlow<Boolean?>(null)
     /** Whether the running engine accepted the rewrite rules; null when the VPN is off or the engine predates them. */
     val rewriteInstalled = _rewriteInstalled.asStateFlow()
@@ -89,11 +95,12 @@ class BlockingRules @Inject constructor(
         val h = synchronized(bridge) {
             check(handle == 0L)
             val version = engine.nativePolicyVersion()
-            check(version in 2..4) { "Incompatible native policy engine" }
+            check(version in 2..5) { "Incompatible native policy engine" }
             listsSupported = version >= 3
             rewriteSupported = version >= 4
+            dnsSupported = version >= 5
             engine.nativeStart(fd, mtu, wire(valid), routingProfile, routingOwners).also {
-                if (it != 0L) { net = engine; handle = it; installed = valid; pushLists(); pushRewrite() }
+                if (it != 0L) { net = engine; handle = it; installed = valid; pushLists(); pushDns(); pushRewrite() }
             }
         }
         publish(all, if (h != 0L) valid else emptyList())
@@ -102,18 +109,41 @@ class BlockingRules @Inject constructor(
 
     /** Caller holds [bridge]. A rejected file (-1) leaves the engine without lists rather than with a partial one. */
     private fun pushLists() {
-        _listEntries.value = if (handle != 0L && listsSupported) net?.nativeSetBlockList(handle, lists.activePath()) else null
+        val path = if (modules.state.value.dns) lists.activePath() else ""
+        _listEntries.value = if (handle != 0L && listsSupported) net?.nativeSetBlockList(handle, path) else null
     }
 
+    /** Caller holds [bridge]. The DNS module switch gates the DNS rules together with the block lists. */
+    private fun pushDns() {
+        val path = if (modules.state.value.dns) dnsRules.activePath() else ""
+        _dnsEntries.value = if (handle != 0L && dnsSupported) net?.nativeSetDnsRules(handle, path) else null
+    }
+
+    /** Call after any change to DNS rule files, typed rules or record-type blocks. */
+    suspend fun reloadDnsRules() = withContext(Dispatchers.IO) { mutex.withLock { synchronized(bridge) { pushDns() } } }
+
     /** (connections blocked by a list, DNS names answered locally) in this VPN run; null when the VPN is off or the engine is older. */
-    fun listStats(): Pair<Long, Long>? = synchronized(bridge) {
-        if (handle == 0L || !rewriteSupported) null else net?.nativeListStats(handle)?.split("	")?.takeIf { it.size == 2 }?.let { (it[0].toLongOrNull() ?: 0L) to (it[1].toLongOrNull() ?: 0L) }
+    fun listStats(): Pair<Long, Long>? = dnsStats()?.let { it.first to it.second }
+
+    /** As [listStats], plus queries answered by a DNS rule (0 on engines before policy version 5). */
+    fun dnsStats(): Triple<Long, Long, Long>? = synchronized(bridge) {
+        if (handle == 0L || !rewriteSupported) null else net?.nativeListStats(handle)?.split("	")?.takeIf { it.size >= 2 }?.let {
+            Triple(it[0].toLongOrNull() ?: 0L, it[1].toLongOrNull() ?: 0L, it.getOrNull(2)?.toLongOrNull() ?: 0L)
+        }
     }
 
     /** Caller holds [bridge]. */
     private fun pushRewrite() {
-        _rewriteInstalled.value = if (handle != 0L && rewriteSupported) net?.nativeSetRewrite(handle, rewrites.wire(userId)) else null
+        // The bare header clears the engine's rewrite set (RewriteStore.wire).
+        val rules = if (modules.state.value.request) rewrites.wire(userId) else "WAYDRW1"
+        _rewriteInstalled.value = if (handle != 0L && rewriteSupported) net?.nativeSetRewrite(handle, rules) else null
     }
+
+    /** Turns the DNS module (block lists and DNS rules) on or off and applies it to the running engine. */
+    suspend fun setDnsModule(on: Boolean) = withContext(Dispatchers.IO) { mutex.withLock { synchronized(bridge) { modules.set(dns = on); pushLists(); pushDns() } } }
+
+    /** Turns the Request module's rewrite rules on or off and applies it to the running engine. Connection blocks are unaffected. */
+    suspend fun setRequestModule(on: Boolean) = withContext(Dispatchers.IO) { mutex.withLock { synchronized(bridge) { modules.set(request = on); pushRewrite() } } }
 
     /** Call after adding, enabling, disabling or deleting a rewrite rule. */
     suspend fun reloadRewrite() = withContext(Dispatchers.IO) { mutex.withLock { synchronized(bridge) { pushRewrite() } } }
@@ -135,6 +165,7 @@ class BlockingRules @Inject constructor(
             handle = 0L
             net = null
             _listEntries.value = null
+            _dnsEntries.value = null
             _rewriteInstalled.value = null
         }
         val expired = temporary

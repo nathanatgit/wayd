@@ -87,7 +87,60 @@ class RoutingGeoIp @Inject constructor(@ApplicationContext private val context: 
     private val cache = object : LinkedHashMap<String, String>(256, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?) = size > 4096
     }
+    private val dir get() = File(context.noBackupFilesDir, "routing-resources")
+    @Volatile private var homeSet = false
+    @Volatile private var ready = emptySet<String>()
+
+    private fun command(request: JSONObject): JSONObject =
+        JSONObject(String(NativeNet().nativeRoutingCommand(byteArrayOf(1), request.toString().toByteArray()), Charsets.UTF_8))
+
+    private fun readFlags(result: JSONObject) {
+        ready = setOf("geosite", "asn").filter { result.optBoolean(it) }.toSet()
+    }
+
+    /**
+     * Points the routing layer's data-file folder (GEOIP, GEOSITE, ASN rules) at this folder, once per process, and verifies the
+     * files already there (D-075). Downloads never happen in the routing layer; this class installs every file.
+     */
+    private fun ensureHome() {
+        if (homeSet) return
+        synchronized(this) {
+            if (homeSet) return
+            dir.mkdirs()
+            val result = command(JSONObject().put("action", "geodata-home").put("dir", dir.absolutePath))
+            check(result.optBoolean("ok"))
+            readFlags(result)
+            homeSet = true
+        }
+    }
+
+    /** Whether a verified GeoSite.dat ("geosite") or ASN.mmdb ("asn") is installed. */
+    fun geoDataReady(kind: String): Boolean = kind in ready
+
+    /** Installs GeoSite.dat or ASN.mmdb after the routing layer verified it; a bad file never replaces a good one. */
+    suspend fun installGeoData(kind: String, bytes: ByteArray) = withContext(Dispatchers.IO) {
+        ensureHome()
+        val name = when (kind) { "geosite" -> "GeoSite.dat"; "asn" -> "ASN.mmdb"; else -> error("kind") }
+        synchronized(this@RoutingGeoIp) {
+            val target = AtomicFile(File(dir, name))
+            val previous = if (target.baseFile.exists()) target.readFully() else null
+            fun write(data: ByteArray) {
+                val out = target.startWrite()
+                try { out.write(data); target.finishWrite(out) } catch (e: Throwable) { target.failWrite(out); throw e }
+            }
+            write(bytes)
+            val result = command(JSONObject().put("action", "geodata-verify").put("kind", kind))
+            readFlags(result)
+            if (!result.optBoolean("ok")) {
+                if (previous != null) { write(previous); readFlags(command(JSONObject().put("action", "geodata-verify").put("kind", kind))) }
+                else target.delete()
+                throw RoutingDownloadException("resource_geodata_invalid")
+            }
+        }
+    }
+
     suspend fun load() = withContext(Dispatchers.IO) {
+        ensureHome()
         if (!loaded && file.baseFile.exists()) synchronized(this@RoutingGeoIp) {
             if (!loaded) {
                 val bytes = file.openRead().use { RoutingDownloads.readBounded(it, 32 * 1024 * 1024) }
@@ -117,6 +170,8 @@ class RoutingGeoIp @Inject constructor(@ApplicationContext private val context: 
             try { meta.write(value.toString().toByteArray()); metadata.finishWrite(meta) } catch (e: Throwable) { metadata.failWrite(meta); throw e }
             loaded = true
             cache.clear()
+            // The routing layer's own GEOIP rules read the same file from the folder; reopen it there too.
+            if (homeSet) runCatching { command(JSONObject().put("action", "geodata-verify").put("kind", "geoip")) }
         }
     }
     fun status(): JSONObject = runCatching { JSONObject(metadata.openRead().bufferedReader().use { it.readText() }) }.getOrDefault(JSONObject())

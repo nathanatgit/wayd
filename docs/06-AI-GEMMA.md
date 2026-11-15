@@ -149,4 +149,4 @@ The local engine window is 8K tokens for prompt plus answer (`LiteRtEngine.MAX_T
 
 ## Measuring answer quality
 
-`HistoryEvalTest` (opt-in: `WAYD_OLLAMA_URL`, `WAYD_OLLAMA_MODEL`, optional `WAYD_EXTERNAL_KEY`, `WAYD_EVAL_SIZE`) sends synthetic hosts through the compact history prompt and prints role and advice scores. Use it to compare prompt changes and models; it has not yet been run against Gemma.
+`HistoryEvalTest` (opt-in: `WAYD_OLLAMA_URL`, `WAYD_OLLAMA_MODEL`, optional `WAYD_EXTERNAL_KEY`, `WAYD_EVAL_SIZE`) sends synthetic hosts through the compact history prompt and prints role and advice scores. Use it to compare prompt changes and models. For all four contracts on real exports, with Claude Haiku answers as the reference, use `tools/promptlab/` (D-076).

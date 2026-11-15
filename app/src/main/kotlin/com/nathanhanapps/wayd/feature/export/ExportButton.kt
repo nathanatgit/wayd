@@ -1,7 +1,6 @@
 package com.nathanhanapps.wayd.feature.export
 
 import android.net.Uri
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -24,12 +23,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -37,13 +35,13 @@ import androidx.lifecycle.ViewModel
 import com.nathanhanapps.wayd.R
 import com.nathanhanapps.wayd.research.ResearchFeatures
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class ExportViewModel @Inject constructor(private val exporter: ExportService) : ViewModel() {
     fun name(r: ExportRequest) = exporter.fileName(r)
-    suspend fun export(target: Uri, r: ExportRequest) = exporter.export(target, r)
+    val running = exporter.running
+    fun start(target: Uri, r: ExportRequest) = exporter.start(target, r)
 }
 
 /**
@@ -52,11 +50,8 @@ class ExportViewModel @Inject constructor(private val exporter: ExportService) :
  */
 @Composable
 fun ExportButton(scope: ExportScope, label: String, modifier: Modifier = Modifier, vm: ExportViewModel = hiltViewModel()) {
-    val ctx = LocalContext.current
-    val resources = ctx.resources
-    val coroutines = rememberCoroutineScope()
     var open by remember { mutableStateOf(false) }
-    var busy by remember { mutableStateOf(false) }
+    val busy by vm.running.collectAsState()
     var format by rememberSaveable { mutableStateOf(ExportFormat.WAYD_JSON.name) }
     var range by rememberSaveable { mutableStateOf(ExportRange.SESSION.name) }
     var content by rememberSaveable { mutableStateOf(false) }
@@ -65,18 +60,8 @@ fun ExportButton(scope: ExportScope, label: String, modifier: Modifier = Modifie
     val onPicked: (Uri?) -> Unit = { uri ->
         val req = pending
         pending = null
-        if (uri != null && req != null) {
-            busy = true
-            coroutines.launch {
-                val msg = when (val r = vm.export(uri, req)) {
-                    is ExportResult.Saved -> resources.getString(R.string.export_saved, r.name, r.flows, r.messages)
-                    ExportResult.Empty -> resources.getString(R.string.export_empty)
-                    ExportResult.Failed -> resources.getString(R.string.export_failed)
-                }
-                busy = false
-                Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
-            }
-        }
+        // Runs in ExportService's own scope, so leaving this screen does not cancel it; the service shows the result.
+        if (uri != null && req != null) vm.start(uri, req)
     }
     val pcap = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(ExportFormat.PCAP.mime), onPicked)
     val csv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(ExportFormat.PCAPDROID_CSV.mime), onPicked)

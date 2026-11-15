@@ -8,7 +8,14 @@ import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.IOException
@@ -30,6 +37,14 @@ class ClashRoutingBridge @Inject constructor(
     override fun affected(pkg: String?): Boolean = settings.affected(pkg)
     override suspend fun refresh() { settings.refresh() }
     override fun country(ip: String): String? = geoIp.country(ip)
+    override val enabled: StateFlow<Boolean> = settings.state.map { it.enabled }.stateIn(CoroutineScope(SupervisorJob() + Dispatchers.Default), SharingStarted.Eagerly, false)
+
+    override suspend fun setEnabled(on: Boolean): String? = try {
+        settings.setEnabled(on); null
+    } catch (e: CancellationException) { throw e
+    } catch (e: RoutingDownloadException) { e.code
+    } catch (_: IllegalStateException) { "stop_first"
+    } catch (_: Exception) { "failed" }
 
     override suspend fun connect(host: String, port: Int): RoutedStream? {
         val snapshot = active

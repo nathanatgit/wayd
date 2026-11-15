@@ -32,7 +32,7 @@ type Engine struct {
 
 func New(data []byte) (*Engine, error) {
 	if bytes.HasPrefix(data, []byte(extensionPrefix)) {
-		return newExtension(data)
+		return newExtension(data, true)
 	}
 	p, err := Parse(data)
 	if err != nil {

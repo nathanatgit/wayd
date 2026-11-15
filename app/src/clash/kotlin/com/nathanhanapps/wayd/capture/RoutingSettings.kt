@@ -39,7 +39,7 @@ enum class RoutingMode { WHITELIST, BLACKLIST }
 data class RoutingUi(
     val available: Boolean = false,
     val enabled: Boolean = false,
-    val mode: RoutingMode = RoutingMode.WHITELIST,
+    val mode: RoutingMode = RoutingMode.BLACKLIST,
     val apps: Set<String> = emptySet(),
     val damaged: Boolean = false,
 )
@@ -217,24 +217,31 @@ class RoutingSettings @Inject constructor(
         geoIp.load()
         require(value.getInt("user") == userId)
         val selected = value.optString("selectedProfile")
-        require(selected.isNotEmpty() && entryIds(value).contains(selected))
+        if (selected.isEmpty() || !entryIds(value).contains(selected)) throw RoutingDownloadException("no_profile")
         val profile = readBlob(profileFile(selected))
-        require(validate(profile))
+        if (!validate(profile)) {
+            // Name the reason (a stable code, never profile text) so the screen can show it.
+            val code = runCatching {
+                JSONObject(String(NativeNet().nativeRoutingCommand(profile, """{"action":"check"}""".toByteArray()), Charsets.UTF_8)).optString("error")
+            }.getOrDefault("")
+            throw RoutingDownloadException(code.ifEmpty { "invalid_profile" })
+        }
         val bindings = value.optJSONObject("bindings") ?: JSONObject()
         val packages = bindings.keys().asSequence().toList()
         return when (mode(value)) {
             RoutingMode.WHITELIST -> {
-                require(packages.size in 1..1000)
+                if (packages.isEmpty()) throw RoutingDownloadException("no_apps")
+                require(packages.size <= 1000)
                 val owners = packages.map { pkg ->
                     val signer = bindings.getString(pkg)
-                    require(identity(pkg) == signer)
-                    require(db.blockRuleDao().consent(feature(pkg, signer))?.let { it.statementVersion == 1 && it.revokedAt == null } == true)
+                    if (identity(pkg) != signer) throw RoutingDownloadException("app_changed")
+                    if (db.blockRuleDao().consent(feature(pkg, signer))?.let { it.statementVersion == 1 && it.revokedAt == null } != true) throw RoutingDownloadException("no_consent")
                     "$userId:$pkg"
                 }.sorted()
                 RoutingSnapshot(profile, owners.joinToString("\n"))
             }
             RoutingMode.BLACKLIST -> {
-                require(db.blockRuleDao().consent(blacklistFeature())?.let { it.statementVersion == BLACKLIST_STATEMENT && it.revokedAt == null } == true)
+                if (db.blockRuleDao().consent(blacklistFeature())?.let { it.statementVersion == BLACKLIST_STATEMENT && it.revokedAt == null } != true) throw RoutingDownloadException("no_consent")
                 RoutingSnapshot(profile, (listOf("!exclude:$userId") + packages.sorted().map { "$userId:$it" }).joinToString("\n"))
             }
         }
@@ -259,7 +266,12 @@ class RoutingSettings @Inject constructor(
     private fun feature(pkg: String, signer: String) = "routing-v1:$userId:$pkg:$signer"
     private fun blacklistFeature() = "routing-v1:$userId:*blacklist"
     private fun requireStopped() = check(capture.ui.value.phase in setOf(CapturePhase.IDLE, CapturePhase.ERROR))
-    private fun mode(value: JSONObject) = runCatching { RoutingMode.valueOf(value.optString("mode")) }.getOrDefault(RoutingMode.WHITELIST)
+    /** Blacklist (route every app except the excluded ones) is the default; a whitelist with no apps chosen counts as unset. */
+    private fun mode(value: JSONObject): RoutingMode {
+        val saved = runCatching { RoutingMode.valueOf(value.optString("mode")) }.getOrDefault(RoutingMode.BLACKLIST)
+        val none = (value.optJSONObject("bindings")?.length() ?: 0) == 0
+        return if (saved == RoutingMode.WHITELIST && none) RoutingMode.BLACKLIST else saved
+    }
     private fun entryIds(value: JSONObject): Set<String> {
         val entries = value.optJSONArray("profiles") ?: return emptySet()
         return (0 until entries.length()).map { entries.getJSONObject(it).getString("id") }.toSet()
@@ -268,7 +280,7 @@ class RoutingSettings @Inject constructor(
         require(id.length in 1..64 && id.all { it.isLetterOrDigit() || it == '-' })
         return AtomicFile(File(dir, "profile-$id.enc"))
     }
-    private fun empty() = JSONObject().put("user", userId).put("enabled", false).put("mode", RoutingMode.WHITELIST.name)
+    private fun empty() = JSONObject().put("user", userId).put("enabled", false).put("mode", RoutingMode.BLACKLIST.name)
         .put("bindings", JSONObject()).put("profiles", JSONArray()).put("selectedProfile", "")
 
     private fun publish(value: JSONObject?) {

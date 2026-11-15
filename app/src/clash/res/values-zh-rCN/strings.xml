@@ -28,7 +28,7 @@
     <string name="cx_add_file">从文件导入</string>
     <string name="cx_add_url">从链接导入</string>
     <string name="cx_blacklist">黑名单</string>
-    <string name="cx_blacklist_consent">我允许所选配置将本用户下除此处勾选外的所有应用的允许流量经其代理转发，包括之后安装的应用。代理运营方可能看到元数据及未加密流量。『在干嘛』的阻断规则始终优先；未知或共享 UID 的流量保持直连。切换为白名单或删除配置即可撤销。</string>
+    <string name="cx_blacklist_consent">我允许所选配置将本用户下除此处勾选外的所有应用的允许流量经其代理转发，包括之后安装的应用。代理运营方可能看到元数据及未加密流量。「在干嘛」的阻断规则始终优先；未知或共享 UID 的流量保持直连。切换为白名单或删除配置即可撤销。</string>
     <string name="cx_blacklist_hint">除勾选的应用外，全部走代理</string>
     <string name="cx_cancel">取消</string>
     <string name="cx_continue">继续</string>
@@ -56,7 +56,7 @@
     <string name="cx_ignored">已忽略：%1$s</string>
     <string name="cx_installed">已安装</string>
     <string name="cx_mirror">jsDelivr 镜像</string>
-    <string name="cx_net_hint">请在系统设置中确认『在干嘛』的联网权限</string>
+    <string name="cx_net_hint">请在系统设置中确认「在干嘛」的联网权限</string>
     <string name="cx_no_live">暂无活动连接</string>
     <string name="cx_nodes">节点</string>
     <string name="cx_none">无</string>
@@ -78,7 +78,18 @@
     <string name="cx_via_node">首个节点</string>
     <string name="cx_whitelist">白名单</string>
     <string name="cx_whitelist_hint">仅勾选的应用走代理</string>
-    <string name="routing_consent">我允许启用后按导入配置，通过指定代理转发这些应用未被阻断的流量。代理运营方可能看到元数据及未加密流量。凭据仅在本机加密保存，不会包含在规则备份中。导入将替换旧配置，保存后默认关闭。传输层不会收到检查数据库或 CA 密钥。该库与『在干嘛』使用相同应用 UID，并非独立安全沙箱。</string>
+    <string name="routing_consent">我允许启用后按导入配置，通过指定代理转发这些应用未被阻断的流量。代理运营方可能看到元数据及未加密流量。凭据仅在本机加密保存，不会包含在规则备份中。导入将替换旧配置，保存后默认关闭。传输层不会收到检查数据库或 CA 密钥。该库与「在干嘛」使用相同应用 UID，并非独立安全沙箱。</string>
     <string name="routing_delete">删除路由配置</string>
     <string name="routing_delete_warning">删除加密路由配置及其加密密钥，并撤销相关应用的路由授权？不会删除检查历史或阻断规则。</string>
+    <string name="cx_err_rule_invalid">有一条 %1$s 规则无法解析。</string>
+    <string name="cx_err_geoip_required">GEOIP 规则需要 GeoIP 数据库，请先下载。</string>
+    <string name="cx_err_group">有代理组无效或引用了自身。</string>
+    <string name="cx_err_proxy_options">有代理使用了 WAYD 不支持的选项。</string>
+    <string name="cx_err_profile_large">配置及其资源过大。</string>
+    <string name="cx_err_geodata_required">规则需要 %1$s 数据库，请先下载。</string>
+    <string name="cx_err_geodata_invalid">下载的文件不是有效的规则数据库，已保留原有文件。</string>
+    <string name="cx_err_no_profile">请先导入并选择配置</string>
+    <string name="cx_err_no_apps">请先在“访问控制”中至少选择一个应用</string>
+    <string name="cx_err_no_consent">请先打开“访问控制”并点击保存，以授予路由授权</string>
+    <string name="cx_err_app_changed">所选应用已被重装或更改，请在“访问控制”中重新选择</string>
 </resources>

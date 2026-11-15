@@ -9,6 +9,7 @@
 pub mod events;
 pub mod blocking;
 pub mod hostlist;
+pub mod dnsrules;
 #[cfg(unix)]
 mod routing;
 

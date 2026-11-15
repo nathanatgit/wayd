@@ -39,7 +39,8 @@ Same application id and key; installing one over the other keeps data. A routing
 
 - DNS stays on the underlying network unless an attributable selected flow is routed; no fake-IP, encrypted-DNS or leak-protection claim. Existing IPv6 gaps apply.
 - Proxy operators see metadata and any traffic not end-to-end encrypted; routing is not anonymity.
-- Not supported: MRS/GEOSITE/ASN/subrules, full profile DNS, persistent subscription refresh, live connection close/event stream, automatic health probes (explicit probe API only), group `exclude-type` (currently stripped: implement or reject). Not FlClash-complete; no Flutter FlClash code is vendored.
+- Rules (D-075): every Mihomo rule type, rule providers (yaml/text/mrs/inline) and sub-rules, compiled by Mihomo; no match means DIRECT. Data files (country.mmdb, GeoSite.dat, ASN.mmdb) are installed and verified by WAYD; Mihomo never downloads.
+- Not yet supported (D-075 slice 2): profile DNS for resolution, provider/subscription refresh and automatic health probes while routing is on, live connection close/event stream, group `exclude-type` (currently stripped). Target: FlClash parity; no Flutter FlClash code is vendored.
 - A future Clash *export* is a labelled subset conversion with a report of what was dropped; never split app AND host into independent reject rules. WAYD JSON backup ([13-BLOCKING.md](13-BLOCKING.md)) excludes routing profiles and secrets.
 
 ## Acceptance

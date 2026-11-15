@@ -17,15 +17,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * One rewrite rule for decrypted HTTP/1.1 requests of one app (phase 1, D-066). It only ever applies to flows WAYD already
- * decrypts for that app with the existing decryption consent; a rule cannot switch decryption on.
+ * One rewrite rule for decrypted HTTP/1.1 requests (phase 1, D-066). Rules carry no app: they belong to a [RewriteSet], and
+ * apply to each of its target apps (D-073). They only ever act on flows WAYD already decrypts for that app with the existing
+ * decryption consent; a rule cannot switch decryption on.
  *
  * [action]: `REJECT` ([arg] `204`, `200-empty`, `200-json`, `200-array`), `HEADER_REMOVE` (header name), `HEADER_SET` (`Name: value`),
  * `QUERY_REMOVE` (parameter name), `REDIRECT` (`302 <url>` or `307 <url>`). [match]: `PREFIX`, `EXACT` or `CONTAINS` against the request path and query, or `REGEX` against the full URL (`https://host/path?query`).
  */
 data class RewriteRule(
     val id: Long,
-    val pkg: String,
     val host: String,
     val subdomains: Boolean,
     val method: String,
@@ -40,7 +40,7 @@ data class RewriteRule(
     fun valid(): Boolean {
         val token = Regex("[A-Za-z0-9_.-]{1,128}")
         val text = { s: String -> s.none { it == '\t' || it == '\n' || it == '\r' } }
-        return BlockTargets.packageName(pkg) && BlockTargets.host(host) == host && '.' in host &&
+        return BlockTargets.host(host) == host && '.' in host &&
             (method.isEmpty() || method.matches(Regex("[A-Za-z]{1,16}"))) && match in setOf("PREFIX", "EXACT", "CONTAINS", "REGEX") && (match != "REGEX" || engineRegex(pattern)) &&
             pattern.isNotEmpty() && pattern.length <= 2048 && text(pattern) && when (action) {
                 "REJECT" -> arg in setOf("204", "200-empty", "200-json", "200-array")
@@ -51,79 +51,179 @@ data class RewriteRule(
             }
     }
 
-    fun line(userId: Int): String = listOf(id, "$userId:$pkg", (if (subdomains) "." else "") + host, method.uppercase(), match, pattern, action, arg).joinToString("\t")
+    /** Engine line for this rule and one app. The same id for several apps is fine: the engine adds their hits together. */
+    fun line(userId: Int, pkg: String): String = listOf(id, "$userId:$pkg", (if (subdomains) "." else "") + host, method.uppercase(), match, pattern, action, arg).joinToString("\t")
 }
 
-/** Rewrite rules live in one JSON file under no-backup storage: no schema change, and they never leave the phone in a backup. */
+data class RewriteApp(val pkg: String, val enabled: Boolean)
+
+/**
+ * A group of rewrite rules applied to a list of target apps (D-073): an imported rule plugin or a set the user made. One import
+ * can serve many apps. [mitmHosts] and [suggested] come from the plugin (`[MITM] hostname`, `#!packages=`); they are hints only.
+ */
+data class RewriteSet(
+    val id: Long,
+    val name: String,
+    val enabled: Boolean,
+    val rules: List<RewriteRule>,
+    val apps: List<RewriteApp>,
+    val mitmHosts: List<String> = emptyList(),
+    val suggested: List<String> = emptyList(),
+    val createdAt: Long = 0,
+) {
+    /** Engine lines this set produces while enabled: one per enabled rule per enabled app. */
+    val lineCount: Int get() = if (!enabled) 0 else rules.count { it.enabled } * apps.count { it.enabled }
+}
+
+/** Rewrite sets live in one JSON file under no-backup storage: no schema change, and they never leave the phone in a backup. */
 @Singleton
 class RewriteStore @Inject constructor(@ApplicationContext context: Context, private val db: WaydDatabase) {
-    private val file = File(File(context.noBackupFilesDir, "rewrite").apply { mkdirs() }, "rules.json")
+    private val dir = File(context.noBackupFilesDir, "rewrite").apply { mkdirs() }
+    private val file = File(dir, "sets.json")
+    private val legacy = File(dir, "rules.json")
     private val mutex = Mutex()
-    private val _rules = MutableStateFlow(read())
-    val rules = _rules.asStateFlow()
+    private val _sets = MutableStateFlow(load())
+    val sets = _sets.asStateFlow()
 
-    private fun read(): List<RewriteRule> = runCatching {
-        val a = JSONArray(file.readText())
-        (0 until a.length()).map { a.getJSONObject(it) }.map {
-            RewriteRule(it.getLong("id"), it.getString("pkg"), it.getString("host"), it.getBoolean("subdomains"), it.getString("method"), it.getString("match"),
-                it.getString("pattern"), it.getString("action"), it.getString("arg"), it.getBoolean("enabled"), it.getLong("createdAt"))
-        }.filter { it.valid() }
-    }.getOrDefault(emptyList())
-
-    private fun write(list: List<RewriteRule>) {
-        val a = JSONArray()
-        list.forEach {
-            a.put(JSONObject().put("id", it.id).put("pkg", it.pkg).put("host", it.host).put("subdomains", it.subdomains).put("method", it.method).put("match", it.match)
-                .put("pattern", it.pattern).put("action", it.action).put("arg", it.arg).put("enabled", it.enabled).put("createdAt", it.createdAt))
-        }
-        file.writeText(a.toString())
-        _rules.value = list
+    private fun load(): List<RewriteSet> {
+        if (!file.isFile && legacy.isFile) migrate()?.let { return it }
+        return runCatching { parseSets(JSONArray(file.readText())) }.getOrDefault(emptyList())
     }
 
-    /** Engine text for the enabled rules; the header alone clears them. */
-    fun wire(userId: Int): String = (listOf("WAYDRW1") + _rules.value.filter { it.enabled && it.valid() }.map { it.line(userId) }).joinToString("\n")
+    /** D-066 to D-070 stored one app per rule. Each app becomes its own set, so every rule keeps its app, id and switch. */
+    private fun migrate(): List<RewriteSet>? = runCatching {
+        val a = JSONArray(legacy.readText())
+        val old = (0 until a.length()).map { a.getJSONObject(it) }.map { o -> o.getString("pkg") to ruleFrom(o) }.filter { BlockTargets.packageName(it.first) && it.second.valid() }
+        val sets = old.groupBy({ it.first }, { it.second }).entries.mapIndexed { i, (pkg, rules) ->
+            RewriteSet(i + 1L, pkg, true, rules, listOf(RewriteApp(pkg, true)), createdAt = rules.minOf { it.createdAt })
+        }
+        file.writeText(toJson(sets).toString())
+        legacy.renameTo(File(dir, "rules.v1.json"))
+        sets
+    }.getOrNull()
 
-    /** Adds a rule and records the per-app consent for rewriting that app's decrypted requests. Null when invalid or full. */
-    suspend fun add(pkg: String, host: String, subdomains: Boolean, method: String, match: String, pattern: String, action: String, arg: String): RewriteRule? =
-        withContext(Dispatchers.IO) { mutex.withLock {
-            val now = System.currentTimeMillis()
-            val rule = RewriteRule((_rules.value.maxOfOrNull { it.id } ?: 0L) + 1, pkg.trim(), BlockTargets.host(host.trim()).orEmpty(), subdomains, method.trim().uppercase(),
-                match, pattern.trim(), action, arg.trim(), true, now)
-            if (!rule.valid() || _rules.value.size >= MAX_RULES) return@withLock null
-            db.consentDao().upsert(ConsentRecord(feature(rule.pkg), STATEMENT, now, null))
-            write(_rules.value + rule)
-            rule
-        } }
+    private fun ruleFrom(o: JSONObject) = RewriteRule(o.getLong("id"), o.getString("host"), o.getBoolean("subdomains"), o.getString("method"), o.getString("match"),
+        o.getString("pattern"), o.getString("action"), o.getString("arg"), o.getBoolean("enabled"), o.getLong("createdAt"))
 
-    /** Adds rules read from a rule plugin for one app, skipping exact duplicates. Returns how many were added. */
-    suspend fun addAll(pkg: String, drafts: List<RewriteDraft>): Int = withContext(Dispatchers.IO) { mutex.withLock {
+    private fun ruleJson(r: RewriteRule) = JSONObject().put("id", r.id).put("host", r.host).put("subdomains", r.subdomains).put("method", r.method).put("match", r.match)
+        .put("pattern", r.pattern).put("action", r.action).put("arg", r.arg).put("enabled", r.enabled).put("createdAt", r.createdAt)
+
+    private fun strings(a: JSONArray?) = if (a == null) emptyList() else (0 until a.length()).map { a.getString(it) }
+
+    private fun parseSets(a: JSONArray): List<RewriteSet> = (0 until a.length()).map { a.getJSONObject(it) }.map { o ->
+        val r = o.getJSONArray("rules")
+        val p = o.getJSONArray("apps")
+        RewriteSet(
+            o.getLong("id"), o.getString("name"), o.getBoolean("enabled"),
+            (0 until r.length()).map { ruleFrom(r.getJSONObject(it)) }.filter { it.valid() },
+            (0 until p.length()).map { p.getJSONObject(it) }.map { RewriteApp(it.getString("pkg"), it.getBoolean("enabled")) }.filter { BlockTargets.packageName(it.pkg) },
+            strings(o.optJSONArray("mitmHosts")), strings(o.optJSONArray("suggested")).filter(BlockTargets::packageName), o.optLong("createdAt"),
+        )
+    }
+
+    private fun toJson(sets: List<RewriteSet>) = JSONArray().apply {
+        sets.forEach { s ->
+            put(JSONObject().put("id", s.id).put("name", s.name).put("enabled", s.enabled).put("createdAt", s.createdAt)
+                .put("rules", JSONArray().apply { s.rules.forEach { put(ruleJson(it)) } })
+                .put("apps", JSONArray().apply { s.apps.forEach { put(JSONObject().put("pkg", it.pkg).put("enabled", it.enabled)) } })
+                .put("mitmHosts", JSONArray(s.mitmHosts)).put("suggested", JSONArray(s.suggested)))
+        }
+    }
+
+    /** Engine text for every enabled rule of every enabled set, once per enabled app; the header alone clears them. */
+    fun wire(userId: Int): String = (listOf("WAYDRW1") + _sets.value.filter { it.enabled }.flatMap { s ->
+        val apps = s.apps.filter { it.enabled }
+        s.rules.filter { it.enabled && it.valid() }.flatMap { r -> apps.map { r.line(userId, it.pkg) } }
+    }).joinToString("\n")
+
+    /** Apps whose decrypted requests a set may rewrite right now; each holds a `rewrite-v1:<pkg>` consent. */
+    private fun activeApps(sets: List<RewriteSet>) = sets.filter { it.enabled }.flatMap { s -> s.apps.filter { it.enabled }.map { it.pkg } }.toSet()
+
+    /**
+     * Saves [next] unless it would exceed the engine's line limit (the engine rejects the whole set above it). Consent follows
+     * the change: recorded for apps that became active, revoked for apps no set targets any more. False when refused.
+     */
+    private suspend fun commit(next: List<RewriteSet>): Boolean {
+        if (next.sumOf { it.lineCount } > MAX_ENGINE_LINES || next.sumOf { it.rules.size } > MAX_RULES) return false
+        val before = activeApps(_sets.value)
+        val after = activeApps(next)
         val now = System.currentTimeMillis()
-        var next = (_rules.value.maxOfOrNull { it.id } ?: 0L) + 1
-        val existing = _rules.value.map { it.copy(id = 0, enabled = true, createdAt = 0) }.toSet()
-        val added = drafts.asSequence()
-            .map { RewriteRule(0, pkg.trim(), it.host, it.subdomains, it.method, it.match, it.pattern, it.action, it.arg, true, 0) }
-            .filter { it.valid() && it !in existing }.distinct().take((MAX_RULES - _rules.value.size).coerceAtLeast(0))
-            .map { it.copy(id = next++, createdAt = now) }.toList()
-        if (added.isEmpty()) return@withLock 0
-        db.consentDao().upsert(ConsentRecord(feature(pkg.trim()), STATEMENT, now, null))
-        write(_rules.value + added)
-        added.size
+        (after - before).forEach { db.consentDao().upsert(ConsentRecord(feature(it), STATEMENT, now, null)) }
+        (before - after).forEach { pkg -> db.blockRuleDao().consent(feature(pkg))?.takeIf { it.revokedAt == null }?.let { db.consentDao().upsert(it.copy(revokedAt = now)) } }
+        file.writeText(toJson(next).toString())
+        _sets.value = next
+        return true
+    }
+
+    private fun nextRuleId() = (_sets.value.flatMap { it.rules }.maxOfOrNull { it.id } ?: 0L) + 1
+
+    private suspend fun update(setId: Long, change: (RewriteSet) -> RewriteSet?): Boolean = withContext(Dispatchers.IO) { mutex.withLock {
+        val current = _sets.value.firstOrNull { it.id == setId } ?: return@withLock false
+        val changed = change(current) ?: return@withLock false
+        commit(_sets.value.map { if (it.id == setId) changed else it })
     } }
 
-    suspend fun setEnabled(id: Long, on: Boolean) = withContext(Dispatchers.IO) { mutex.withLock { write(_rules.value.map { if (it.id == id) it.copy(enabled = on) else it }) } }
-
-    /** Removing an app's last rule revokes its rewrite consent. */
-    suspend fun delete(id: Long) = withContext(Dispatchers.IO) { mutex.withLock {
-        val rule = _rules.value.firstOrNull { it.id == id } ?: return@withLock
-        val rest = _rules.value - rule
-        if (rest.none { it.pkg == rule.pkg }) db.blockRuleDao().consent(feature(rule.pkg))?.let { db.consentDao().upsert(it.copy(revokedAt = System.currentTimeMillis())) }
-        write(rest)
+    /** A new, empty set. Null when full. */
+    suspend fun createSet(name: String): RewriteSet? = withContext(Dispatchers.IO) { mutex.withLock {
+        if (_sets.value.size >= MAX_SETS) return@withLock null
+        val set = RewriteSet((_sets.value.maxOfOrNull { it.id } ?: 0L) + 1, name.trim().take(60).ifBlank { "Rules" }, true, emptyList(), emptyList(), createdAt = System.currentTimeMillis())
+        set.takeIf { commit(_sets.value + it) }
     } }
+
+    /** A set made from a rule plugin, without apps yet: the user picks them on the set's page. Duplicate rules are dropped. */
+    suspend fun importPlugin(plugin: RewritePluginParser.Result, fallbackName: String): RewriteSet? = withContext(Dispatchers.IO) { mutex.withLock {
+        if (_sets.value.size >= MAX_SETS) return@withLock null
+        val now = System.currentTimeMillis()
+        var next = nextRuleId()
+        val rules = plugin.rules.distinct().map { RewriteRule(next++, it.host, it.subdomains, it.method, it.match, it.pattern, it.action, it.arg, true, now) }
+            .filter { it.valid() }.take(MAX_RULES_PER_SET)
+        if (rules.isEmpty()) return@withLock null
+        val set = RewriteSet((_sets.value.maxOfOrNull { it.id } ?: 0L) + 1, (plugin.name ?: fallbackName).trim().take(60).ifBlank { "Plugin" }, true, rules, emptyList(),
+            plugin.mitmHosts, plugin.packages, now)
+        set.takeIf { commit(_sets.value + it) }
+    } }
+
+    suspend fun rename(setId: Long, name: String) = update(setId) { s -> name.trim().take(60).takeIf { it.isNotEmpty() }?.let { s.copy(name = it) } }
+    suspend fun setEnabled(setId: Long, on: Boolean) = update(setId) { it.copy(enabled = on) }
+
+    suspend fun deleteSet(setId: Long) = withContext(Dispatchers.IO) { mutex.withLock { commit(_sets.value.filterNot { it.id == setId }) } }
+
+    /** Adds a hand-made rule to a set. False when invalid or over a limit. */
+    suspend fun addRule(setId: Long, host: String, subdomains: Boolean, method: String, match: String, pattern: String, action: String, arg: String): Boolean {
+        val draft = RewriteRule(0, BlockTargets.host(host.trim()).orEmpty(), subdomains, method.trim().uppercase(), match, pattern.trim(), action, arg.trim(), true, System.currentTimeMillis())
+        if (!draft.valid()) return false
+        // The id is taken inside the store lock, so two quick adds never share one.
+        return update(setId) { s -> s.takeIf { it.rules.size < MAX_RULES_PER_SET }?.copy(rules = s.rules + draft.copy(id = nextRuleId())) }
+    }
+
+    /** Replaces a rule's fields from the editor, keeping its id (and so its hit count) and its switch. False when invalid. */
+    suspend fun updateRule(setId: Long, ruleId: Long, edited: RewriteRule): Boolean = update(setId) { s ->
+        val old = s.rules.firstOrNull { it.id == ruleId } ?: return@update null
+        val next = edited.copy(id = old.id, enabled = old.enabled, createdAt = old.createdAt)
+        next.takeIf { it.valid() }?.let { n -> s.copy(rules = s.rules.map { if (it.id == ruleId) n else it }) }
+    }
+
+    suspend fun setRuleEnabled(setId: Long, ruleId: Long, on: Boolean) = update(setId) { s -> s.copy(rules = s.rules.map { if (it.id == ruleId) it.copy(enabled = on) else it }) }
+    suspend fun deleteRule(setId: Long, ruleId: Long) = update(setId) { s -> s.copy(rules = s.rules.filterNot { it.id == ruleId }) }
+
+    /** Adds a target app (enabled), which records its rewrite consent. False when the name is invalid, already there, or over a limit. */
+    suspend fun addApp(setId: Long, pkg: String) = update(setId) { s ->
+        val p = pkg.trim()
+        if (!BlockTargets.packageName(p) || s.apps.any { it.pkg == p } || s.apps.size >= MAX_APPS_PER_SET) null else s.copy(apps = s.apps + RewriteApp(p, true))
+    }
+
+    suspend fun setAppEnabled(setId: Long, pkg: String, on: Boolean) = update(setId) { s -> s.copy(apps = s.apps.map { if (it.pkg == pkg) it.copy(enabled = on) else it }) }
+    suspend fun removeApp(setId: Long, pkg: String) = update(setId) { s -> s.copy(apps = s.apps.filterNot { it.pkg == pkg }) }
 
     private fun feature(pkg: String) = "rewrite-v1:$pkg"
 
     companion object {
-        const val MAX_RULES = 500
+        const val MAX_SETS = 50
+        const val MAX_RULES_PER_SET = 500
+        const val MAX_RULES = 2_000
+        const val MAX_APPS_PER_SET = 100
+        /** The engine's limit (`mitm/rewrite.rs` MAX_RULES): rules × apps over all sets. */
+        const val MAX_ENGINE_LINES = 2_000
         const val STATEMENT = 1
     }
 }

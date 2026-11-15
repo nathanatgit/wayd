@@ -1,6 +1,6 @@
 # Handoff
 
-_Last updated: 2026-11-15 · **v0.5.0** released; `main` carries D-065 to D-070 + UI revision, untagged · decisions through D-070._
+_Last updated: 2026-11-16 · **v0.6.0** released (versionCode 9): D-065 to D-077 · decisions through D-077._
 
 WAYD (在干嘛, `com.nathanhanapps.wayd`) is a local-only Android privacy monitor. A `VpnService` forwards traffic and applies local blocks; optional recording keeps evidence on the phone; consent-gated decryption reads supported HTTPS; rules produce findings; on-device Gemma (or an approved external OpenAI-compatible server) explains them.
 
@@ -8,15 +8,14 @@ Read [AGENTS.md](../AGENTS.md) first, then this file, then the doc for the modul
 
 ## Now
 
-_Handed off 2026-11-15, evening._
+_Handed off 2026-11-16, night._
 
 | | State |
 |---|---|
-| Released | **v0.5.0** (2026-11-14): D-060 to D-064. Release workflow and CI pass. |
-| Unreleased, merged to `main` | Everything from branch `feat/dns-list-blocking` (pushed and merged `--no-ff` on 2026-11-15, **not tagged**; versionCode still 8): D-065 DNS-stage block lists, app chat, eval test · D-066 rewrite rules (request side) · D-067 inferred hostnames, rule-plugin list import · D-068 redirect, list counters, `.gitattributes` · D-069 regex matching (Rust `regex`) · D-070 rewrite import from rule plugins · `tools/rwprobe` · **Quick Settings tile** · **UI revision** (below). |
-| On the phone | NX733J `320146880841`: clash debug through D-070 over `com.nathanhanapps.wayd.d049` (12:14). **The tile and the UI revision are not installed yet.** Probe installed. `Download/WAYD/wayd-probe-rules.plugin` and `Download/WAYD/wayd-probe-blocklist.txt` (`||example.org^`) pushed for import. |
-| Last validation | `./gradlew test :app:assembleCoreDebug :app:assembleClashDebug :app:lintCoreDebug -PskipNative` passes (`build/ui-revise.log`); `RewritePluginParserTest.probePluginFileImportsAllSixRules` proves the probe plugin parses to 6 rules. |
-| Device evidence so far | One probe **baseline** run (FlClash owned the VPN, no WAYD rules): all 200, no FAIL. Nat's first import attempt said 该文件中没有可导入的改写规则; the file parses fine, so the wrong file was likely picked (the import now tells "unreadable" apart from "no rewrite rules"). **No WAYD feature since v0.4.0 has been exercised on the phone.** |
+| Released | **v0.6.0** (2026-11-16): D-065 to D-077 (DNS-stage lists, rewrite rule sets, Clash rule compatibility, import, prompt tuning, AI evidence with decrypted content and APK facts, Settings tab). Tag pushed; check the release workflow result. |
+| On the phone | NX733J `320146880841`: clash debug of the release tree over `com.nathanhanapps.wayd.d049` (data kept). History there is a partial re-import (D-077). |
+| Last validation | `./gradlew test :app:assembleCoreDebug :app:assembleClashDebug :app:lintCoreDebug :app:lintClashDebug` with native builds, and `go test ./...` in `routing/` (`build/release-validation.log`). |
+| Device evidence | Exports A/B complete and valid; external AI (Gemini, OpenAI-compatible) works over Clash in blacklist mode; prompts run on E2B without errors. Not yet tapped through: Settings tab, 外部 acknowledgement dialog, re-import of the cut file, AI with decrypted content. |
 
 ### UI revision (2026-11-15, Nat's requests)
 
@@ -30,7 +29,7 @@ _Handed off 2026-11-15, evening._
 
 ### Where the new screens are
 
-Open **工具 → 阻止与改写**: summary → 阻止列表 → 改写规则 → 阻止规则 → 规则备份与恢复.
+Tabs since D-071: 总览 · 流量 · 规则 · 洞察 (设置 behind the gear on 总览, APK scanner behind the search icon on 洞察). **规则 → DNS**: switch, numbers, DNS 规则 (typed rules + imported hosts/dnsmasq files, D-072), 记录类型, 阻止列表. **规则 → 请求**: 改写规则 switch, summary, 改写规则 → 阻止规则 → 规则备份与恢复. Not installed or tapped through on the phone yet.
 
 ### Immediate next step: install, then the probe run with WAYD
 
@@ -38,10 +37,22 @@ Install a core/clash debug over `.d049` (ask Nat first), have him tap through th
 
 1. Switch the VPN from FlClash to WAYD.
 2. Add `com.nathanhanapps.wayd.rwprobe` to the decrypted apps (WAYD user CA installed).
-3. 改写规则 → 导入规则插件 → `Download/WAYD/wayd-probe-rules.plugin` → package `com.nathanhanapps.wayd.rwprobe`.
-4. 阻止列表 → 导入文件 → `Download/WAYD/wayd-probe-blocklist.txt`, enable it.
+3. 规则 → 请求 → 改写规则 → 导入规则插件 → `Download/WAYD/wayd-probe-rules.plugin` → package `com.nathanhanapps.wayd.rwprobe`.
+4. 规则 → DNS → 阻止列表 → 导入文件 → `Download/WAYD/wayd-probe-blocklist.txt`, enable it.
 
 Then run the probe (`adb shell am start -n com.nathanhanapps.wayd.rwprobe/.MainActivity --ez run true`, read `/sdcard/Android/data/com.nathanhanapps.wayd.rwprobe/files/result.txt`; in Git Bash prefix adb with `MSYS_NO_PATHCONV=1`). Expected: steps 2, 3, 5, 6, 7, 8 show `INFO … yes`, no `FAIL`. A Sonnet subagent is enough for the run; it must not start a VPN, tap the UI, use root or touch other packages.
+
+### AI prompt tuning (D-076, 2026-11-16, uncommitted)
+
+- `ai/`: `HistoryContract`, `LabelContract`, `ChatContract` prompts and per-request schemas changed; `:ai:testDebugUnitTest` passes. Measured in `tools/promptlab/` (README there) against Ollama Gemma E2B/E4B with Claude Haiku as the reference.
+- **Unverified on the phone:** that LiteRT-LM honours the enum/minItems schemas and the property order (ask Nat to run "AI check all connections" and one label on E2B; a schema it rejects falls back to unconstrained text, which `parse` still guards).
+- Exports: `wayd-capture-20261115-223327.json` on the phone is cut at 11,796,480 bytes (45 × the 256 KiB writer buffer). Likely cause, not confirmed by a log: the export coroutine lives in `ExportButton`'s `rememberCoroutineScope`, and `runCatching` in `ExportService.export` swallows cancellation; the partial file was not deleted. Capture exports also keep only 400 APK facts per app, almost all endpoints for large apps, so permissions/components are missing there. Not fixed.
+
+### AI evidence, export/import, Settings tab (D-077, 2026-11-16, uncommitted)
+
+- Built, linted (both variants) and `:ai:testDebugUnitTest` green; **not installed on the phone**.
+- Phone history is a partial re-import (see D-077): flows from 11-12 19:04 to 11-15 21:25 and all permission events are gone from `.d049`; the cut file `Download/WAYD/wayd-capture-20261115-223327.json` can be re-imported with the new importer to recover flows up to its cut (dedupe skips what is already stored).
+- External AI over Clash: under test with Nat (blacklist mode, WAYD VPN on).
 
 ### Not checked on a device (everything since D-061)
 

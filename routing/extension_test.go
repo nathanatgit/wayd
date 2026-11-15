@@ -98,6 +98,7 @@ rules: ['DOMAIN-SUFFIX,example.net,selected','MATCH,REJECT']
 	}
 }
 func TestExtensionResourcesRequiredAndInlineRules(t *testing.T) {
+	useGeoHome(t)
 	source := []byte("rule-providers:\n  test: {type: http, behavior: domain, url: 'https://example.net/rules.yaml'}\nrules: ['RULE-SET,test,REJECT','MATCH,DIRECT']")
 	b, _ := encodeBundle(ExtensionBundle{Source: source})
 	if _, e := New(b); e == nil {
@@ -108,7 +109,7 @@ func TestExtensionResourcesRequiredAndInlineRules(t *testing.T) {
 	if len(q["resources"].([]any)) != 1 {
 		t.Fatal("resource preview")
 	}
-	b, _ = encodeBundle(ExtensionBundle{Source: source, Resources: map[string][]byte{"rule-providers:test": []byte("payload: ['+.example.net']")}, Mode: "rule"})
+	b, _ = encodeBundle(ExtensionBundle{Source: source, Resources: map[string][]byte{"rule-providers:test": []byte("payload:\n  - '+.example.net'\n")}, Mode: "rule"})
 	engine, e := New(b)
 	if e != nil {
 		t.Fatal(e)

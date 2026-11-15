@@ -4,6 +4,7 @@
 |---|---|
 | Block lists (Adblock / hosts), TCP hostname stage | **implemented** 2026-11-14 (D-064), not device-checked |
 | Block lists, DNS stage | **implemented** 2026-11-14 (D-065), not pushed, not device-checked |
+| DNS rules: local answers, hosts/dnsmasq (Daedalus) import, record-type blocks | **implemented** 2026-11-15 (D-072), not device-checked |
 | Rewrite rules, phase 1 (request side: local answer, header and query edits) | **implemented** 2026-11-15 (D-066), not pushed, not device-checked |
 | Rewrite rules, phases 2–3 (redirect, response headers, body edits) | design only |
 | Plugin-format import: block-list lines (D-067) and rewrite lines (D-070) | **implemented**, not device-checked |

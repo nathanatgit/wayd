@@ -386,8 +386,10 @@ async fn udp_inner<S: AsyncRead + AsyncWrite + Unpin>(id: u64, client: S, src: S
                         // covers QUIC and any other protocol that would connect to the resolved address.
                         if is_dns {
                             if let Some((name, end)) = crate::hostlist::dns_question(&buf[..n]) {
-                                if shared.blocking.dns_blocked(id, &name) {
-                                    let reply = crate::hostlist::dns_blocked_reply(&buf[..n], end);
+                                // A listed name is blocked first; DNS rules (D-072) answer only what the lists let through.
+                                let reply = if shared.blocking.dns_blocked(id, &name) { Some(crate::hostlist::dns_blocked_reply(&buf[..n], end)) }
+                                    else { shared.blocking.dns_rule_reply(&buf[..n], end, &name) };
+                                if let Some(reply) = reply {
                                     sink.data(id, true, &reply);
                                     if cw.lock().await.write_all(&reply).await.is_err() { break; }
                                     continue;

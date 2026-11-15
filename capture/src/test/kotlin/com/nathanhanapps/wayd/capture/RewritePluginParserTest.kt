@@ -19,6 +19,7 @@ class RewritePluginParserTest {
             """
             #!name=Example plugin
             #!desc=demo
+            #!packages=com.example.app, com.example.lite,not a package
             [Rule]
             DOMAIN,ads.example.com,REJECT
             [Rewrite]
@@ -35,6 +36,7 @@ class RewritePluginParserTest {
             """.trimIndent(),
         )
         assertEquals("Example plugin", r.name)
+        assertEquals(listOf("com.example.app", "com.example.lite"), r.packages)
         assertEquals(0, r.skipped)
         assertEquals(
             listOf(

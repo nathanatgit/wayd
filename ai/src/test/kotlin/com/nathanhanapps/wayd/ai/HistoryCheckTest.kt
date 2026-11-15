@@ -20,6 +20,15 @@ class HistoryCheckTest {
         JSONObject().put("id", "h$it").put("role", "ANALYTICS").put("advice", advice).put("note", "telemetry <x>")
     })).toString()
 
+    @Test fun schemaFixesTheItemCountIdsAndPutsTheNoteFirst() {
+        val items = JSONObject(HistoryContract.schema(3)).getJSONObject("properties").getJSONObject("items")
+        assertEquals(3, items.getInt("minItems"))
+        assertEquals(3, items.getInt("maxItems"))
+        val item = items.getJSONObject("items").getJSONObject("properties")
+        assertEquals("[\"h1\",\"h2\",\"h3\"]", item.getJSONObject("id").getJSONArray("enum").toString())
+        assertFalse(HistoryContract.prompt("com.example.app", "en", hosts(2), compact = true).system.contains("\"note\":\"\""))
+    }
+
     @Test fun parseDropsUnknownIdsAndLowersAdviceOnNonBlockableHosts() {
         val chunk = hosts(3)
         val notes = HistoryContract.parse(reply(5), chunk)!!

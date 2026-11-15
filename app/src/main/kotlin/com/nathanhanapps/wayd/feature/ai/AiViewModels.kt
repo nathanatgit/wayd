@@ -100,6 +100,12 @@ class AiSettingsViewModel @Inject constructor(
 
     fun setProvider(p: AiProvider) = external.setProvider(p)
 
+    /** Switching to the external server is where the user acknowledges that data leaves the phone (recorded per server origin). */
+    fun useExternalAcknowledged() = viewModelScope.launch {
+        external.setAcknowledged(true)
+        external.setProvider(AiProvider.EXTERNAL)
+    }
+
     fun setSource(index: Int) { models.setSourceIndex(index); _source.value = index }
 
     fun customUrl(spec: ModelSpec): String? = models.customUrl(spec)
@@ -226,8 +232,6 @@ class ExternalAiViewModel @Inject constructor(
         _saved.value = ok
         onResult(ok)
     }
-
-    fun acknowledge(on: Boolean) = viewModelScope.launch { settings.setAcknowledged(on) }
 
     val profiles = settings.profiles
 

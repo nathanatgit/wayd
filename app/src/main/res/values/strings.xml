@@ -27,6 +27,7 @@
     <string name="apps_title">Apps</string>
 
     <string name="settings_title">Settings</string>
+    <string name="settings_tools">Tools</string>
     <string name="settings_privilege">Privilege</string>
     <string name="settings_privilege_none">None (no Shizuku or root)</string>
     <string name="settings_database">Database</string>
@@ -135,6 +136,11 @@
 That content can include things other people sent you or that were sent about them: their messages, names, photos, locations and account details. They have not agreed to this. Keep the file private, do not upload or share it, and delete it when you no longer need it.</string>
     <string name="export_confirm">I will keep it private — export</string>
     <string name="export_cancel">Cancel</string>
+    <string name="import_button">Import</string>
+    <string name="import_done">Imported %1$d connections (%2$d already stored, %3$d messages).</string>
+    <string name="import_not_wayd">Not a WAYD detail JSON export (version 2).</string>
+    <string name="import_failed">Import failed. The file could not be read.</string>
+    <string name="import_partial">The file ends early, probably an interrupted export. Imported %1$d connections and %2$d messages; anything after that point is missing.</string>
     <string name="export_saved">Saved %1$s (%2$d connections, %3$d messages). Keep it private.</string>
     <string name="export_empty">Nothing recorded to export yet.</string>
     <string name="export_failed">Export failed.</string>
@@ -302,8 +308,6 @@ That content can include things other people sent you or that were sent about th
 <string name="block_rules_title">Blocking rules</string>
 <string name="block_rules_empty">No saved or temporary rules.</string>
     <string name="tab_controls">Controls</string>
-    <string name="control_title">Blocking &amp; alterations</string>
-    <string name="control_intro">Inspect control rules across all apps, independent of the selected history period.</string>
     <string name="control_vpn_on">VPN is running</string>
     <string name="control_refresh">Refresh status</string>
     <string name="control_refresh_error">Could not refresh rules. Showing the last confirmed state.</string>
@@ -412,7 +416,6 @@ That content can include things other people sent you or that were sent about th
     <string name="clash_download_mirror">Use jsDelivr for public GitHub resources (cdn.jsdelivr.net)</string>
     <string name="tab_traffic">Traffic</string>
     <string name="tab_insights">Insights</string>
-    <string name="tab_tools">Tools</string>
     <string name="tools_title">Tools</string>
     <string name="tools_rules_desc">Block apps, hosts and IPs; back up and restore rules.</string>
     <string name="tools_scanner_desc">Static scan of installed APKs: what each app declares, uses and sends.</string>
@@ -446,6 +449,8 @@ That content can include things other people sent you or that were sent about th
     <!-- Home / Traffic / Insights (2026-11-10 UI pass) -->
     <string name="home_on">Running</string>
     <string name="home_off">Stopped</string>
+    <string name="home_traffic_value">%1$d connections · %2$d apps</string>
+    <string name="home_attention_value">%1$d need attention</string>
     <string name="home_rules_value">%1$d / %2$d active</string>
     <string name="home_routes">Proxied %1$d · Direct %2$d · Errors %3$d</string>
     <string name="connections_title">Connections</string>
@@ -841,7 +846,7 @@ That content can include things other people sent you or that were sent about th
     <string name="blist_imported">Imported. Review the counts, then enable it.</string>
     <string name="block_outcome_list">Blocked by a block list</string>
     <string name="rw_title">Rewrite rules</string>
-    <string name="rw_intro">Change requests of one app before they leave: answer a request locally, remove or set a request header, or remove a query parameter. Rules apply only to connections WAYD already decrypts for that app (Settings → HTTPS decryption) and only to HTTP/1.1 requests; they never switch decryption on. A blocked connection is never rewritten.</string>
+    <string name="rw_intro">Rule sets change requests before they leave: answer a request locally, remove or set a request header, remove a query parameter, or redirect. One set (for example an imported rule plugin) can serve many apps. Rules apply only to connections WAYD already decrypts for a target app (Settings → HTTPS decryption) and only to HTTP/1.1 requests; they never switch decryption on. A blocked connection is never rewritten.</string>
     <string name="rw_old_engine">This build\'s network engine does not support rewrite rules yet.</string>
     <string name="rw_rejected">The engine rejected the rewrite rules; none is active.</string>
     <string name="rw_add">Add rewrite rule</string>
@@ -852,8 +857,7 @@ That content can include things other people sent you or that were sent about th
     <string name="rw_imported">Imported %1$d rules.</string>
     <string name="rw_invalid">That rule is not valid or the limit is reached; nothing changed.</string>
     <string name="rw_hits">applied %1$d times this run</string>
-    <string name="rw_consent">Saving records that you allow WAYD to change this app\'s decrypted requests. The app may misbehave; switch the rule off to undo.</string>
-    <string name="rw_pkg">App package name</string>
+    <string name="rw_consent">Adding an app records that you allow WAYD to change its decrypted requests with this set. The app may misbehave; switch the app or the set off to undo.</string>
     <string name="rw_host">Hostname</string>
     <string name="rw_subdomains">Include subdomains</string>
     <string name="rw_method">Method (empty = any)</string>
@@ -875,7 +879,6 @@ That content can include things other people sent you or that were sent about th
     <string name="history_ai_short">AI check</string>
     <string name="control_tile_rules">App rules</string>
     <string name="control_tile_lists">Block lists</string>
-    <string name="control_tile_rewrite">Rewrite rules</string>
     <string name="control_tile_list_hits">List blocks</string>
     <string name="control_tile_dns">DNS answered</string>
     <string name="control_state_review">Needs review</string>
@@ -887,5 +890,75 @@ That content can include things other people sent you or that were sent about th
     <string name="xai_profile_delete_body">Delete this profile and its saved key?</string>
     <string name="xai_save_failed">Not saved: check the address, or delete a profile (12 at most).</string>
     <string name="dz_apps">Apps to decrypt</string>
+    <string name="dz_apps_except">Apps NOT to decrypt</string>
+    <string name="dz_blacklist">Decrypt all apps except the list</string>
+    <string name="dz_blacklist_help">Off: only the listed apps are decrypted (whitelist). On: every user app is decrypted except the listed ones (blacklist). Banking, payment and system apps are never decrypted. Pinned apps will fail to connect, and storage use grows quickly.</string>
+    <string name="dz_idle_hint">Decrypting costs battery, data and storage. Best used while the phone is idle and charging, for example overnight.</string>
     <string name="dz_apps_count">%1$d</string>
+    <string name="tab_rules">Rules</string>
+    <string name="rules_intro">Each module can be switched off on its own. Order: routing, DNS, requests. A block always wins over a rewrite.</string>
+    <string name="rules_dns">DNS</string>
+    <string name="rules_request">Requests</string>
+    <string name="rules_on">On</string>
+    <string name="rules_route_fail">Cannot switch routing (%1$s). Open Clash to fix it.</string>
+    <string name="rules_off">Off</string>
+    <string name="rules_dns_value">%1$d / %2$d lists · %3$d rules</string>
+    <string name="rules_request_value">%1$d blocks · %2$d rewrites</string>
+    <string name="rules_dns_switch">Use block lists</string>
+    <string name="rules_dns_help">Names on an enabled list are answered on the phone, and connections to them are blocked. Off: no list or DNS rule applies.</string>
+    <string name="rules_request_help">Rewrite rules change decrypted requests. Per-app connection blocks always apply, even with rewrites off.</string>
+    <string name="dnsr_title">DNS rules</string>
+    <string name="dnsr_intro">Answer chosen names on the phone: with an address you set, or blocked. Reads hosts files and dnsmasq address= lines (the Daedalus formats). Block lists are checked first. Apps with their own encrypted DNS, and Private DNS in strict mode, bypass these rules.</string>
+    <string name="dnsr_import">Import hosts / dnsmasq file</string>
+    <string name="dnsr_add">Add rule</string>
+    <string name="dnsr_row">%1$d rules · %2$d skipped</string>
+    <string name="dnsr_block">Blocked</string>
+    <string name="dnsr_host">Domain</string>
+    <string name="dnsr_value">Address (empty to block)</string>
+    <string name="dnsr_subdomains">Include subdomains</string>
+    <string name="dnsr_invalid">Enter a domain with a dot and an IPv4 or IPv6 address, or leave the address empty.</string>
+    <string name="dnsr_failed">No usable rules: the file had no hosts or address= lines WAYD can apply, could not be read, or was too large.</string>
+    <string name="dnsr_imported">Imported. Review the counts, then enable it.</string>
+    <string name="dnsr_consent_title">Change DNS for all apps?</string>
+    <string name="dnsr_consent_body">“%1$s” will answer %2$d names on the phone for every app WAYD covers, including apps installed later. A wrong address can send an app to another server; switch the file off to undo.</string>
+    <string name="dnsr_delete_body">Remove this file and its consent? Its answers stop.</string>
+    <string name="dnsr_loaded">%1$d DNS rules active</string>
+    <string name="dnsr_old_engine">This build\'s network engine does not support DNS rules yet.</string>
+    <string name="dnsr_rejected">The engine rejected the DNS rules; none are active.</string>
+    <string name="dnsr_types">Record types</string>
+    <string name="dnsr_type_https">Block HTTPS / SVCB records</string>
+    <string name="dnsr_type_https_help">Apps then use plain A/AAAA answers. This also keeps encrypted ClientHello (ECH) keys from apps, so WAYD can still read hostnames. Some sites lose HTTP/3 until switched back.</string>
+    <string name="dnsr_type_aaaa">Block IPv6 addresses (AAAA)</string>
+    <string name="dnsr_type_aaaa_help">Apps connect over IPv4 only. Useful when IPv6 bypasses a rule or breaks on this network.</string>
+    <string name="dnsr_tile">Rule answers</string>
+    <string name="rw_sets">Rule sets</string>
+    <string name="rw_set_row">%1$d rules · %2$d apps</string>
+    <string name="rw_set_no_apps">%1$d rules · no app yet</string>
+    <string name="rw_new_set">New rule set</string>
+    <string name="rw_set_enabled">Use this rule set</string>
+    <string name="rw_apps">Target apps</string>
+    <string name="rw_apps_empty">No app yet: the rules do nothing until you add one.</string>
+    <string name="rw_add_app">Add app</string>
+    <string name="rw_not_decrypted">Not decrypted, so rules cannot apply</string>
+    <string name="rw_suggested">Suggested apps</string>
+    <string name="rw_suggest_plugin">Named by the plugin</string>
+    <string name="rw_suggest_traffic">Contacted %1$s · %2$d connections</string>
+    <string name="rw_rules">Rules</string>
+    <string name="rw_mitm_hosts">Hosts to decrypt</string>
+    <string name="rw_mitm_hosts_help">The plugin expects these hosts to be decrypted. WAYD never switches decryption on by itself: add the target apps under Settings → HTTPS decryption.</string>
+    <string name="rw_rename">Rename</string>
+    <string name="rw_delete_set">Delete rule set</string>
+    <string name="rw_delete_set_body">Delete “%1$s” and its %2$d rules? Rewrite consent is revoked for apps no other set uses.</string>
+    <string name="rw_limit">Not saved: each rule counts once per app, and the engine takes at most %1$d in total.</string>
+    <string name="rw_tile_sets">Rule sets</string>
+    <string name="rw_search_apps">Search, or type a package name</string>
+    <string name="rw_add_pkg">Add %1$s</string>
+    <string name="rw_import_review">Import</string>
+    <string name="rw_edit">Edit rewrite rule</string>
+    <string name="rw_editor_text">WAYD text</string>
+    <string name="rw_editor_plugin">Plugin line</string>
+    <string name="rw_editor_ok">Valid rule</string>
+    <string name="rw_editor_bad_line">Line %1$d cannot be read</string>
+    <string name="rw_editor_invalid">Not a valid rule yet: check host, pattern and value</string>
+    <string name="rw_editor_plugin_method">Valid. The plugin format has no method: imported from this line, the rule matches any method</string>
 </resources>

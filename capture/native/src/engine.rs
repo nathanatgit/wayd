@@ -226,8 +226,9 @@ pub fn native_poll<'l>(
 // ---- MITM controls (research flavor; stubs in the standard build) ----
 
 #[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
-/// 3 adds global block lists (`native_set_block_list`), 4 adds rewrite rules (`native_set_rewrite`); Kotlin accepts 2 to 4.
-pub fn native_policy_version<'l>(_env: EnvUnowned<'l>, _this: JObject<'l>) -> jint { 4 }
+/// 3 adds global block lists (`native_set_block_list`), 4 adds rewrite rules (`native_set_rewrite`), 5 adds DNS rules
+/// (`native_set_dns_rules`) and a third `native_list_stats` field; Kotlin accepts 2 to 5.
+pub fn native_policy_version<'l>(_env: EnvUnowned<'l>, _this: JObject<'l>) -> jint { 5 }
 
 #[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
 pub fn native_has_mitm<'l>(_env: EnvUnowned<'l>, _this: JObject<'l>) -> jni::sys::jboolean {
@@ -422,6 +423,17 @@ pub fn native_set_block_list<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, ha
     }).resolve::<jni::errors::LogErrorAndDefault>()
 }
 
+/// Policy version 5: loads the compiled DNS rules from `path` ("" clears). Returns the entry count, or -1 if rejected.
+#[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
+pub fn native_set_dns_rules<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, handle: jlong, path: jni::objects::JString<'l>) -> jlong {
+    if handle == 0 { return -1; }
+    // SAFETY: BlockingRules serializes all bridge calls with engine destruction.
+    let engine = unsafe { &*(handle as *const Engine) };
+    env.with_env(|env| -> jni::errors::Result<jlong> {
+        Ok(engine.shared.blocking.install_dns(&path.try_to_string(env)?))
+    }).resolve::<jni::errors::LogErrorAndDefault>()
+}
+
 /// Policy version 4: replaces the rewrite rules for decrypted HTTP/1.1 requests. False when malformed or unsupported.
 #[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
 pub fn native_set_rewrite<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, handle: jlong, rules: jni::objects::JString<'l>) -> jni::sys::jboolean {
@@ -453,14 +465,15 @@ pub fn native_rewrite_hits<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, hand
     }).resolve::<jni::errors::LogErrorAndDefault>()
 }
 
-/// `blocked\tdnsAnswered`: connections blocked by a block list and DNS names answered locally since the engine started.
+/// `blocked\tdnsAnswered\tdnsRuleAnswered`: connections blocked by a block list, DNS names answered locally by a list, and
+/// queries answered by a DNS rule since the engine started.
 #[jni::jni_mangle("com.nathanhanapps.wayd.capture.NativeNet")]
 pub fn native_list_stats<'l>(mut env: EnvUnowned<'l>, _this: JObject<'l>, handle: jlong) -> jni::objects::JString<'l> {
     env.with_env(|env| -> jni::errors::Result<jni::objects::JString<'l>> {
         let text = if handle == 0 { String::new() } else {
             // SAFETY: BlockingRules serializes all bridge calls with engine destruction.
-            let (blocked, dns) = unsafe { &*(handle as *const Engine) }.shared.blocking.list_stats();
-            format!("{blocked}\t{dns}")
+            let (blocked, dns, rules) = unsafe { &*(handle as *const Engine) }.shared.blocking.list_stats();
+            format!("{blocked}\t{dns}\t{rules}")
         };
         jni::objects::JString::from_str(env, &text)
     }).resolve::<jni::errors::LogErrorAndDefault>()
