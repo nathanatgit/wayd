@@ -29,6 +29,9 @@ import com.nathanhanapps.wayd.core.db.Finding
 import com.nathanhanapps.wayd.core.db.FindingDao
 import com.nathanhanapps.wayd.core.db.Flow
 import com.nathanhanapps.wayd.core.db.FlowDao
+import com.nathanhanapps.wayd.core.db.Message
+import com.nathanhanapps.wayd.core.db.MessageDao
+import com.nathanhanapps.wayd.core.db.MessageLine
 import com.nathanhanapps.wayd.core.db.PermEvent
 import com.nathanhanapps.wayd.core.db.PermEventDao
 import com.nathanhanapps.wayd.core.model.ApkFactKind
@@ -101,14 +104,23 @@ class LabelContext(
     /** Result of the whole-history AI check for this host; advice is lowered when a domain block is not currently possible. */
     fun historyNote(a: HostAssessment): HistoryNote? = a.summary.host?.let(history::get)?.let { if (a.summary.domainBlockAvailable) it else it.copy(advice = com.nathanhanapps.wayd.core.model.BlockAdvice.INSUFFICIENT) }
 
-    /** One compact, token-cheap line per host for the whole-history check: the rules' view, not raw records. */
-    fun historyHosts(): List<HistoryHost> = hosts.filter { it.summary.host != null }.map { a ->
+    /**
+     * One compact, token-cheap line per host for the whole-history check: the rules' view, not raw records. [messages] are the
+     * app's decrypted messages in the window; each host line then names how many there are and the first distinct request paths.
+     */
+    fun historyHosts(requests: List<MessageLine> = emptyList()): List<HistoryHost> {
+        val hostOf = flows.associate { it.id to LabelRules.host(it.host) }
+        return historyLines(requests.groupBy { hostOf[it.flowId] })
+    }
+
+    private fun historyLines(decrypted: Map<String?, List<MessageLine>>): List<HistoryHost> = hosts.filter { it.summary.host != null }.map { a ->
         val s = a.summary
         val total = s.bytesUp + s.bytesDown
         HistoryHost(s.host!!, buildString {
             append(s.host).append(" hint=").append(s.role.role)
             append(" rec=").append(s.flows).append(" up=").append(s.bytesUp).append(" down=").append(s.bytesDown)
             if (total > 0) append(" off=").append(s.screenOffBytes * 100 / total).append('%')
+            decrypted[s.host]?.let { ms -> append(" dec=").append(ms.size).append(' ').append(ms.map(::requestLine).distinct().take(2).joinToString(",")) }
             if (a.inApk) append(" apk")
             if (a.permissions.isNotEmpty()) append(" perm=").append(a.permissions.take(3).joinToString(",") { "${it.meaning}" + if (it.strength <= com.nathanhanapps.wayd.core.model.RelationStrength.SAME_TIME) "*" else "" })
             a.components.firstOrNull()?.fact?.let { append(" comp=").append(it.key.substringAfterLast('.').take(40)) }
@@ -137,7 +149,7 @@ class LabelContext(
      * Evidence in priority order (target, scope, direct co-evidence, ranked APK context, weaker context). The analyzer trims the
      * tail to the selected model's budget, so the most specific items survive on small models.
      */
-    fun request(ref: String): LabelRequest? {
+    fun request(ref: String, messages: List<Message> = emptyList()): LabelRequest? {
         val flow = flowsById[ref]
         val fact = factsById[ref]
         if (flow == null && fact == null) return null
@@ -174,6 +186,8 @@ class LabelContext(
 
         val ordered = buildList {
             add(target); add(scope)
+            // Decrypted content says most about purpose: right after the target, so it survives the smallest budget.
+            addAll(messages.sortedWith(compareByDescending<Message> { it.flowId == flow?.id }.thenByDescending { it.ts }).take(MESSAGES).map(::message))
             addAll(exact.map(::apk))
             // Rule-found relations lead the APK context, so even a trimmed small-model prompt sees them.
             assessment(ref)?.let { a -> addAll((a.permissions + a.components + a.sdks).mapNotNull { it.fact }.map(::apk)) }
@@ -201,9 +215,26 @@ class LabelContext(
         append("; foreground unknown")
     })
 
+    /** "POST /v1/log": the line already names the host (stored urls are host/path), and the query often carries identifiers. */
+    private fun requestLine(m: MessageLine): String = "${m.method ?: "?"} /${m.url.orEmpty().substringBefore('?').substringAfter('/', "").take(40)}"
+
+    /** Decrypted request/response, compact: header names (values are often identifiers) and the start of a text body. */
+    private fun message(m: Message) = LabelEvidence("m:${m.id}", LabelEvidenceKind.MESSAGE, buildString {
+        append("decrypted ").append(m.dir).append(' ').append(m.method.orEmpty()).append(' ').append(m.url.orEmpty().take(160))
+        append(" status=").append(m.status ?: "-").append(" type=").append(m.contentType?.substringBefore(';') ?: "-").append(" size=").append(m.bodySize).append('B')
+        val names = m.headersJson.orEmpty().lineSequence().mapNotNull { l -> l.substringBefore(':', "").trim().takeIf { it.isNotEmpty() } }.take(12).toList()
+        if (names.isNotEmpty()) append(" headers=").append(names.joinToString(","))
+        m.body?.let { b -> runCatching { java.nio.charset.StandardCharsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(b, 0, minOf(b.size, 600))).toString() }.getOrNull() }
+            ?.takeIf { it.isNotBlank() }?.let { append(" body: ").append(it.take(240)) }
+        append(" at ").append(time(m.ts))
+    })
+
     private fun time(ms: Long): String = TIME.format(Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()))
 
-    private companion object { val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm") }
+    private companion object {
+        val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm")
+        const val MESSAGES = 3
+    }
 }
 
 /** Screen-scoped, read-only context plus explicit per-item AI generation. Never requests permissions or changes blocks. */
@@ -213,6 +244,7 @@ class LabelViewModel @Inject constructor(
     private val flows: FlowDao,
     private val permissions: PermEventDao,
     private val findings: FindingDao,
+    private val messages: MessageDao,
     private val analyses: AiAnalysisDao,
     private val analyzer: LabelAnalyzer,
     private val historyAnalyzer: HistoryAnalyzer,
@@ -230,6 +262,7 @@ class LabelViewModel @Inject constructor(
     private var historyJob: Job? = null
     val phase get() = analyzer.phase
     private var selection: String? = null
+    private var range: Pair<Long, Long> = 0L to Long.MAX_VALUE
     private var watcher: Job? = null
     private var generation: Job? = null
 
@@ -246,6 +279,7 @@ class LabelViewModel @Inject constructor(
         watcher = viewModelScope.launch {
             try {
                 val (start, end) = Windows.resolve(window)
+                range = start to end
                 val locale = evidence.uiLocale()
                 // Room re-emits on every write to a table (capture writes often): drop identical lists, then coalesce bursts
                 // before building indexes once on a background dispatcher.
@@ -283,7 +317,11 @@ class LabelViewModel @Inject constructor(
         busyRef.value = ref
         generation = viewModelScope.launch {
             try {
-                val request = kotlinx.coroutines.withContext(Dispatchers.Default) { ctx.request(ref) } ?: return@launch
+                val request = kotlinx.coroutines.withContext(Dispatchers.Default) {
+                    // Decrypted content of the target's host (only stored for apps the user chose to decrypt).
+                    val ids = ctx.records(ref).map { it.id }.take(500)
+                    ctx.request(ref, if (ids.isEmpty()) emptyList() else messages.latestForFlowIds(ids, 12))
+                } ?: return@launch
                 budget.value = runCatching { analyzer.budget() }.getOrNull()
                 val outcome = analyzer.analyse(request, gate::ask)
                 notice.value = when (outcome) {
@@ -309,7 +347,10 @@ class LabelViewModel @Inject constructor(
         historyProgress.value = 0 to 0
         historyJob = viewModelScope.launch {
             try {
-                val hosts = kotlinx.coroutines.withContext(Dispatchers.Default) { ctx.historyHosts() }
+                val hosts = kotlinx.coroutines.withContext(Dispatchers.Default) {
+                    val (start, end) = range
+                    ctx.historyHosts(runCatching { messages.requestLines(ctx.pkg, start, end) }.getOrDefault(emptyList()))
+                }
                 if (hosts.isEmpty()) { historyNotice.value = R.string.history_ai_none; return@launch }
                 val outcome = historyAnalyzer.check(ctx.pkg, ctx.locale, hosts, gate::ask) { done, total -> historyProgress.value = done to total }
                 historyNotice.value = when (outcome) {

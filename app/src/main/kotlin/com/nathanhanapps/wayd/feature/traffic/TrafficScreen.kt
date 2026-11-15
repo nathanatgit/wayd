@@ -231,6 +231,8 @@ private fun ConnectionsList(onOpenConnection: (Long) -> Unit, vm: ConnectionsVie
         item {
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.connections_count, shown.size), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                com.nathanhanapps.wayd.feature.export.ImportButton()
+                androidx.compose.foundation.layout.Spacer(Modifier.padding(horizontal = 4.dp))
                 ExportButton(ExportScope.Capture(ExportRange.SESSION), stringResource(R.string.connections_export))
             }
         }

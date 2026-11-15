@@ -10,7 +10,8 @@ import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
 
-enum class LabelEvidenceKind { CONNECTION, PERMISSION, FEATURE, ENDPOINT, SDK, OPERATION, FINDING, COVERAGE }
+/** MESSAGE: one decrypted request or response of the target host (masked like every other item). */
+enum class LabelEvidenceKind { CONNECTION, PERMISSION, FEATURE, ENDPOINT, SDK, OPERATION, FINDING, COVERAGE, MESSAGE }
 data class LabelEvidence(val id: String, val kind: LabelEvidenceKind, val text: String)
 
 /**
@@ -30,7 +31,7 @@ data class LabelRequest(
         require(evidence.any { it.id == target })
         require(target.matches(TARGET))
         require(subject.matches(TARGET) || subject.matches(HOST_SUBJECT))
-        require(evidence.all { it.id.matches(Regex("[afpcx]:[0-9]+")) })
+        require(evidence.all { it.id.matches(Regex("[afpcxm]:[0-9]+")) })
     }
     val targetPrefix: String get() = prefixFor(pkg, subject, locale)
     val key: String get() = targetPrefix + digest(locale + domainBlockAvailable + evidence.joinToString { "${it.id}:${it.kind}:${it.text}" })
@@ -82,19 +83,69 @@ object LabelContract {
             .put("required", JSONArray(props.keys().asSequence().toList())).toString()
     }
 
-    /** Same rules in fewer tokens for on-device models; constrained decoding enforces the schema, so a one-line template suffices. */
-    private fun compactSystem(req: LabelRequest): String = AiIdentity.compact(req.locale) + "\n" + """
-        Task: explain ONE item (connection, APK endpoint, permission or component). Never invent facts or links. target_id=${req.target}, label_schema=1.
-        role (purpose, not severity): ${ConnectionRole.entries.joinToString(" ")}. Permissions/components: role UNKNOWN, no links.
-        explanation: short marker, max 80 chars. Links (max $MAX_LINKS each, no duplicates) are POSSIBLE associations, not proof:
-        permission_refs only PERMISSION ids; feature_refs only FEATURE ids; feature_labels = one plain feature name per feature_ref.
-        evidence_ids = extra supporting ids only (target and links are cited automatically), max $MAX_EXTRA. Omit uncertain links.
-        APK presence is not execution, grant or transmission. overlapsTarget=true is co-occurrence, not cause. Same company is not SDK proof.
-        advice: TRY_TEMPORARY (reversible trial), MAY_AFFECT_FUNCTION (may break a feature), INSUFFICIENT. Only CONNECTION with domainBlockAvailable=true may be other than INSUFFICIENT.
-        Never choose a block target or severity. reason: evidence and possible impact, max 240 chars.
-        Write explanation, feature_labels, reason in ${if (req.locale.startsWith("zh")) "Simplified Chinese" else "English"}; no AI: prefix.
-        Reply with JSON only: {"label_schema":1,"target_id":"${req.target}","role":"UNKNOWN","explanation":"","permission_refs":[],"feature_refs":[],"feature_labels":[],"evidence_ids":[],"advice":"INSUFFICIENT","reason":""}
-    """.trimIndent()
+    /**
+     * Per-request schema: role and advice are fixed where the target leaves no choice, refs can only name supplied ids of the right
+     * kind, and the free text comes before each decision (the engine writes properties in schema order, so the model reasons before
+     * it commits). This turns the rules [parse] enforces into constraints a small model cannot break: in tools/promptlab Gemma E2B
+     * invented ids (`android.permission.アクセス_`, `a:312`,`a:313`) and gave roles to permissions, failing 23% of labels; 0% with this.
+     */
+    fun schemaFor(req: LabelRequest): String {
+        fun string(max: Int) = JSONObject().put("type", "string").put("maxLength", max)
+        fun ids(values: List<String>, max: Int) = JSONObject().put("type", "array").put("maxItems", if (values.isEmpty()) 0 else max)
+            .put("items", if (values.isEmpty()) string(1) else JSONObject().put("type", "string").put("enum", JSONArray(values)))
+        fun enumOf(values: List<String>) = JSONObject().put("type", "string").put("enum", JSONArray(values))
+        val kind = req.evidence.first { it.id == req.target }.kind
+        val network = kind == LabelEvidenceKind.CONNECTION || kind == LabelEvidenceKind.ENDPOINT
+        fun of(k: LabelEvidenceKind) = if (network) req.evidence.filter { it.kind == k }.map { it.id } else emptyList()
+        val features = of(LabelEvidenceKind.FEATURE)
+        // Insertion order is the generation order (Android's JSONObject keeps it).
+        val props = JSONObject()
+            .put("label_schema", JSONObject().put("type", "integer").put("enum", JSONArray(listOf(1))))
+            .put("target_id", enumOf(listOf(req.target)))
+            .put("explanation", string(80))
+            .put("role", enumOf(if (network) ConnectionRole.entries.map { it.name } else listOf(ConnectionRole.UNKNOWN.name)))
+            .put("permission_refs", ids(of(LabelEvidenceKind.PERMISSION), MAX_LINKS))
+            .put("feature_refs", ids(features, MAX_LINKS))
+            .put("feature_labels", JSONObject().put("type", "array").put("maxItems", if (features.isEmpty()) 0 else MAX_LINKS).put("items", string(60)))
+            .put("evidence_ids", ids(req.evidence.map { it.id }.filter { it != req.target }, MAX_EXTRA))
+            .put("reason", string(240))
+            .put("advice", enumOf(if (adviceAllowed(req, kind)) BlockAdvice.entries.map { it.name } else listOf(BlockAdvice.INSUFFICIENT.name)))
+        return JSONObject().put("type", "object").put("properties", props).put("additionalProperties", false)
+            .put("required", JSONArray(props.keys().asSequence().toList())).toString()
+    }
+
+    private fun adviceAllowed(req: LabelRequest, kind: LabelEvidenceKind) = kind == LabelEvidenceKind.CONNECTION && req.domainBlockAvailable
+
+    /**
+     * Same rules in fewer tokens for on-device models. The constraints that depend on the target (role, links, advice) are decided
+     * here rather than stated as conditionals a 2B model has to apply, and the template uses placeholders, not default values: E2B
+     * copied the old template's "UNKNOWN"/"INSUFFICIENT" into every label, even for hosts it described as a CDN.
+     */
+    private fun compactSystem(req: LabelRequest): String {
+        val kind = req.evidence.first { it.id == req.target }.kind
+        val network = kind == LabelEvidenceKind.CONNECTION || kind == LabelEvidenceKind.ENDPOINT
+        return buildList {
+            add(AiIdentity.compact(req.locale))
+            add("Task: explain the item ${req.target} (kind=$kind) for the user. Never invent facts or links.")
+            add("role = purpose, not severity: FUNCTIONAL app API, LOGIN auth, LOCATION geo, PUSH push, ANALYTICS stats/tracking, DIAGNOSTICS crash/APM, " +
+                "ADS ads, MEDIA streams, CONTENT CDN/static, UPDATE updates, CARRIER, SYSTEM OS/DNS, UNKNOWN.")
+            if (network) {
+                add("Judge role from the hostname and company first.")
+                add("permission_refs: up to $MAX_LINKS PERMISSION ids that plausibly relate; feature_refs: up to $MAX_LINKS FEATURE ids; " +
+                    "feature_labels: one plain feature name per feature_ref (not a class name). Leave them empty when unsure.")
+                add("APK presence is not proof of use. overlapsTarget=true is co-occurrence, not cause. Same company is not SDK proof.")
+                if (req.evidence.any { it.kind == LabelEvidenceKind.MESSAGE }) add("MESSAGE items are decrypted content of this host: the strongest evidence of what it is for and what is sent. [ID]-style values are masked identifiers.")
+            } else {
+                add("This is not a connection: role UNKNOWN, permission_refs/feature_refs/feature_labels empty. Explain the capability or feature in plain words.")
+            }
+            add(if (adviceAllowed(req, kind)) "advice: TRY_TEMPORARY for ADS/ANALYTICS/DIAGNOSTICS (reversible trial); MAY_AFFECT_FUNCTION when blocking may break a feature; INSUFFICIENT if unclear."
+                else "advice must be INSUFFICIENT (no domain block is possible for this item).")
+            add("evidence_ids: up to $MAX_EXTRA OTHER supplied ids that support you (not ${req.target}).")
+            add("explanation: a short label, max 40 characters. reason: what the evidence shows and what blocking could affect, max 200 characters.")
+            add("Write explanation, feature_labels and reason in ${AiIdentity.language(req.locale)}; no AI: prefix.")
+            add("JSON only: {\"label_schema\":1,\"target_id\":\"${req.target}\",\"explanation\":\"…\",\"role\":\"…\",\"permission_refs\":[],\"feature_refs\":[],\"feature_labels\":[],\"evidence_ids\":[],\"reason\":\"…\",\"advice\":\"…\"}")
+        }.joinToString("\n")
+    }
 
     fun prompt(req: LabelRequest, compact: Boolean = false): Prompt {
         val system = if (compact) compactSystem(req) else AiIdentity.lines(req.locale).joinToString("\n") + "\n" + """
@@ -108,6 +159,7 @@ object LabelContract {
             The target and linked refs are cited automatically. evidence_ids lists at most $MAX_EXTRA ADDITIONAL supplied IDs that support the explanation; it may be empty.
             APK presence does not prove execution, grants or transmission. A hostname in the latest APK does not prove historical version identity.
             OPERATION records are time buckets: persistent, background, cached and foreground-service are distinct contexts. Do not guess foreground from a false placeholder.
+            MESSAGE items are decrypted requests/responses of this host (identifiers masked as [ID]-style tokens): the strongest evidence of purpose and of what is sent; cite them when used.
             overlapsTarget=true only means the bucket and the connection times overlap; it is co-occurrence, not cause.
             Zero recorded bytes do not prove an upload. HTTP_HOST does not prove readable user content. Same company does not establish SDK attribution.
             Omit uncertain links instead of listing every permission/component in the app.
@@ -122,6 +174,9 @@ object LabelContract {
             req.evidence.forEach { e ->
                 appendLine("<data id=\"${e.id}\">kind=${e.kind}; ${PromptBuilder.neutralise(Masker.mask(e.text), 700)}</data>")
             }
+            // Said again at the very end: with the language named only mid-system, Claude Haiku answered 3 of 5 zh-CN labels in English.
+            append("Explain ${req.target}. Write explanation, feature_labels and reason in ${AiIdentity.language(req.locale)}")
+            append(if (req.locale.startsWith("zh")) "（简体中文）。" else ".")
         }
         return Prompt(system, user, req.evidence.map { it.id }.toSet())
     }
@@ -270,10 +325,11 @@ class LabelAnalyzer @Inject constructor(private val engine: AiEngine, private va
             }
             if (engine.modelId() != model || engine.externalDestination() != approvedDestination) return LabelOutcome.DECLINED
             val started = System.currentTimeMillis()
-            var reply = engine.generate(prompt.system, prompt.user, LabelContract.jsonSchema)
+            val schema = LabelContract.schemaFor(req)
+            var reply = engine.generate(prompt.system, prompt.user, schema)
             if (LabelContract.parse(reply, req) == null && depth.repair(model)) {
                 if (engine.modelId() != model || engine.externalDestination() != approvedDestination) return LabelOutcome.DECLINED
-                reply = engine.generate(prompt.system, prompt.user + "\nThe answer failed validation. Return a valid object; use no uncertain links and INSUFFICIENT advice if needed.", LabelContract.jsonSchema)
+                reply = engine.generate(prompt.system, prompt.user + "\nThe answer failed validation. Return a valid object; use no uncertain links and INSUFFICIENT advice if needed.", schema)
             }
             if (LabelContract.parse(reply, req) == null) return LabelOutcome.INVALID
             // Preserve the bounded input IDs/kinds and the block availability the answer was validated against.

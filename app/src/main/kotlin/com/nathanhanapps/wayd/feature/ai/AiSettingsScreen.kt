@@ -68,7 +68,6 @@ import com.nathanhanapps.wayd.feature.common.GroupDivider
 import com.nathanhanapps.wayd.feature.common.InsetGroup
 import com.nathanhanapps.wayd.feature.common.NavRow
 import com.nathanhanapps.wayd.feature.common.SubPage
-import com.nathanhanapps.wayd.feature.common.SwitchRow
 
 @Composable
 fun externalErrorLabel(code: String): String = stringResource(
@@ -103,6 +102,7 @@ fun AiSettingsScreen(onBack: () -> Unit, onOpenExternal: () -> Unit, vm: AiSetti
     var customFor by remember { mutableStateOf<ModelSpec?>(null) }
     var manualFor by remember { mutableStateOf<ModelSpec?>(null) }
     var sourceMenu by remember { mutableStateOf(false) }
+    var confirmExternal by remember { mutableStateOf(false) }
     var folderName by remember { mutableStateOf(vm.folderName()) }
     val pickFolder = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) { vm.setFolder(uri); folderName = uri.let { android.provider.DocumentsContract.getTreeDocumentId(it).substringAfter(':') } }
@@ -114,8 +114,15 @@ fun AiSettingsScreen(onBack: () -> Unit, onOpenExternal: () -> Unit, vm: AiSetti
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             providers.forEachIndexed { i, (p, label) ->
                 SegmentedButton(
-                    selected = ext.provider == p, onClick = { vm.setProvider(p) },
-                    enabled = p == AiProvider.ON_DEVICE || ext.usable,
+                    selected = ext.provider == p,
+                    // External: set up a server first; then the switch itself asks for the acknowledgement once per server.
+                    onClick = {
+                        when {
+                            p == AiProvider.ON_DEVICE || ext.usable -> vm.setProvider(p)
+                            !ext.configured -> onOpenExternal()
+                            else -> confirmExternal = true
+                        }
+                    },
                     shape = SegmentedButtonDefaults.itemShape(i, providers.size),
                 ) { Text(stringResource(label)) }
             }
@@ -163,6 +170,16 @@ fun AiSettingsScreen(onBack: () -> Unit, onOpenExternal: () -> Unit, vm: AiSetti
                 if (ext.configured) ext.host + " · " + ext.model else stringResource(R.string.xai_not_set), onClick = onOpenExternal,
             )
         }
+    }
+
+    if (confirmExternal) {
+        AlertDialog(
+            onDismissRequest = { confirmExternal = false },
+            title = { Text(ext.host) },
+            text = { Text(stringResource(R.string.xai_warning)) },
+            confirmButton = { TextButton(onClick = { confirmExternal = false; vm.useExternalAcknowledged() }) { Text(stringResource(R.string.xai_ack)) } },
+            dismissButton = { TextButton(onClick = { confirmExternal = false }) { Text(stringResource(R.string.ai_cancel)) } },
+        )
     }
 
     manualFor?.let { spec ->
@@ -374,10 +391,6 @@ fun ExternalAiScreen(onBack: () -> Unit, vm: ExternalAiViewModel = hiltViewModel
             ) { Text(stringResource(R.string.cx_save)) }
             if (adding) TextButton(onClick = { adding = false }) { Text(stringResource(R.string.ai_cancel)) }
             if (failed) Text(stringResource(R.string.xai_save_failed), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
-        }
-
-        InsetGroup {
-            SwitchRow(Icons.Filled.Warning, stringResource(R.string.xai_ack), ui.acknowledged, enabled = ui.configured && !dirty) { vm.acknowledge(it) }
         }
 
         // Same panel as on-device, separate values: an external server is often a larger model that benefits from more context.

@@ -65,7 +65,7 @@ pub fn normalize_host(s: &str) -> Option<String> {
 }
 
 struct Meta { owner: Option<String>, host: Option<String>, ip: IpAddr, control: Arc<FlowControl> }
-struct State { policy: Policy, list: crate::hostlist::HostList, flows: HashMap<u64, Meta>, list_blocks: u64, dns_answers: u64 }
+struct State { policy: Policy, list: crate::hostlist::HostList, dns: crate::dnsrules::DnsRules, flows: HashMap<u64, Meta>, list_blocks: u64, dns_answers: u64, dns_rule_answers: u64 }
 
 /// Per-app rules first, then the global block lists (hostname only). A list block reports the reserved LIST_RULE id.
 fn blocked(s: &State, m: &Meta) -> Option<Decision> {
@@ -113,7 +113,7 @@ pub struct Blocking(Mutex<State>);
 
 impl Blocking {
     pub fn new() -> Self {
-        Self(Mutex::new(State { policy: Policy { revision: 0, rules: Vec::new() }, list: Default::default(), flows: HashMap::new(), list_blocks: 0, dns_answers: 0 }))
+        Self(Mutex::new(State { policy: Policy { revision: 0, rules: Vec::new() }, list: Default::default(), dns: Default::default(), flows: HashMap::new(), list_blocks: 0, dns_answers: 0, dns_rule_answers: 0 }))
     }
 
     pub fn install(&self, text: &str) -> bool {
@@ -145,8 +145,27 @@ impl Blocking {
         hit
     }
 
-    /// (connections blocked by a list, DNS names answered locally) since the engine started.
-    pub fn list_stats(&self) -> (u64, u64) { let s = self.0.lock().unwrap(); (s.list_blocks, s.dns_answers) }
+    /// (connections blocked by a list, DNS names answered locally by a list, queries answered by a DNS rule) since the engine started.
+    pub fn list_stats(&self) -> (u64, u64, u64) { let s = self.0.lock().unwrap(); (s.list_blocks, s.dns_answers, s.dns_rule_answers) }
+
+    /// DNS rules (D-072), checked after the block lists: a local reply for this query, or None to forward it.
+    pub fn dns_rule_reply(&self, query: &[u8], question_end: usize, name: &str) -> Option<Vec<u8>> {
+        let mut s = self.0.lock().unwrap();
+        if s.dns.is_empty() { return None; }
+        let host = normalize_host(name)?;
+        let reply = s.dns.reply(query, question_end, &host)?;
+        s.dns_rule_answers += 1;
+        Some(reply)
+    }
+
+    /// Replaces the DNS rules from a compiled file (empty path clears them). Returns the number of entries, or -1 when the
+    /// file is missing or malformed (the previous rules stay). Only new queries see the change.
+    pub fn install_dns(&self, path: &str) -> i64 {
+        let rules = if path.is_empty() { Default::default() } else { match crate::dnsrules::DnsRules::load(path) { Some(r) => r, None => return -1 } };
+        let mut s = self.0.lock().unwrap();
+        s.dns = rules;
+        s.dns.entries as i64
+    }
 
     /// True when a global list is installed: every named TCP connection is then worth the bounded hostname wait.
     pub fn list_active(&self) -> bool { !self.0.lock().unwrap().list.is_empty() }

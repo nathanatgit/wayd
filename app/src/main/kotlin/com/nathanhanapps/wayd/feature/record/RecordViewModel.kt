@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.nathanhanapps.wayd.feature.analysis.AnalysisService
+import com.nathanhanapps.wayd.feature.analysis.Windows
 
 /** Home only reads in-memory VPN state; it deliberately observes no database table. */
 @HiltViewModel
@@ -24,7 +26,16 @@ class RecordViewModel @Inject constructor(
     val recording: TrafficRecording,
     val blocking: BlockingRules,
     private val routing: com.nathanhanapps.wayd.capture.RoutingBridge,
+    private val analysis: AnalysisService,
 ) : ViewModel() {
+    /** Findings that need attention in today's report (the same count as the Insights tab), or null until loaded. */
+    val attention = kotlinx.coroutines.flow.MutableStateFlow<Int?>(null)
+
+    fun refreshAttention() {
+        viewModelScope.launch {
+            attention.value = runCatching { analysis.analyse(Windows.TODAY).report.let { it.alerts.size + it.others.size } }.getOrNull()
+        }
+    }
     val ui: StateFlow<CaptureUi> = state.ui
 
     /** Runs only while Home is on screen. */

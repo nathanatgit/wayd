@@ -29,6 +29,8 @@ data class MitmState(
     val caReady: Boolean = false,
     val systemCa: Boolean = false,
     val apps: Set<String> = emptySet(),
+    /** false: only the listed apps are decrypted (whitelist). true: every user app except the listed ones (blacklist). */
+    val blacklist: Boolean = false,
     val busy: Boolean = false,
     /** Last result of a root action, shown verbatim to the user. */
     val message: String? = null,
@@ -71,6 +73,7 @@ class MitmController @Inject constructor(
             caReady = ca.exists(),
             systemCa = prefs.getBoolean(KEY_SYSTEM_CA, false) && name != null,
             apps = apps,
+            blacklist = prefs.getBoolean(KEY_BLACKLIST, false),
             message = message,
         )
     }
@@ -84,7 +87,13 @@ class MitmController @Inject constructor(
         return MitmConfig(local.certPem, local.keyPem, MitmExclusions.hostSuffixes)
     }
 
-    override fun gate() = InterceptGate { pkg, _, _ -> pkg in allowed && !MitmExclusions.isExcludedPackage(pkg) }
+    private val userAppCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+    override fun gate() = InterceptGate { pkg, _, _ ->
+        if (MitmExclusions.isExcludedPackage(pkg)) false
+        else if (prefs.getBoolean(KEY_BLACKLIST, false)) pkg !in allowed && userAppCache.getOrPut(pkg) { isUserApp(context.packageManager, pkg) }
+        else pkg in allowed
+    }
 
     // ---- user actions ----
 
@@ -99,6 +108,11 @@ class MitmController @Inject constructor(
 
     suspend fun setEnabled(on: Boolean) {
         prefs.edit().putBoolean(KEY_ENABLED, on).apply()
+        refresh(null)
+    }
+
+    suspend fun setBlacklist(on: Boolean) {
+        prefs.edit().putBoolean(KEY_BLACKLIST, on).apply()
         refresh(null)
     }
 
@@ -216,6 +230,7 @@ class MitmController @Inject constructor(
         const val STATEMENT_VERSION = 1
         private const val KEY_CONSENT = "consent_version"
         private const val KEY_ENABLED = "enabled"
+        private const val KEY_BLACKLIST = "blacklist"
         private const val KEY_SYSTEM_CA = "system_ca"
     }
 }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
@@ -27,13 +28,17 @@ import com.nathanhanapps.wayd.feature.common.GroupDivider
 import com.nathanhanapps.wayd.feature.common.InfoRow
 import com.nathanhanapps.wayd.feature.common.InsetGroup
 import com.nathanhanapps.wayd.feature.common.NavRow
+import com.nathanhanapps.wayd.feature.common.PageHeader
 import com.nathanhanapps.wayd.feature.common.SubPage
 import com.nathanhanapps.wayd.privilege.ShizukuState
 import com.nathanhanapps.wayd.research.ResearchFeatures
 
-/** Settings: a short list of destinations. Each topic has its own page instead of one long scroll. */
+/**
+ * Settings tab: tools first (the APK scanner; Clash lives on the Rules tab), then a short list of settings pages.
+ * Each topic has its own page instead of one long scroll.
+ */
 @Composable
-fun SettingsScreen(onOpenAi: () -> Unit, onOpenAccess: () -> Unit, onOpenResearch: () -> Unit, vm: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(onOpenScanner: () -> Unit, onOpenAi: () -> Unit, onOpenAccess: () -> Unit, onOpenResearch: () -> Unit, vm: SettingsViewModel = hiltViewModel()) {
     val db by vm.db.collectAsStateWithLifecycle()
     val root by vm.root.collectAsStateWithLifecycle()
     val shizuku by vm.shizuku.collectAsStateWithLifecycle()
@@ -46,8 +51,14 @@ fun SettingsScreen(onOpenAi: () -> Unit, onOpenAccess: () -> Unit, onOpenResearc
         shizuku == ShizukuState.READY -> stringResource(R.string.settings_val_shizuku)
         else -> stringResource(R.string.settings_val_none)
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineMedium)
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        PageHeader(stringResource(R.string.settings_title))
+        InsetGroup(header = stringResource(R.string.settings_tools)) {
+            NavRow(Icons.Filled.Search, stringResource(R.string.apk_title), onClick = onOpenScanner)
+        }
         InsetGroup {
             NavRow(Icons.Filled.Star, stringResource(R.string.settings_ai), aiValue, onClick = onOpenAi)
             GroupDivider()

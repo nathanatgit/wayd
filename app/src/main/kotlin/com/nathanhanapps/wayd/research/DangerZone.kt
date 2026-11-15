@@ -103,7 +103,10 @@ fun DangerZone(vm: DangerZoneViewModel = hiltViewModel()) {
                     if (!st.consented) { if (on) step = 1 } else scope.launch { c.setEnabled(on) }
                 }
                 GroupDivider()
-                NavRow(Icons.AutoMirrored.Filled.List, stringResource(R.string.dz_apps), stringResource(R.string.dz_apps_count, st.apps.size), enabled = st.consented && st.caReady && !st.busy) { picker = true }
+                DzSwitchRow(Icons.Filled.Warning, stringResource(R.string.dz_blacklist), st.blacklist, enabled = st.consented && !st.busy,
+                    help = stringResource(R.string.dz_blacklist_help)) { on -> scope.launch { c.setBlacklist(on) } }
+                GroupDivider()
+                NavRow(Icons.AutoMirrored.Filled.List, stringResource(if (st.blacklist) R.string.dz_apps_except else R.string.dz_apps), stringResource(R.string.dz_apps_count, st.apps.size), enabled = st.consented && st.caReady && !st.busy) { picker = true }
             }
             if (failed) Text(stringResource(R.string.dz_ca_failed), Modifier.padding(start = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }

@@ -33,6 +33,7 @@ WAYD (在干嘛, `com.nathanhanapps.wayd`) is a local-only Android privacy monit
 | 7 | WAYD's own external-AI calls over a Clash route (D-050) | Only as TLS that WAYD terminates itself, so routing carries ciphertext. |
 | 9 | Clash routing in blacklist mode (D-045) | One revocable global consent for every single-package app of the user except the excluded ones, including later installs. Unknown/shared-UID traffic stays Direct; WAYD blocks apply first. |
 | 9 | Imported block lists (D-064) | One revocable global consent per list for every app WAYD covers, including later installs. Per-app rules still win; connections whose hostname cannot be read still pass. |
+| 1 | Clash profile refreshes and health checks (D-075, `clash` variant) | Only while Clash routing is enabled, on the intervals the profile sets: subscription, rule-provider and proxy-provider updates and url-test / fallback / load-balance health checks, to hosts named in the profile only. Listed on the profile page; all stop when routing is off. No capture, report or AI data is sent. |
 
 App traffic forwarding itself is the product and is not an exception. Routing must follow [docs/14-OPTIONAL-ROUTING.md](docs/14-OPTIONAL-ROUTING.md) and must not expose inspection stores or override WAYD blocks.
 

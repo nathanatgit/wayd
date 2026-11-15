@@ -8,6 +8,8 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Shifted right: the knife sticks out on the right, so the face alone sits left of the mass centre. -->
+    <group android:translateX="2.5">
     <path
         android:pathData="M 49.08,32.23 C 60.96,32.23 70.59,41.86 70.59,53.74 C 70.59,65.63 60.96,75.26 49.08,75.26 C 37.2,75.26 27.56,65.63 27.56,53.74 C 27.56,41.86 37.2,32.23 49.08,32.23 Z">
         <aapt:attr name="android:fillColor">
@@ -279,4 +281,5 @@
             </gradient>
         </aapt:attr>
     </path>
+    </group>
 </vector>

@@ -29,7 +29,14 @@ import com.nathanhanapps.wayd.feature.analysis.AppLabels
 import com.nathanhanapps.wayd.analysis.LabelRules
 import com.nathanhanapps.wayd.feature.analysis.Windows
 import dagger.hilt.android.qualifiers.ApplicationContext
+import android.widget.Toast
+import com.nathanhanapps.wayd.R
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.OutputStream
 import java.io.OutputStreamWriter
@@ -88,6 +95,29 @@ class ExportService @Inject constructor(
     private val apps: ApkScanDao,
     private val labels: AppLabels,
 ) {
+    /**
+     * Exports run here, not in the button's composition scope: leaving the screen cancelled the old in-composition coroutine, and
+     * a large export takes a while. The process can still die (an app update or uninstall killed the 2026-11-15 export mid-file),
+     * so the bulky APK facts are written last and the importer accepts a file that ends early.
+     */
+    private val jobs = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val _running = MutableStateFlow(false)
+    val running: StateFlow<Boolean> = _running
+
+    fun start(target: Uri, req: ExportRequest) {
+        if (_running.value) return
+        _running.value = true
+        jobs.launch {
+            val r = try { export(target, req) } finally { _running.value = false }
+            val msg = when (r) {
+                is ExportResult.Saved -> context.getString(R.string.export_saved, r.name, r.flows, r.messages)
+                ExportResult.Empty -> context.getString(R.string.export_empty)
+                ExportResult.Failed -> context.getString(R.string.export_failed)
+            }
+            withContext(Dispatchers.Main) { Toast.makeText(context, msg, Toast.LENGTH_LONG).show() }
+        }
+    }
+
     private fun stamp() = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
 
     /** Default file name offered in the system file picker; the user can change it. */
@@ -265,24 +295,6 @@ class ExportService @Inject constructor(
         w.name("coverage").beginObject().name("flows").value(ids.size.toLong()).name("flowsWithApp").value(withPkg.toLong())
             .name("tcpFlows").value(tcp.toLong()).name("tcpFlowsWithHostname").value(tcpWithHost.toLong()).endObject()
 
-        w.name("apps").beginArray()
-        for ((pkg, s) in stats) {
-            val info = apps.app(pkg)
-            val allFacts = if (info != null) apps.facts(pkg) else emptyList()
-            val selectedFacts = LabelRules.exportFacts(allFacts, MAX_FACTS)
-            w.beginObject().name("pkg").value(pkg).name("label").value(labels.label(pkg)).name("system").bool(info?.isSystem)
-                .name("versionName").value(info?.versionName).name("installer").value(info?.installer)
-                .name("signerSha256").value(info?.signerSha256).name("firstSeen").value(info?.firstSeen).name("lastScanned").value(info?.lastScanned)
-                .name("flows").value(s.flows.toLong()).name("bytesUp").value(s.up).name("bytesDown").value(s.down)
-            w.name("apkFactCount").value(allFacts.size.toLong()).name("apkFactsTruncated").value(selectedFacts.size < allFacts.size)
-            w.name("apkFacts").beginArray()
-            selectedFacts.forEach {
-                w.beginObject().name("id").value(it.id).name("versionCode").value(it.versionCode)
-                    .name("kind").value(it.kind.name).name("key").value(it.key).name("value").value(it.value).name("evidence").value(it.evidence).endObject()
-            }
-            w.endArray().endObject()
-        }
-        w.endArray()
 
         val dnsRows: List<DnsRecord> = when (val s = req.scope) {
             is ExportScope.Capture -> if (src.session >= 0) dns.forSession(src.session) else dns.between(src.from, src.to)
@@ -323,6 +335,26 @@ class ExportService @Inject constructor(
         found.forEach {
             w.beginObject().name("id").value(it.id).name("pkg").value(it.pkg).name("ruleId").value(it.ruleId).name("severity").value(it.severity.name)
                 .name("title").value(it.title).name("dataTypes").value(it.dataTypes).name("evidence").value(it.evidenceJson).name("createdAt").value(it.createdAt).endObject()
+        }
+        w.endArray()
+
+        // Largest section last: if the process dies while writing, flows, DNS, messages, permission use and findings are already out.
+        w.name("apps").beginArray()
+        for ((pkg, s) in stats) {
+            val info = apps.app(pkg)
+            val allFacts = if (info != null) apps.facts(pkg) else emptyList()
+            val selectedFacts = LabelRules.exportFacts(allFacts, MAX_FACTS)
+            w.beginObject().name("pkg").value(pkg).name("label").value(labels.label(pkg)).name("system").bool(info?.isSystem)
+                .name("versionName").value(info?.versionName).name("installer").value(info?.installer)
+                .name("signerSha256").value(info?.signerSha256).name("firstSeen").value(info?.firstSeen).name("lastScanned").value(info?.lastScanned)
+                .name("flows").value(s.flows.toLong()).name("bytesUp").value(s.up).name("bytesDown").value(s.down)
+            w.name("apkFactCount").value(allFacts.size.toLong()).name("apkFactsTruncated").value(selectedFacts.size < allFacts.size)
+            w.name("apkFacts").beginArray()
+            selectedFacts.forEach {
+                w.beginObject().name("id").value(it.id).name("versionCode").value(it.versionCode)
+                    .name("kind").value(it.kind.name).name("key").value(it.key).name("value").value(it.value).name("evidence").value(it.evidence).endObject()
+            }
+            w.endArray().endObject()
         }
         w.endArray()
         w.endObject()

@@ -5,12 +5,17 @@ import android.os.Build
 import com.nathanhanapps.wayd.ai.AiRequest
 import com.nathanhanapps.wayd.ai.EvidenceItem
 import com.nathanhanapps.wayd.analysis.FindingText
+import com.nathanhanapps.wayd.analysis.LabelRules
+import com.nathanhanapps.wayd.core.db.ApkFact
+import com.nathanhanapps.wayd.core.db.ApkScanDao
 import com.nathanhanapps.wayd.core.db.Flow
 import com.nathanhanapps.wayd.core.db.FlowDao
 import com.nathanhanapps.wayd.core.db.Message
 import com.nathanhanapps.wayd.core.db.MessageDao
 import com.nathanhanapps.wayd.core.db.PermEvent
 import com.nathanhanapps.wayd.core.db.PermEventDao
+import com.nathanhanapps.wayd.core.model.ApkFactKind
+import com.nathanhanapps.wayd.core.model.PermissionMeaning
 import com.nathanhanapps.wayd.feature.analysis.AnalysisService
 import com.nathanhanapps.wayd.feature.analysis.Windows
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +40,7 @@ class AiEvidenceService @Inject constructor(
     private val flows: FlowDao,
     private val perms: PermEventDao,
     private val messages: MessageDao,
+    private val apks: ApkScanDao,
 ) {
     /**
      * The language of the app's UI (per-app language if the user chose one, else the system's): `zh-CN` or `en`.
@@ -59,10 +65,12 @@ class AiEvidenceService @Inject constructor(
         val flowRows = if (flowIds.isEmpty()) emptyList() else flows.byIds(flowIds)
         val permRows = perms.forApp(pkg, start, end).sortedByDescending { it.ts }.take(MAX_PERMS)
         val messageRows = messages.forApp(pkg, start, end).take(MAX_MESSAGES)
+        val factRows = apkFacts(runCatching { apks.facts(pkg) }.getOrDefault(emptyList()))
 
         val evidence = flowRows.map { EvidenceItem("f:${it.id}", flowText(it)) } +
             permRows.map { EvidenceItem("p:${it.id}", permText(it)) } +
-            messageRows.map { EvidenceItem("m:${it.id}", messageText(it)) }
+            messageRows.map { EvidenceItem("m:${it.id}", messageText(it)) } +
+            factRows.map { EvidenceItem("a:${it.id}", factText(it)) }
         if (evidence.isEmpty()) return@withContext null
 
         AiRequest(
@@ -85,6 +93,26 @@ class AiEvidenceService @Inject constructor(
                 locale = locale,
             )
         }
+
+    /**
+     * What the APK static scan says the app can do, when a scan exists: permissions with a known meaning (not plain network/storage
+     * plumbing), components (exported ones first: other apps or the system can start them) and recognised SDKs. Endpoints are left
+     * out; the recorded connections already show where the app went.
+     */
+    private fun apkFacts(facts: List<ApkFact>): List<ApkFact> {
+        val perms = facts.filter { it.kind == ApkFactKind.PERMISSION && LabelRules.permission(it.key) !in PLUMBING }.take(MAX_APK_PERMS)
+        val components = facts.filter { it.kind in COMPONENTS }
+            .sortedByDescending { it.value.orEmpty().contains("exported=true") }.take(MAX_APK_COMPONENTS)
+        val sdks = facts.filter { it.kind == ApkFactKind.SDK }.take(MAX_APK_SDKS)
+        return perms + sdks + components
+    }
+
+    private fun factText(f: ApkFact): String = buildString {
+        append("APK static scan v").append(f.versionCode).append(": ").append(f.kind).append(' ').append(f.key)
+        if (f.kind == ApkFactKind.PERMISSION) append(" meaning=").append(LabelRules.permission(f.key))
+        f.value?.takeIf { it.isNotBlank() }?.let { append("; ").append(it.take(120)) }
+        append("; declared in the APK, not proof of grant or use")
+    }
 
     private fun time(ms: Long) = SimpleDateFormat("MM-dd HH:mm:ss", Locale.US).format(Date(ms))
 
@@ -112,5 +140,10 @@ class AiEvidenceService @Inject constructor(
         const val MAX_MESSAGES = 8
         const val MAX_PICKED = 16
         const val BODY_CHARS = 500
+        const val MAX_APK_PERMS = 8
+        const val MAX_APK_COMPONENTS = 4
+        const val MAX_APK_SDKS = 4
+        val PLUMBING = setOf(PermissionMeaning.UNKNOWN, PermissionMeaning.NETWORK, PermissionMeaning.STORAGE, PermissionMeaning.BOOT)
+        val COMPONENTS = setOf(ApkFactKind.ACTIVITY, ApkFactKind.SERVICE, ApkFactKind.RECEIVER, ApkFactKind.PROVIDER)
     }
 }

@@ -1,6 +1,6 @@
 package com.nathanhanapps.wayd.capture
 
-/** One rule read from a rule plugin, still without an app: the user chooses the app at import. */
+/** One rule read from a rule plugin, without an app: the set it is imported into lists the target apps (D-073). */
 data class RewriteDraft(val host: String, val subdomains: Boolean, val method: String, val match: String, val pattern: String, val action: String, val arg: String)
 
 /**
@@ -17,7 +17,8 @@ data class RewriteDraft(val host: String, val subdomains: Boolean, val method: S
  * as a REGEX rule, so matching stays what the plugin author wrote.
  */
 object RewritePluginParser {
-    data class Result(val name: String?, val rules: List<RewriteDraft>, val mitmHosts: List<String>, val skipped: Int)
+    /** [packages]: apps the plugin names in an optional `#!packages=a.b,c.d` header line; shown as suggestions only. */
+    data class Result(val name: String?, val rules: List<RewriteDraft>, val mitmHosts: List<String>, val skipped: Int, val packages: List<String> = emptyList())
 
     private val REWRITE_SECTIONS = setOf("[rewrite]", "[url rewrite]", "[rewrite_local]")
     private val TOKEN = Regex("[A-Za-z0-9_.-]{1,128}")
@@ -28,9 +29,14 @@ object RewritePluginParser {
         var skipped = 0
         val rules = LinkedHashSet<RewriteDraft>()
         val mitm = LinkedHashSet<String>()
+        val packages = LinkedHashSet<String>()
         for (raw in text) {
             val line = raw.trim()
             if (line.startsWith("#!name=")) { name = line.removePrefix("#!name=").trim().take(60); continue }
+            if (line.startsWith("#!packages=") || line.startsWith("#!package=")) {
+                line.substringAfter('=').split(',', ' ').map { it.trim() }.filter { BlockTargets.packageName(it) && '.' in it }.take(20).forEach { packages += it }
+                continue
+            }
             if (line.isEmpty() || line.startsWith("#") || line.startsWith("//") || line.startsWith(";")) continue
             if (line.startsWith("[") && line.endsWith("]")) { section = line.lowercase(); continue }
             when (section) {
@@ -43,7 +49,7 @@ object RewritePluginParser {
                 else -> Unit // [Rule] lines are block-list material: import the same file under Block lists.
             }
         }
-        return Result(name, rules.toList(), mitm.toList(), skipped)
+        return Result(name, rules.toList(), mitm.toList(), skipped, packages.toList())
     }
 
     private fun draft(line: String): RewriteDraft? {
@@ -70,9 +76,9 @@ object RewritePluginParser {
             else -> return null
         }
         val (host, subdomains) = host(pattern) ?: return null
-        // The draft is validated exactly like a hand-made rule, with a placeholder package.
+        // The draft is validated exactly like a hand-made rule.
         val d = RewriteDraft(host, subdomains, "", "REGEX", pattern, action, arg)
-        return d.takeIf { RewriteRule(0, "placeholder.app", host, subdomains, "", "REGEX", pattern, action, arg, true, 0).valid() }
+        return d.takeIf { RewriteRule(0, host, subdomains, "", "REGEX", pattern, action, arg, true, 0).valid() }
     }
 
     /** Host named by a URL regex: (host, includeSubdomains), or null when no literal host of at least two labels can be read. */
@@ -87,6 +93,9 @@ object RewritePluginParser {
             p.startsWith("http://") -> p.removePrefix("http://")
             else -> return null
         }
+        // An optional-subdomain prefix, as the rule editor writes it (RewriteRuleText.SUBDOMAIN_PREFIX), means host and subdomains.
+        val prefixes = listOf(RewriteRuleText.SUBDOMAIN_PREFIX, """([^/]+\.)?""", """(?:.+\.)?""", """(.+\.)?""")
+        val anySub = prefixes.firstOrNull { p.startsWith(it) }?.also { p = p.removePrefix(it) } != null
         // The host part ends at the first path slash (plain or escaped) or at the end of the pattern.
         val end = listOf(p.indexOf("\\/"), p.indexOf('/')).filter { it >= 0 }.minOrNull() ?: p.length
         val part = p.substring(0, end).removeSuffix("$")
@@ -108,6 +117,6 @@ object RewritePluginParser {
         // A cut inside a label ("[a-z]+pi.example.com") must not produce "pi.example.com": keep whole labels only.
         val host = if (wholeLiteral || literal.startsWith(".")) text else text.substringAfter('.', "")
         val normalized = BlockTargets.host(host)?.takeIf { it == host && it.count { ch -> ch == '.' } >= 1 } ?: return null
-        return normalized to !wholeLiteral
+        return normalized to (!wholeLiteral || anySub)
     }
 }

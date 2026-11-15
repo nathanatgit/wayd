@@ -1,6 +1,10 @@
 package com.nathanhanapps.wayd.capture
 
 import android.os.ParcelFileDescriptor
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
+private val ALWAYS_OFF: StateFlow<Boolean> = MutableStateFlow(false)
 
 /** What the VPN service is handed to start the native engine; empty means "no routing" (everything Direct). */
 data class RoutingSnapshot(val profile: ByteArray = byteArrayOf(), val owners: String = "") {
@@ -47,4 +51,10 @@ interface RoutingBridge {
      * when routing applies but a rule rejects the host or the node fails: the call then fails, never going Direct.
      */
     suspend fun connect(host: String, port: Int): RoutedStream?
+
+    /** Whether Clash routing is switched on (always false in `core`). Takes effect the next time the VPN starts. */
+    val enabled: StateFlow<Boolean> get() = ALWAYS_OFF
+
+    /** Switches routing on or off. Returns null on success, or a stable failure code (never profile text). */
+    suspend fun setEnabled(on: Boolean): String? = "unsupported"
 }

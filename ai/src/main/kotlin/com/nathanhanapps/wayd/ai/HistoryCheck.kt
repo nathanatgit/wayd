@@ -43,36 +43,55 @@ object HistoryContract {
 
     fun prefix(pkg: String, locale: String) = ROW_PREFIX + LabelRequest.digest(pkg) + "|" + locale + "|"
 
+    /**
+     * Exactly [items] items with ids h1..hN, so constrained decoding cannot stop after the first item or invent an id (Gemma E2B did
+     * both). The note comes before role and advice: the engine writes properties in schema order, and a small model that states its
+     * reason first picks the matching role/advice far more often (tools/promptlab: E2B advice 36% → 94% on the synthetic hosts).
+     */
     fun schema(items: Int): String {
         val item = JSONObject().put("type", "object").put("additionalProperties", false)
             .put("properties", JSONObject()
-                .put("id", JSONObject().put("type", "string").put("maxLength", 6))
+                .put("id", JSONObject().put("type", "string").put("enum", JSONArray((1..items).map { "h$it" })))
+                .put("note", JSONObject().put("type", "string").put("maxLength", 80))
                 .put("role", JSONObject().put("type", "string").put("enum", JSONArray(ConnectionRole.entries.map { it.name })))
-                .put("advice", JSONObject().put("type", "string").put("enum", JSONArray(BlockAdvice.entries.map { it.name })))
-                .put("note", JSONObject().put("type", "string").put("maxLength", 80)))
-            .put("required", JSONArray(listOf("id", "role", "advice", "note")))
+                .put("advice", JSONObject().put("type", "string").put("enum", JSONArray(BlockAdvice.entries.map { it.name }))))
+            .put("required", JSONArray(listOf("id", "note", "role", "advice")))
         val props = JSONObject()
             .put("history_schema", JSONObject().put("type", "integer").put("enum", JSONArray(listOf(1))))
-            .put("items", JSONObject().put("type", "array").put("maxItems", items).put("items", item))
+            .put("items", JSONObject().put("type", "array").put("minItems", items).put("maxItems", items).put("items", item))
         return JSONObject().put("type", "object").put("properties", props).put("additionalProperties", false)
             .put("required", JSONArray(listOf("history_schema", "items"))).toString()
     }
 
+    /**
+     * Role and advice are spelled out per value: a bare enum list left small models guessing (E2B gave UNKNOWN/INSUFFICIENT, the values
+     * of the old template, to hosts it described correctly). The example is filled in the answer language, not with empty defaults.
+     */
     fun prompt(pkg: String, locale: String, chunk: List<HistoryHost>, compact: Boolean): Prompt {
+        val zh = locale.startsWith("zh")
         val identity = if (compact) AiIdentity.compact(locale) else AiIdentity.lines(locale).joinToString("\n")
+        val example = if (zh) "广告SDK，屏幕关闭时仍上传" else "ad SDK, uploads with screen off"
         val system = identity + "\n" + """
-            Task: for ONE app, give each destination line a role, blocking advice and a short note (why, max 60 characters). One item per id, same ids.
-            role: ${ConnectionRole.entries.joinToString(" ")}. advice: TRY_TEMPORARY (reversible block trial), MAY_AFFECT_FUNCTION (may break a feature), INSUFFICIENT.
-            Lines marked noblock must get INSUFFICIENT. Never set severity or choose another target.
-            Line fields: hint=rule role (may be wrong); rec=records; up/down=bytes; off=screen-off share; apk=hostname is in the APK;
-            perm=possibly related permissions (* used at the same time; not proof); comp=possibly related component; rule=finding decided by rules.
-            JSON only: {"history_schema":1,"items":[{"id":"h1","role":"UNKNOWN","advice":"INSUFFICIENT","note":""}]}
+            Task: for ONE app, label every <data> line h1..hN: note (why), then role and advice. Exactly one item per id, in order.
+            role = what the host is for, judged from the hostname first, then the fields:
+            FUNCTIONAL app's own API; LOGIN accounts/auth; LOCATION maps/geo; PUSH push/long connection; ANALYTICS stats/logs/tracking;
+            DIAGNOSTICS crash/APM/perf; ADS ad networks; MEDIA video/audio streams; CONTENT CDN/images/static; UPDATE app/config updates;
+            CARRIER telecom; SYSTEM OS/DNS/time/connectivity; UNKNOWN only if the hostname gives no clue.
+            hint= is a rule guess and may be wrong; correct it when the hostname clearly says otherwise.
+            advice: ADS, ANALYTICS, DIAGNOSTICS -> TRY_TEMPORARY (a reversible block trial rarely breaks the app).
+            FUNCTIONAL, LOGIN, PUSH, CONTENT, MEDIA, UPDATE, LOCATION, SYSTEM, CARRIER -> MAY_AFFECT_FUNCTION.
+            noblock lines, or UNKNOWN with no clue -> INSUFFICIENT. Never set severity or choose another target.
+            note: the reason in at most 40 characters, from the line (hostname word, screen-off share, upload size, perm). No severity words.
+            Fields: rec=records up/down=bytes off=screen-off share dec=decrypted requests (count, then method and path: strong evidence of purpose) apk=host is in the APK perm=possibly related permissions (*=same time, not proof) comp=component rule=finding from rules.
+            JSON only, e.g. {"history_schema":1,"items":[{"id":"h1","note":"$example","role":"ADS","advice":"TRY_TEMPORARY"}]}
         """.trimIndent()
         val user = buildString {
             appendLine("app=${PromptBuilder.neutralise(pkg, 80)}")
             chunk.forEachIndexed { i, h ->
                 appendLine("<data id=\"h${i + 1}\">${if (h.blockable) "" else "noblock "}${PromptBuilder.neutralise(Masker.mask(h.line), LINE_CHARS)}</data>")
             }
+            // Said again at the very end, where small models pay the most attention.
+            append("Label all ${chunk.size} lines h1..h${chunk.size}. Notes in ${AiIdentity.language(locale)}").append(if (zh) " (简体中文)." else ".")
         }
         return Prompt(system, user, chunk.indices.map { "h${it + 1}" }.toSet())
     }

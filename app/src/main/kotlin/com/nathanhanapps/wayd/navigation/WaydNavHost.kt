@@ -2,6 +2,8 @@ package com.nathanhanapps.wayd.navigation
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.padding
+import androidx.annotation.DrawableRes
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Build
@@ -36,11 +38,13 @@ import com.nathanhanapps.wayd.feature.reports.ReportsScreen
 import com.nathanhanapps.wayd.feature.settings.SettingsScreen
 import com.nathanhanapps.wayd.feature.ai.ExternalAiGateDialog
 
-private enum class Tab(val route: String, @StringRes val label: Int, val icon: ImageVector, val children: List<String> = emptyList()) {
-    Record("record", R.string.tab_record, Icons.Filled.Home),
-    Apps("apps", R.string.tab_traffic, Icons.AutoMirrored.Filled.List, listOf("apps?", "app/", "messages/", "connection/")),
-    Reports("reports", R.string.tab_insights, Icons.Filled.DateRange, listOf("report/", "company/")),
-    Tools("tools", R.string.tab_tools, Icons.Filled.Build, listOf("controls", "scanner", "settings")),
+/** Five tabs (D-071, D-077): is it running · what happened · what am I doing about it · what does it mean · tools and settings. */
+private enum class Tab(val route: String, @StringRes val label: Int, @DrawableRes val icon: Int, val children: List<String> = emptyList()) {
+    Record("record", R.string.tab_record, R.drawable.space_dashboard_24),
+    Apps("apps", R.string.tab_traffic, R.drawable.sync_alt_24, listOf("apps?", "app/", "messages/", "connection/")),
+    Rules("rules", R.string.tab_rules, R.drawable.rule_24, listOf("rules/")),
+    Reports("reports", R.string.tab_insights, R.drawable.analytics_24, listOf("report/", "company/")),
+    Settings("settings", R.string.settings_title, R.drawable.settings_24, listOf("settings/", "scanner")),
 }
 
 @Composable
@@ -62,7 +66,7 @@ fun WaydNavHost() {
                                 restoreState = true
                             }
                         },
-                        icon = { Icon(tab.icon, contentDescription = null) },
+                        icon = { Icon(ImageVector.vectorResource(tab.icon), contentDescription = null) },
                         label = { Text(stringResource(tab.label)) },
                     )
                 }
@@ -73,15 +77,41 @@ fun WaydNavHost() {
         NavHost(nav, startDestination = Tab.Record.route, modifier = Modifier.padding(padding)) {
             composable(Tab.Record.route) {
                 RecordScreen(
-                    onOpenControls = { nav.navigate("controls") },
-                    onOpenReports = { nav.navigate(Tab.Reports.route) { launchSingleTop = true } },
-                    onOpenConnections = { nav.navigate("apps?view=connections") { popUpTo(nav.graph.findStartDestination().id); launchSingleTop = true } },
+                    onOpenTraffic = {
+                        nav.navigate(Tab.Apps.route) {
+                            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onOpenRules = {
+                        nav.navigate(Tab.Rules.route) {
+                            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onOpenInsights = {
+                        nav.navigate(Tab.Reports.route) {
+                            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
                 )
             }
             composable(Tab.Reports.route) {
                 ReportsScreen(
                     onOpenApp = { pkg, win -> nav.navigate("app/$pkg/$win") },
                     onOpenCompany = { name, win -> nav.navigate("company/${android.net.Uri.encode(name)}/$win") },
+                    onOpenScanner = { nav.navigate("scanner") },
+                    onOpenSettings = {
+                        nav.navigate(Tab.Settings.route) {
+                            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
                 )
             }
             composable("report/{win}", listOf(navArgument("win") { type = NavType.StringType })) {
@@ -97,18 +127,36 @@ fun WaydNavHost() {
             composable("apps?view={view}", listOf(navArgument("view") { type = NavType.StringType; defaultValue = "apps" })) { entry ->
                 com.nathanhanapps.wayd.feature.traffic.TrafficScreen(entry.arguments?.getString("view").orEmpty(), onOpenApp = { pkg, win -> nav.navigate("app/$pkg/$win") }, onOpenConnection = { id -> nav.navigate("connection/$id") })
             }
-            composable(Tab.Tools.route) {
-                com.nathanhanapps.wayd.feature.tools.ToolsScreen(
-                    onOpenRules = { nav.navigate("controls") },
-                    onOpenScanner = { nav.navigate("scanner") },
-                    onOpenSettings = { nav.navigate("settings") },
+            composable(Tab.Rules.route) {
+                com.nathanhanapps.wayd.feature.controls.RulesScreen(
+                    onOpenDns = { nav.navigate("rules/dns") },
+                    onOpenRequest = { nav.navigate("rules/request") },
                 )
             }
             composable("connection/{id}", listOf(navArgument("id") { type = NavType.LongType })) {
                 com.nathanhanapps.wayd.feature.traffic.ConnectionDetailScreen(onBack = { nav.popBackStack() }, onOpenApp = { pkg, win -> nav.navigate("app/$pkg/$win") })
             }
-            composable("controls") {
-                com.nathanhanapps.wayd.feature.controls.ControlsScreen(onOpenApp = { pkg -> nav.navigate("app/${android.net.Uri.encode(pkg)}/today") })
+            composable("rules/dns") {
+                com.nathanhanapps.wayd.feature.controls.DnsRulesScreen(onBack = { nav.popBackStack() })
+            }
+            composable("rules/request") {
+                com.nathanhanapps.wayd.feature.controls.RequestRulesScreen(
+                    onBack = { nav.popBackStack() },
+                    onOpenApp = { pkg -> nav.navigate("app/${android.net.Uri.encode(pkg)}/today") },
+                    onOpenRewriteSet = { id -> nav.navigate("rules/rewrite/$id") },
+                )
+            }
+            composable("rules/rewrite/{id}", listOf(navArgument("id") { type = NavType.LongType })) {
+                com.nathanhanapps.wayd.feature.controls.RewriteSetScreen(
+                    onBack = { nav.popBackStack() },
+                    onEditRule = { set, rule -> nav.navigate("rules/rewrite/$set/rule?rule=${rule ?: 0}") },
+                )
+            }
+            composable(
+                "rules/rewrite/{id}/rule?rule={rule}",
+                listOf(navArgument("id") { type = NavType.LongType }, navArgument("rule") { type = NavType.LongType; defaultValue = 0L }),
+            ) {
+                com.nathanhanapps.wayd.feature.controls.RewriteRuleEditorScreen(onBack = { nav.popBackStack() })
             }
             composable("scanner?pkg={pkg}", listOf(navArgument("pkg") { type = NavType.StringType; defaultValue = "" })) {
                 com.nathanhanapps.wayd.feature.apps.ApkScanScreen(onBack = { nav.popBackStack() })
@@ -130,7 +178,7 @@ fun WaydNavHost() {
                 InspectorScreen(onBack = { nav.popBackStack() })
             }
             composable("settings") {
-                SettingsScreen(onOpenAi = { nav.navigate("settings/ai") }, onOpenAccess = { nav.navigate("settings/access") }, onOpenResearch = { nav.navigate("settings/research") })
+                SettingsScreen(onOpenScanner = { nav.navigate("scanner") }, onOpenAi ={ nav.navigate("settings/ai") }, onOpenAccess = { nav.navigate("settings/access") }, onOpenResearch = { nav.navigate("settings/research") })
             }
             composable("settings/ai") {
                 com.nathanhanapps.wayd.feature.ai.AiSettingsScreen(onBack = { nav.popBackStack() }, onOpenExternal = { nav.navigate("settings/ai/external") })

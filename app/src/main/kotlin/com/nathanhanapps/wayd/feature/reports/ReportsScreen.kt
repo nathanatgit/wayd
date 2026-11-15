@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,6 +47,8 @@ import java.time.format.FormatStyle
 fun ReportsScreen(
     onOpenApp: (pkg: String, window: String) -> Unit,
     onOpenCompany: (company: String, window: String) -> Unit,
+    onOpenScanner: () -> Unit,
+    onOpenSettings: () -> Unit,
     vm: ReportsViewModel = hiltViewModel(),
 ) {
     val window by vm.window.collectAsStateWithLifecycle()
@@ -58,7 +62,11 @@ fun ReportsScreen(
 
     androidx.compose.material3.Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, modifier = Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().padding(top = 12.dp)) {
-        Text(stringResource(R.string.tab_insights), Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.headlineMedium)
+        // The APK scanner is analysis, so it opens from here (D-071) as well as from each app page.
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.tab_insights), Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium)
+            IconButton(onClick = onOpenScanner) { Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.apk_title)) }
+        }
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item { FilterChip(window == Windows.TODAY, { vm.select(Windows.TODAY) }, { Text(stringResource(R.string.window_today)) }) }
             item { FilterChip(window == Windows.YESTERDAY, { vm.select(Windows.YESTERDAY) }, { Text(stringResource(R.string.window_yesterday)) }) }
@@ -80,6 +88,12 @@ fun ReportsScreen(
                             Text(stringResource(R.string.apps_empty_window), style = MaterialTheme.typography.bodyLarge)
                         }
                     } else insightsBody(r, vm.labels, window, onOpenApp, onOpenCompany, countries)
+                    // Last row: a shortcut to the Settings tab (AI models, privileges, tools).
+                    item(key = "settings") {
+                        com.nathanhanapps.wayd.feature.common.InsetGroup {
+                            com.nathanhanapps.wayd.feature.common.NavRow(Icons.Filled.Settings, stringResource(R.string.settings_title), onClick = onOpenSettings)
+                        }
+                    }
                 }
             }
         }

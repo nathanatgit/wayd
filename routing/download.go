@@ -89,7 +89,7 @@ func downloadResourceWithID(source []byte, address string, viaProxy bool, limit 
 		if e != nil {
 			return nil, e
 		}
-		engine, e = newExtension(bundle)
+		engine, e = newExtension(bundle, false)
 		if e != nil {
 			return nil, e
 		}

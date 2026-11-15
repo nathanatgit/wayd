@@ -269,8 +269,9 @@ class ClashExtensionViewModel @Inject constructor(
         resources.value = (0 until (list?.length() ?: 0)).map { i ->
             val r = list!!.getJSONObject(i)
             val item = ImportResource(r.getString("key"), r.getString("kind"), r.getString("url"))
-            // The shared GeoIP database is reused when it is already installed.
-            if (item.kind == "geoip" && geo.optLong("updated") > 0) item.copy(status = ImportResource.Status.Done) else item
+            // Shared data files are reused when they are already installed (GeoIP, GeoSite, ASN).
+            val installed = (item.kind == "geoip" && geo.optLong("updated") > 0) || ((item.kind == "geosite" || item.kind == "asn") && geoIp.geoDataReady(item.kind))
+            if (installed) item.copy(status = ImportResource.Status.Done) else item
         }
         val overrides = review.optJSONArray("overrides")
         session.value = ImportSession(
@@ -303,12 +304,14 @@ class ClashExtensionViewModel @Inject constructor(
     private suspend fun fetchOne(r: ImportResource) {
         setStatus(r.key) { it.copy(status = ImportResource.Status.Running, error = null) }
         val url = downloadUrl(r)
-        val limit = if (r.kind == "geoip") 32 * 1024 * 1024 else 8 * 1024 * 1024
+        val limit = when (r.kind) { "geoip" -> 32 * 1024 * 1024; "geosite", "asn" -> 64 * 1024 * 1024; else -> 8 * 1024 * 1024 }
         try {
             val body = if (!viaProxy.value) RoutingDownloads.fetch(url, limit) else nativeFetch(url, limit)
             if (r.kind == "geoip") {
                 runCatching { geoIp.install(body, url) }.getOrElse { throw RoutingDownloadException("resource_geoip_invalid") }
                 geoUpdated.value = geoIp.status().optLong("updated")
+            } else if (r.kind == "geosite" || r.kind == "asn") {
+                geoIp.installGeoData(r.kind, body)
             } else {
                 if (downloaded.values.sumOf { it.size } + body.size > 28 * 1024 * 1024) throw RoutingDownloadException("resource_too_large")
                 downloaded[r.key] = body
@@ -347,7 +350,7 @@ class ClashExtensionViewModel @Inject constructor(
     fun prepare() = action {
         val bytes = requireNotNull(pending)
         val content = JSONObject()
-        resources.value.filter { it.kind != "geoip" }.forEach { r -> content.put(r.key, Base64.encodeToString(requireNotNull(downloaded[r.key]), Base64.NO_WRAP)) }
+        resources.value.filter { it.kind !in SHARED_FILES }.forEach { r -> content.put(r.key, Base64.encodeToString(requireNotNull(downloaded[r.key]), Base64.NO_WRAP)) }
         val bundle = Base64.decode(call(bytes, JSONObject().put("action", "prepare").put("resources", content)).getString("bundle"), Base64.NO_WRAP)
         val id = routing.archive(requireNotNull(session.value).name, bundle, pendingId)
         closeImport()
@@ -396,6 +399,8 @@ class ClashExtensionViewModel @Inject constructor(
     }
 
     companion object {
+        /** Data files installed once for all profiles, not stored in a profile bundle. */
+        val SHARED_FILES = setOf("geoip", "geosite", "asn")
         const val DEFAULT_GEOIP = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/release/country.mmdb"
     }
 }
@@ -415,7 +420,21 @@ private fun errorLabel(code: String): String = when {
     code == "resource_canceled" -> stringResource(R.string.cx_err_canceled)
     code.startsWith("resource_http_") -> stringResource(R.string.cx_err_http, code.removePrefix("resource_http_"))
     code == "resource_network" -> stringResource(R.string.cx_err_network)
-    else -> stringResource(R.string.cx_err_generic)
+    // Profile checks at Continue (routing/extension.go). The part after ':' is a rule keyword, never profile text.
+    code.startsWith("invalid_rule") -> stringResource(R.string.cx_err_rule_invalid, code.substringAfter(':', "?"))
+    code == "geoip_resource_required" -> stringResource(R.string.cx_err_geoip_required)
+    code == "geosite_resource_required" -> stringResource(R.string.cx_err_geodata_required, "GeoSite")
+    code == "asn_resource_required" -> stringResource(R.string.cx_err_geodata_required, "ASN")
+    code == "resource_geodata_invalid" -> stringResource(R.string.cx_err_geodata_invalid)
+    code == "group_reference_or_cycle" || code == "invalid_proxy_group" -> stringResource(R.string.cx_err_group)
+    code == "local_proxy_options_unsupported" || code == "invalid_proxy_options" -> stringResource(R.string.cx_err_proxy_options)
+    code == "no_profile" -> stringResource(R.string.cx_err_no_profile)
+    code == "no_apps" -> stringResource(R.string.cx_err_no_apps)
+    code == "no_consent" -> stringResource(R.string.cx_err_no_consent)
+    code == "app_changed" -> stringResource(R.string.cx_err_app_changed)
+    code == "profile_too_large" -> stringResource(R.string.cx_err_profile_large)
+    // Anything else: show the code, so a report names the cause.
+    else -> stringResource(R.string.cx_err_generic) + " (" + code.take(60) + ")"
 }
 
 private enum class ClashPage(val label: Int, val icon: ImageVector) {

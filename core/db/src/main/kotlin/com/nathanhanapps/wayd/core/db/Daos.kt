@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import com.nathanhanapps.wayd.core.model.Proto
 import kotlinx.coroutines.flow.Flow as KFlow
 
 @Dao
@@ -47,6 +48,10 @@ interface MessageDao {
     @Query("SELECT * FROM Message WHERE flowId IN (:flowIds) ORDER BY flowId, ts, id")
     suspend fun forFlowIds(flowIds: List<Long>): List<Message>
 
+    /** Newest [limit] messages of these connections (one host's records), for an AI label. */
+    @Query("SELECT * FROM Message WHERE flowId IN (:flowIds) ORDER BY ts DESC LIMIT :limit")
+    suspend fun latestForFlowIds(flowIds: List<Long>, limit: Int): List<Message>
+
     @Query("SELECT * FROM Message WHERE flowId = :flowId ORDER BY ts, id")
     suspend fun forFlow(flowId: Long): List<Message>
 
@@ -74,6 +79,10 @@ interface MessageDao {
 
     @Query("SELECT m.* FROM Message m JOIN Flow f ON f.id = m.flowId WHERE f.pkg = :pkg AND f.startAt >= :start AND f.startAt < :end ORDER BY m.id")
     suspend fun forApp(pkg: String, start: Long, end: Long): List<Message>
+
+    /** Decrypted requests of one app without headers or bodies: enough to name what each host was asked (AI history check). */
+    @Query("SELECT m.flowId AS flowId, m.method AS method, m.url AS url FROM Message m JOIN Flow f ON f.id = m.flowId WHERE f.pkg = :pkg AND f.startAt >= :start AND f.startAt < :end AND m.dir = 'UP' ORDER BY m.ts")
+    suspend fun requestLines(pkg: String, start: Long, end: Long): List<MessageLine>
 
     @Query("DELETE FROM Message")
     suspend fun deleteAll()
@@ -111,6 +120,10 @@ interface FlowDao {
 
     @Insert
     suspend fun insert(flow: Flow): Long
+
+    /** Id of a connection that is already stored with the same app, destination and start time (import de-duplication). */
+    @Query("SELECT id FROM Flow WHERE startAt = :startAt AND pkg = :pkg AND dstIp = :dstIp AND dstPort = :dstPort AND proto = :proto LIMIT 1")
+    suspend fun findSame(startAt: Long, pkg: String, dstIp: String, dstPort: Int, proto: Proto): Long?
 
     @Query("SELECT * FROM Flow ORDER BY startAt DESC LIMIT :limit")
     fun observeRecent(limit: Int): KFlow<List<Flow>>
@@ -158,6 +171,10 @@ interface FlowDao {
     @Query("SELECT DISTINCT pkg, host FROM Flow WHERE startAt < :before AND host IS NOT NULL")
     suspend fun hostsBefore(before: Long): List<PkgHost>
 
+    /** Connections per app and host since [since]; rewrite-set suggestions match these against the set's hosts (D-073). */
+    @Query("SELECT pkg, host, COUNT(*) AS n FROM Flow WHERE startAt >= :since AND host IS NOT NULL AND pkg != '?' GROUP BY pkg, host")
+    suspend fun hostCounts(since: Long): List<PkgHostCount>
+
     /** One row per local calendar day that has flows, newest first. */
     @Query(
         "SELECT strftime('%Y-%m-%d', startAt / 1000, 'unixepoch', 'localtime') AS day, COUNT(*) AS flows " +
@@ -202,6 +219,9 @@ interface PermEventDao {
     @Insert
     suspend fun insertAll(events: List<PermEvent>)
 
+    @Query("SELECT COUNT(*) FROM PermEvent WHERE pkg = :pkg AND op = :op AND ts = :ts AND source = :source")
+    suspend fun countSame(pkg: String, op: String, ts: Long, source: String): Int
+
     /** AppOps-sourced events that started in the window; used to replace a window on re-sync. */
     @Query("DELETE FROM PermEvent WHERE ts >= :start AND ts < :end AND source LIKE 'appops:%'")
     suspend fun deleteAppOpsBetween(start: Long, end: Long)
@@ -217,6 +237,10 @@ interface PermEventDao {
 }
 
 data class PkgHost(val pkg: String, val host: String)
+
+data class MessageLine(val flowId: Long, val method: String?, val url: String?)
+
+data class PkgHostCount(val pkg: String, val host: String, val n: Int)
 
 data class DayRow(val day: String, val flows: Int)
 
@@ -242,6 +266,9 @@ data class CoverageCounts(val total: Int, val withPkg: Int, val tcp: Int, val tc
 
 @Dao
 interface DnsDao {
+    @Query("SELECT COUNT(*) FROM DnsRecord WHERE ts = :ts AND qname = :qname AND uid = :uid AND qtype = :qtype")
+    suspend fun countSame(ts: Long, qname: String, uid: Int, qtype: Int): Int
+
     @Insert
     suspend fun insertAll(records: List<DnsRecord>)
 

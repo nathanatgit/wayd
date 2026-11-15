@@ -336,3 +336,69 @@ Nat approved adding a regex library to the engine.
 - `[MITM] hostname` is only displayed; it never switches decryption on. `[Rule]` lines belong to block lists (import the same file there).
 - The keyword list is from memory of the format; check it against the format's documentation when a real plugin fails to import.
 - `tools/rwprobe/probe-rules.plugin` holds the probe's six rules in this format.
+
+**D-071 · 2026-11-15 · four tabs, rule modules with master switches (Nat)**
+
+- **Tabs:** 总览 · 流量 · 规则 · 洞察 (was 总览 · 流量 · 洞察 · 工具). 设置 opens from a gear in the Home header; the APK scanner opens from the 洞察 header (and still from each app page). Home no longer links to tabs it duplicates.
+- **规则 tab:** one row per module in engine order: 路由 (Clash, `clash` variant only), DNS, 请求. Each row opens its page and carries a switch. 响应 is not shown until response rewriting exists (phase 2).
+- **DNS module:** the block lists. Off installs an empty list path in the engine, so no list applies at either the DNS or the TCP hostname stage; list consents are untouched.
+- **Request module:** per-app connection blocks, rewrite rules, rule backup. Its switch gates **rewrites only** (Nat's choice): connection blocks always apply, so a module switch can never silently unblock an app. Off installs the bare `WAYDRW1` header.
+- Switches live in `RuleModules` (SharedPreferences `rule_modules`, both default on, so existing setups are unchanged) and are pushed through `BlockingRules.setDnsModule` / `setRequestModule`; also applied at VPN start.
+- Planned next: DNS change actions (custom answers, record-type blocks such as HTTPS/SVCB), a 流量 → DNS segment, a `phase` field on rewrite rules (JSON store, no migration) when the 响应 module arrives.
+
+**D-072 · 2026-11-15 · DNS rules: local answers, Daedalus hosts/dnsmasq import, record-type blocks (Nat)**
+
+- **Where:** 规则 → DNS → DNS 规则 and 记录类型, gated by the DNS module switch together with the block lists. Built into WAYD's own DNS stage, not Clash: Clash is `clash`-only and profile DNS / fake-IP stay overridden (14-OPTIONAL-ROUTING).
+- **Order per UDP/53 query:** block list → DNS rule (exact name, then the most specific suffix, as dnsmasq) → record-type block → forward.
+- **Answers:** a name with addresses answers A/AAAA from them (TTL 60 s, up to 16 each); the other family and HTTPS/SVCB get an empty answer so the mapping holds; other types are forwarded. `BLOCK` answers like a block list.
+- **Import, compatible with Daedalus (`RuleResolver.java`):** hosts `ip name…` → exact names (Daedalus reads only the first name; WAYD also takes aliases); dnsmasq `address=/d[/d…]/ip` → name and subdomains, empty value → block (Daedalus answers `0.0.0.0`). Differences, all stricter: `0.0.0.0`/`::` also answer AAAA with `::` (Daedalus forwards AAAA), `#` and `local=/d/` block, a mapped name's other family gets an empty answer (Daedalus forwards it). Skipped and counted: `server=` and other options, `address=/#/`, localhost names, single-label names.
+- **Record types:** HTTPS+SVCB (64, 65) and AAAA (28) as two switches; HTTPS/SVCB blocking also keeps ECH keys from apps.
+- **Storage and consent:** like block lists (no-backup files, compiled at import, `active.dns`). One revocable `ConsentRecord("dnsrule-v1:<id>")` per enabled file; typed rules and type blocks share `dnsrule-v1:local`. This extends the D-064 rule-9 exception pattern to DNS rules; **the AGENTS.md exception table is not yet updated** (needs Nat's approval).
+- **No download:** files come only from the picker, so no new network destination. Upstream choice (plain/DoT/DoH) is not built and needs a rule-1 exception first.
+- **Engine:** policy version 5 (`nativeSetDnsRules`, third `nativeListStats` field "answered by a DNS rule"). Kotlin accepts 2 to 5.
+
+**D-073 · 2026-11-16 · rewrite rule sets with target apps, rule editor page (Nat)**
+
+- **Model:** a rewrite **set** (imported rule plugin or hand-made) holds rules without an app plus a list of target apps, each with a switch. The engine gets one line per enabled rule per enabled app; lines share the rule id, so hits add up per rule. No native change. Limit: 2,000 engine lines in total (rules × apps), checked before saving.
+- **Storage:** `no_backup/rewrite/sets.json`. The old per-app `rules.json` migrates to one set per app on first read (renamed `rules.v1.json`); ids, switches and hits keep working.
+- **Consent:** `rewrite-v1:<pkg>` is recorded when an app becomes active in any enabled set and revoked when no enabled set targets it.
+- **Suggested apps:** packages named by the plugin (`#!packages=a.b,c.d`, a WAYD header) first, then apps whose recorded connections (30 days) reached the set's rule or `[MITM]` hosts, by connection count. Rows say when an app is not decrypted, so its rules cannot apply. WAYD never switches decryption on from here.
+- **UI:** 请求 → 改写规则 lists sets → set page (switch, target apps, suggestions, rules, hosts to decrypt, rename, delete) → rule editor page (add or edit): form plus raw text, docked below in portrait and beside in landscape. Raw text has two views: WAYD `key: value` text (lossless) and the plugin line (no method). Editing either side updates the other.
+- The plugin parser reads the editor's optional-subdomain prefix `(?:[^/]+\.)?` back as "host and subdomains".
+
+**D-074 · 2026-11-16 · Clash import names the failing rule type**
+
+- Continue (profile check) used to show only "Failed" for any non-download error. Go now reports `rule_resource_or_metadata_unsupported:<TYPE>` and `invalid_rule:<TYPE>` (TYPE is a fixed keyword or a sanitized rule keyword, never profile text); the screen maps these and the other check codes to readable text and shows unknown codes verbatim.
+- Supporting GEOSITE / RULE-SET / SUB-RULE / ASN is still open (14-OPTIONAL-ROUTING "Not supported").
+
+**D-075 · 2026-11-16 · Clash layer: full Mihomo rule compatibility behind WAYD's layers (Nat)**
+
+- **Goal (Nat):** Clash profiles work as in Clash/FlClash. FlClash (GPL-3.0) is the reference; WAYD keeps its own VPN in front, so it copies FlClash's compatibility, not its architecture (Mihomo owning TUN/DNS).
+- **Layers:** WAYD DNS stage → WAYD connection blocks → WAYD request rewrites → Clash layer (route choice) → dial. WAYD blocks always win.
+- **Slice 1 (done):** every rule line (top level, AND/OR/NOT, SUB-RULE, classical providers) is compiled by Mihomo's parser: GEOSITE, GEOIP, SRC-GEOIP, IP-ASN, SRC-IP-ASN, RULE-SET (yaml, text, mrs, inline), SUB-RULE, PROCESS-NAME (= package). Rule providers load through Mihomo's own provider from WAYD-downloaded files (file vehicle, no fetch). No matching rule means DIRECT, as in Clash (the old "last rule must be MATCH" check is gone).
+- **Data files:** Mihomo's home directory is `no_backup/routing-resources` (shared `country.mmdb`, plus `GeoSite.dat`, `ASN.mmdb`). All Mihomo download URLs are cleared, and rules needing a file compile only after WAYD verified it (`geodata-home`, `geodata-verify`), so Mihomo never downloads on its own and a bad ASN file can never reach its `log.Fatalln`. GeoSite updates take effect after WAYD restarts (Mihomo caches matchers).
+- **Providers registry:** only the routing engine registers rule providers in Mihomo's registry (`tunnel.UpdateRules`); validating another profile never replaces them.
+- **Decided, slice 2 (not built):** real-IP only (profile `dns` used for resolution, `fake-ip` read as redir-host and disclosed); provider/subscription refresh and health checks on profile intervals only while routing is on (AGENTS.md rule-1 exception added); a Clash REJECT is recorded as "Rejected by Clash", separate from WAYD blocks.
+
+**D-076 · 2026-11-16 · on-device prompts tuned with a prompt lab; per-request JSON schemas**
+
+- **Tool:** `tools/promptlab/` (stdlib Python, localhost Ollama only) replays the history, label, chat and app-analysis contracts with LiteRtEngine's sampler and constrained decoding against `gemma4:e2b`/`e4b`. Cases come from Nat's real exports (`build/promptlab/`, ignored) plus synthetic traps. Reference answers for real data come from Claude Haiku subagents answering the full (external-path) prompts; they pass the same validators. Ollama's Q4 GGUF stands in for the `.litertlm` build, so scores are relative.
+- **Schemas per request** (constrained decoding enforces what `parse` checks): history `minItems = maxItems = N` and `id ∈ h1..hN`; label `role`/`advice` fixed where the target leaves no choice, refs limited to supplied ids of the right kind, `target_id` fixed; chat `evidence_ids ∈` supplied ids. LiteRT-LM 0.19.1 decodes with llguidance (enum, minItems supported).
+- **Free text before decisions:** history `note` and label `explanation`/`reason` precede `role`/`advice` in the schema, because properties are generated in schema order.
+- **No default values in templates:** E2B copied the old templates' `UNKNOWN`/`INSUFFICIENT`/`""` into its answers; examples now use placeholders or a filled example in the answer language.
+- **Language and injection reminders at the end of the user message;** the full label prompt gets one too (Haiku answered 3 of 5 zh-CN labels in English without it).
+- **Chat evidence** is picked round-robin by id kind, so the Small budget keeps company and screen-off records.
+- **Measured** (3 repeats, v1 → final): history advice E2B 36→94%, E4B 47→91% (synthetic); agreement with Haiku E2B 44→86%; empty notes 23→0%. Labels valid 77/81→100%, E4B role agreement 13→85%. Chat valid E2B 77→100%; E2B now cites company records. Analysis prompt unchanged (no gain measured).
+- **Not changed:** contract `VERSION`s (answer shape and validation are the same, so saved answers stay); `PromptBuilder`. Open: E2B label roles still agree with Haiku only ~22–48%; feeding the rules' role guess helped E2B but hurt E4B with the lab's crude stand-in, so test it with real `LabelRules` before shipping.
+
+**D-077 · 2026-11-16 · AI evidence gets decrypted content and APK facts; export/import survive leaving the screen; Settings tab (Nat)**
+
+- **Labels:** new evidence kind `MESSAGE` (`m:` ids): up to 3 masked decrypted messages of the target's host (target's own first), placed right after the target so the Small budget keeps them. Header names only, the first 240 characters of a text body.
+- **History lines:** `dec=N METHOD /path,…` (requests only, query dropped), from a light `MessageDao.requestLines` projection (no bodies).
+- **App analysis:** APK static-scan facts as `a:` evidence when a scan exists: permissions with a known meaning (not network/storage/boot plumbing, max 8), SDKs (4), components with exported ones first (4); each marked "declared, not proof of grant or use". `PromptBuilder` and chat pick evidence round-robin by id kind, so `m:`/`a:` items are no longer cut by take(N).
+- **Export/import cause (2026-11-15):** `.d049` was first installed at 22:33:57, 7 s after the export's last write: the reinstall killed the export (file cut at 45 × 256 KiB) and wiped the database; the import of that file then stopped after 5,381 of 14,292 flows, so DNS, messages and permission events (later in the file) were never imported.
+- **Export/import changes:** both run in their service's own scope (not the button's composition), the `apps` section is written last, import inserts flows in transactions of 500 and keeps what it read from a file that ends early (`import_partial`).
+- **Navigation:** Settings is a fifth tab (gear icon); its first group, 工具, holds the APK scanner (Clash stays on the Rules tab), replacing the removed Tools tab.
+- **External acknowledgement (Nat):** "我了解数据会离开本机" moved from the external-server page to the provider switch on the AI page: choosing External on a server without an acknowledgement shows the warning dialog, and confirming records the per-origin `ConsentRecord` and switches. Unconfigured → opens the server page. Deleting a profile or changing its origin still revokes it.
+- **External AI over Clash, checked 2026-11-16:** blacklist mode + WAYD VPN on: model list and an analysis against `generativelanguage.googleapis.com/v1beta/openai` work. In whitelist mode the call goes Direct unless WAYD itself is ticked in the Clash app list (D-050); that is silent today.
+- **Entry points (Nat):** the gear next to the VPN switch on 总览 is gone; the last row of the 洞察 list opens the Settings tab.

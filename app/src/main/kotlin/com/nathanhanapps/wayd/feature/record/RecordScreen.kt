@@ -20,9 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.MaterialTheme
@@ -50,8 +48,8 @@ import com.nathanhanapps.wayd.feature.common.NavRow
 import com.nathanhanapps.wayd.feature.common.SpeedChart
 import com.nathanhanapps.wayd.feature.common.StatTile
 import com.nathanhanapps.wayd.feature.common.SwitchRow
-import com.nathanhanapps.wayd.feature.extensions.ClashExtension
-import com.nathanhanapps.wayd.feature.extensions.rememberClashInstalled
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
 
 /**
  * Home, compact: the VPN switch lives in the header, then live speed, a few numbers, and one inset list of switches and
@@ -59,9 +57,9 @@ import com.nathanhanapps.wayd.feature.extensions.rememberClashInstalled
  */
 @Composable
 fun RecordScreen(
-    onOpenControls: () -> Unit,
-    onOpenReports: () -> Unit,
-    onOpenConnections: () -> Unit,
+    onOpenRules: () -> Unit,
+    onOpenTraffic: () -> Unit,
+    onOpenInsights: () -> Unit,
     vm: RecordViewModel = hiltViewModel(),
 ) {
     val ui by vm.ui.collectAsStateWithLifecycle()
@@ -71,7 +69,8 @@ fun RecordScreen(
     val context = LocalContext.current
     val running = ui.phase == CapturePhase.RUNNING
     val starting = ui.phase == CapturePhase.STARTING
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refreshRules() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refreshRules(); vm.refreshAttention() }
+    val attention by vm.attention.collectAsStateWithLifecycle()
     val vpnConsent = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (it.resultCode == Activity.RESULT_OK) vm.start()
     }
@@ -121,9 +120,13 @@ fun RecordScreen(
 
         SpeedChart(speed.up, speed.down, stringResource(R.string.stat_up), stringResource(R.string.stat_down))
 
+        val activeRules = policy.rules.count { it.id in policy.activeIds }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatTile(ui.stats.flows.toString(), stringResource(R.string.stat_flows), Modifier.weight(1f))
             StatTile(ui.stats.apps.toString(), stringResource(R.string.stat_apps), Modifier.weight(1f))
+            StatTile(activeRules.toString(), stringResource(R.string.tab_rules), Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatTile(Formatter.formatShortFileSize(context, ui.stats.bytesUp), stringResource(R.string.stat_up), Modifier.weight(1f))
             StatTile(Formatter.formatShortFileSize(context, ui.stats.bytesDown), stringResource(R.string.stat_down), Modifier.weight(1f))
         }
@@ -131,20 +134,11 @@ fun RecordScreen(
         InsetGroup {
             SwitchRow(Icons.Filled.Edit, stringResource(R.string.dashboard_record), recording, enabled = !starting, onChange = vm.recording::setEnabled)
             GroupDivider()
-            NavRow(Icons.Filled.Build, stringResource(R.string.control_title), stringResource(R.string.home_rules_value, policy.rules.count { it.id in policy.activeIds }, policy.rules.size), onClick = onOpenControls)
-            if (rememberClashInstalled()) {
-                GroupDivider()
-                NavRow(
-                    Icons.AutoMirrored.Filled.Send, stringResource(R.string.dashboard_clash),
-                    if (running) stringResource(R.string.home_routes, ui.routes.proxied, ui.routes.direct, ui.routes.errors) else null,
-                ) { ClashExtension.intent(context)?.let(context::startActivity) }
-            }
-        }
-
-        InsetGroup {
-            NavRow(Icons.Filled.DateRange, stringResource(R.string.tab_insights), onClick = onOpenReports)
+            NavRow(ImageVector.vectorResource(R.drawable.sync_alt_24), stringResource(R.string.tab_traffic), stringResource(R.string.home_traffic_value, ui.stats.flows, ui.stats.apps), onClick = onOpenTraffic)
             GroupDivider()
-            NavRow(Icons.AutoMirrored.Filled.List, stringResource(R.string.connections_title), onClick = onOpenConnections)
+            NavRow(ImageVector.vectorResource(R.drawable.rule_24), stringResource(R.string.tab_rules), stringResource(R.string.home_rules_value, policy.rules.count { it.id in policy.activeIds }, policy.rules.size), onClick = onOpenRules)
+            GroupDivider()
+            NavRow(ImageVector.vectorResource(R.drawable.analytics_24), stringResource(R.string.tab_insights), attention?.let { stringResource(R.string.home_attention_value, it) }, onClick = onOpenInsights)
         }
     }
 }
