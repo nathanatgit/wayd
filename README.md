@@ -2,7 +2,7 @@
   <img src="docs/brand/banner.svg" alt="WAYD: see what every app sends. Block it. Rewrite it. Understand it." width="100%">
 </p>
 
-# <img src="docs/brand/app-icon.svg" width="64" align="center" alt=""> 在干嘛 · WAYD (What Are You Doing)
+# <img src="docs/brand/app-icon.svg" width="48" align="center" alt=""> 在干嘛 · WAYD (What Are You Doing)
 
 > An on-device Android privacy monitor that records what every app on your phone sends and receives, explains it in plain language, and helps you stop what you don't want.
 
