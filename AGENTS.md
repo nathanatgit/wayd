@@ -146,6 +146,7 @@ If a Sonnet session touches the first row, say so and suggest switching before w
 | Rule examples | docs/15-RULE-EXAMPLES.md |
 | Block lists, rewrite rules | docs/16-RULE-SETS-AND-REWRITE.md |
 | Decisions | docs/DECISIONS.md |
+| To-do list | docs/TODO.md, docs/todo/ |
 
 ## Task prompt template (for Nat to give an agent)
 

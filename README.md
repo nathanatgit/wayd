@@ -54,6 +54,7 @@ See Status below and the handoff for implementation coverage; this list describe
 | [docs/15-RULE-EXAMPLES.md](docs/15-RULE-EXAMPLES.md) | Rule examples |
 | [docs/16-RULE-SETS-AND-REWRITE.md](docs/16-RULE-SETS-AND-REWRITE.md) | Block lists, rewrite rules, rule exchange, cost |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture decision log |
+| [docs/TODO.md](docs/TODO.md) | Prioritised to-do list; details under docs/todo/ |
 
 ## Status
 
