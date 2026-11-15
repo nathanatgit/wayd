@@ -25,7 +25,7 @@ adb -s 320146880841 install -r tools/rwprobe/build/outputs/apk/debug/rwprobe-deb
 | 5 | GET | Exact | `/anything/old` | Redirect | `307 https://httpbin.org/anything/new` |
 | 6 | any | Regex | `^https://httpbin\.org/anything/v\d+/ads\b` | Answer locally | `204` |
 
-3. Controls → Block lists: import a list that contains the "blocked" host shown in the probe (default `doubleclick.net`; a one-line file `||doubleclick.net^` is enough) and enable it.
+3. Controls → Block lists: import a list that contains the "blocked" host shown in the probe (default `example.org`, chosen because it is normally reachable, so a failure can only come from the list; a one-line file `||example.org^` is enough) and enable it.
 4. Start the WAYD VPN.
 
 ## Run

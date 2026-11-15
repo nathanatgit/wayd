@@ -44,7 +44,7 @@ public class MainActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
 
         echo = field("Echo base URL (returns the request as JSON)", extra("echo", "https://httpbin.org/anything"));
-        blocked = field("Host expected to be on a WAYD block list", extra("blocked", "doubleclick.net"));
+        blocked = field("Host expected to be on a WAYD block list", extra("blocked", "example.org"));
         Button run = new Button(this);
         run.setText("Run probe");
         run.setOnClickListener(v -> start());
@@ -254,10 +254,12 @@ public class MainActivity extends Activity {
     private void save() {
         try {
             File f = new File(getExternalFilesDir(null), "result.txt");
+            synchronized (log) { log.append("saved ").append(f.getAbsolutePath()).append('
+'); }
             try (FileOutputStream o = new FileOutputStream(f)) {
                 synchronized (log) { o.write(log.toString().getBytes(StandardCharsets.UTF_8)); }
             }
-            line("saved " + f.getAbsolutePath());
+            line("");
         } catch (Exception e) {
             line("could not save result: " + e);
         }
