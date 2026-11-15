@@ -1,6 +1,6 @@
 # Handoff
 
-_Last updated: 2026-11-14 · **v0.5.0** released from `main` (versionCode 8) · decisions through D-065._
+_Last updated: 2026-11-14 · **v0.5.0** released from `main` (versionCode 8) · decisions through D-066._
 
 WAYD (在干嘛, `com.nathanhanapps.wayd`) is a local-only Android privacy monitor. A `VpnService` forwards traffic and applies local blocks; optional recording keeps evidence on the phone; consent-gated decryption reads supported HTTPS; rules produce findings; on-device Gemma (or an approved external OpenAI-compatible server) explains them.
 
@@ -11,9 +11,9 @@ Read [AGENTS.md](../AGENTS.md) first, then this file, then the doc for the modul
 | | State |
 |---|---|
 | Released | **v0.5.0** (2026-11-14): `wayd-v0.5.0.apk`, `wayd-clash-v0.5.0.apk`, D-060 to D-064. Release workflow and CI both pass. |
-| Unreleased | Branch `feat/dns-list-blocking` (D-065), committed locally, **not pushed**: DNS-stage block lists, app-page AI chat, history-prompt eval test, unused strings removed, docs revised. |
-| On the phone | NX733J `320146880841`: clash debug **0.5.0 + D-065** installed over `com.nathanhanapps.wayd.d049` on 2026-11-14, data kept. Nothing was opened or tested after install. |
-| Last validation | `cargo test --lib` 16 passed; full Gradle build with native rebuild (`test`, both debug assemblies, both lints) passes: `build/d065-validation.log`. |
+| Unreleased | Branch `feat/dns-list-blocking` (D-065, D-066), committed locally, **not pushed**: DNS-stage block lists, app-page AI chat, history-prompt eval test, **rewrite rules phase 1** (request side), docs revised. |
+| On the phone | NX733J `320146880841`: clash debug **0.5.0 + D-065** (without D-066 rewrite rules) installed over `com.nathanhanapps.wayd.d049` on 2026-11-14, data kept. Nothing was opened or tested after install. |
+| Last validation | `cargo test --lib --features mitm` 35 passed; full Gradle build with native rebuild (`test`, both debug assemblies, both lints) passes: `build/d066-validation.log`. |
 
 ### Not checked on a device (everything since D-061)
 
@@ -23,12 +23,13 @@ Ask Nat to tap through these; do not start a VPN or change his rules without him
 2. **AI settings:** on-device Auto/Small/Medium, external effort and Large, saving and switching profiles, the per-send preview after a switch.
 3. **Chat** (Insights and app page): text, photo, video frames, audio file, push-to-talk; whether the installed Gemma E2B/E4B files load the vision/audio backends (if not, the chat must say it cannot take images or audio); external server with images/audio.
 4. **Block lists** (D-064, D-065): import from file and HTTPS URL, enable with consent, a listed host blocked for a live app, DNS-stage answer for a listed name (QUIC app), connection delay on non-HTTP apps, load time and memory with a large list.
-5. **AppOps / Thanox buttons**, new launcher icon.
+5. **Rewrite rules** (D-066): with an app under decryption, a local-answer rule (app gets the 204/200, server sees nothing, inspector shows `X-WAYD-Rewrite`), a header-remove and a query-remove rule, hit counts, a keep-alive connection that mixes matching and non-matching requests, a chunked upload.
+6. **AppOps / Thanox buttons**, new launcher icon.
 
 ### Next
 
 1. Device pass above; fix what it finds.
-2. Rewrite rules, phase 1: [16-RULE-SETS-AND-REWRITE.md](16-RULE-SETS-AND-REWRITE.md).
+2. Rewrite phase 2 (redirect, response headers, JSON body edits) and plugin-format import/export: [16-RULE-SETS-AND-REWRITE.md](16-RULE-SETS-AND-REWRITE.md).
 3. Hostname coverage: TTL-aware DNS correlation (M1 target ≥ 90%, last sample 78–85%).
 4. Run `HistoryEvalTest` against Gemma E2B/E4B through a local server and tune the prompt from the score.
 
@@ -43,7 +44,7 @@ Ask Nat to tap through these; do not start a VPN or change his rules without him
 | M4 message inspector, R-ID-IN-REQUEST | built; inspector not device-checked |
 | M5 APK scanner | built, 22-app sample verified; dashboard UI (D-063) not device-checked; full-inventory scan and < 5 min cold scan open |
 | M6 AI | Gemma 4 on device and external provider work on NX733J; labels, history check, chat, depth, profiles (D-061 to D-065) not device-checked |
-| M7 blocking | per-app app/host/IP rules verified on device; block lists and DNS stage (D-064, D-065) not device-checked; rewrite rules not built |
+| M7 blocking | per-app app/host/IP rules verified on device; block lists, DNS stage and request-side rewrite rules (D-064 to D-066) not device-checked; response and body rewriting not built |
 | M8 decryption / root CA | works: Chrome via user CA; WeChat/Douyin need the root system CA; WeChat MMTLS metadata only |
 | Clash routing (`clash` variant) | import and whitelist save verified; live routed run, blacklist save, FlClash parity open |
 
@@ -68,6 +69,7 @@ Where the recent work lives:
 | History and APK screens | `app/…/feature/apps/AppBlockingSection.kt`, `ApkDashboard.kt` |
 | Chat | `app/…/feature/ai/ChatUi.kt`, `InsightsChatViewModel.kt`, `ChatMedia.kt` |
 | Block lists | `capture/native/src/hostlist.rs`, `capture/…/BlockLists.kt`, `app/…/feature/controls/BlockListsSection.kt` |
+| Rewrite rules | `capture/native/src/mitm/rewrite.rs`, `capture/…/RewriteRules.kt`, `app/…/feature/controls/RewriteSection.kt` |
 
 ## Build and test (Windows)
 

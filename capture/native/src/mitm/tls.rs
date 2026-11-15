@@ -157,10 +157,11 @@ impl Mitm {
         S: AsyncRead + AsyncWrite + Unpin + Send,
         R: AsyncRead + AsyncWrite + Unpin + Send,
     {
-        self.intercept_counted(client, remote, id, sink, None).await
+        self.intercept_counted(client, remote, id, sink, None, None).await
     }
 
-    pub async fn intercept_counted<S, R>(&self, client: &mut Recording<S>, remote: R, id: u64, sink: &EventSink, counters: Option<&crate::blocking::FlowControl>) -> Outcome
+    /// `rewrite` is the rule set and the flow owner (`user:package`); the request stage is only built when a rule names this app and host.
+    pub async fn intercept_counted<S, R>(&self, client: &mut Recording<S>, remote: R, id: u64, sink: &EventSink, counters: Option<&crate::blocking::FlowControl>, rewrite: Option<(Arc<super::rewrite::RewriteSet>, String)>) -> Outcome
     where
         S: AsyncRead + AsyncWrite + Unpin + Send,
         R: AsyncRead + AsyncWrite + Unpin + Send,
@@ -212,14 +213,15 @@ impl Mitm {
         sink.tls_note(id, crate::events::TLS_INTERCEPTED);
 
         // 4. copy plaintext both ways while capturing HTTP/1.1
-        let (up, down) = pump_plain(app, upstream, id, sink, counters).await;
+        let stage = rewrite.as_ref().and_then(|(set, owner)| set.stage(owner, &sni));
+        let (up, down) = pump_plain(app, upstream, id, sink, counters, stage, rewrite.map(|r| r.0)).await;
         Outcome::Done(up, down)
     }
 }
 
 /// Forwards bytes unchanged in both directions; copies of them feed the HTTP capture. One task handles both
 /// directions so requests and responses can be paired without locks.
-async fn pump_plain<A, U>(app: A, upstream: U, id: u64, sink: &EventSink, counters: Option<&crate::blocking::FlowControl>) -> (u64, u64)
+async fn pump_plain<A, U>(app: A, upstream: U, id: u64, sink: &EventSink, counters: Option<&crate::blocking::FlowControl>, mut stage: Option<super::rewrite::ReqStage>, set: Option<Arc<super::rewrite::RewriteSet>>) -> (u64, u64)
 where
     A: AsyncRead + AsyncWrite + Unpin,
     U: AsyncRead + AsyncWrite + Unpin,
@@ -234,12 +236,33 @@ where
     let (mut a_open, mut u_open) = (true, true);
     let idle = Duration::from_secs(3600);
     let mut last_report = std::time::Instant::now();
+    // Rewrite stage (only for hosts with a rule): requests in flight at the server, and local answers waiting for them to finish
+    // so a local reply never interleaves with a real response on the same connection.
+    let mut inflight: u32 = 0;
+    let mut local: std::collections::VecDeque<Vec<u8>> = std::collections::VecDeque::new();
 
     while a_open || u_open {
+        // Local answers go out once every earlier request has its real response; they are also fed to the response capture,
+        // so the inspector shows them (marked X-WAYD-Rewrite) next to the original request.
+        if inflight == 0 {
+            let mut failed = false;
+            while let Some(reply) = local.pop_front() {
+                if aw.write_all(&reply).await.is_err() { failed = true; break; }
+                resp.feed(&reply);
+                for m in resp.take() { emit(sink, id, &m); }
+            }
+            if failed { break; }
+        }
         tokio::select! {
             r = ar.read(&mut ab), if a_open => match r {
                 Ok(n) if n > 0 => {
-                    if uw.write_all(&ab[..n]).await.is_err() { break; }
+                    if let Some(st) = stage.as_mut() {
+                        let out = st.feed(&ab[..n]);
+                        if let Some(s) = &set { s.hit(&out.hits); }
+                        if !out.forward.is_empty() && uw.write_all(&out.forward).await.is_err() { break; }
+                        inflight += out.forwarded;
+                        local.extend(out.local);
+                    } else if uw.write_all(&ab[..n]).await.is_err() { break; }
                     up += n as u64;
                     if let Some(c) = counters { c.up.store(up, std::sync::atomic::Ordering::Relaxed); }
                     if last_report.elapsed() >= Duration::from_secs(2) {
@@ -266,7 +289,7 @@ where
                         last_report = std::time::Instant::now();
                     }
                     resp.feed(&ub[..n]);
-                    for m in resp.take() { emit(sink, id, &m); }
+                    for m in resp.take() { inflight = inflight.saturating_sub(1); emit(sink, id, &m); }
                 }
                 _ => { u_open = false; let _ = aw.shutdown().await; }
             },

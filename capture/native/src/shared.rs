@@ -16,6 +16,8 @@ pub struct Shared {
     pub routing: Option<Arc<crate::routing::Routing>>,
     #[cfg(feature = "mitm")]
     mitm: std::sync::RwLock<Option<Arc<crate::mitm::tls::Mitm>>>,
+    #[cfg(feature = "mitm")]
+    rewrite: std::sync::RwLock<Arc<crate::mitm::rewrite::RewriteSet>>,
     decisions: Mutex<HashMap<u64, oneshot::Sender<bool>>>,
 }
 
@@ -32,6 +34,8 @@ impl Shared {
             routing,
             #[cfg(feature = "mitm")]
             mitm: std::sync::RwLock::new(None),
+            #[cfg(feature = "mitm")]
+            rewrite: std::sync::RwLock::new(Arc::new(Default::default())),
             decisions: Mutex::new(HashMap::new()),
         })
     }
@@ -42,6 +46,8 @@ impl Shared {
             blocking: crate::blocking::Blocking::new(),
             #[cfg(feature = "mitm")]
             mitm: std::sync::RwLock::new(None),
+            #[cfg(feature = "mitm")]
+            rewrite: std::sync::RwLock::new(Arc::new(Default::default())),
             decisions: Mutex::new(HashMap::new()),
         })
     }
@@ -95,4 +101,17 @@ impl Shared {
     pub fn forget(&self, id: u64) {
         self.decisions.lock().unwrap().remove(&id);
     }
+}
+
+#[cfg(feature = "mitm")]
+impl Shared {
+    /// Replaces the rewrite rules; false (and no change) when the text is malformed.
+    pub fn set_rewrite(&self, text: &str) -> bool {
+        match crate::mitm::rewrite::RewriteSet::parse(text) {
+            Some(set) => { *self.rewrite.write().unwrap() = Arc::new(set); true }
+            None => false,
+        }
+    }
+
+    pub fn rewrite(&self) -> Arc<crate::mitm::rewrite::RewriteSet> { self.rewrite.read().unwrap().clone() }
 }

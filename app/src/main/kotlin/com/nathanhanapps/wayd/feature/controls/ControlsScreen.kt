@@ -120,6 +120,8 @@ fun ControlsScreen(onOpenApp: (String) -> Unit, vm: ControlsViewModel = hiltView
         }
         // Global block lists are a separate rule set from the per-app rules below (D-064).
         item { BlockListsSection() }
+        // Rewrite rules are the second, separate rule set: they change decrypted requests instead of blocking connections.
+        item { RewriteSection() }
         item {
             Text(stringResource(R.string.block_rules_title), style = MaterialTheme.typography.titleLarge)
             OutlinedTextField(

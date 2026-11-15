@@ -292,3 +292,13 @@ Nat asked to implement the improvement review after v0.5.0.
 - **Eval:** opt-in `HistoryEvalTest` scores role and advice on synthetic hosts against a model server (`WAYD_OLLAMA_URL`, `WAYD_OLLAMA_MODEL`), so prompt changes can be compared by number.
 - **CI:** `ci.yml` builds the Core and Clash variants with lint and sets up Go (it still referenced the removed Standard/Research variants).
 - Unused strings removed. No schema, permission or dependency change.
+
+**D-066 · 2026-11-15 · rewrite rules, phase 1: request side (Nat)**
+
+Nat asked to implement the alter feature. Scope kept to the request side so nothing has to buffer responses yet.
+
+- **Actions:** answer locally (`REJECT` with `204`, `200-empty` or `200-json`), `HEADER_REMOVE`, `HEADER_SET`, `QUERY_REMOVE`. Matching: app + host (exact or with subdomains) + optional method + path/query prefix, exact or contains. No regex and no scripts yet.
+- **Engine** (`mitm/rewrite.rs`): a request-side HTTP/1.1 state machine entered only when a rule names the flow's app and host; other decrypted flows keep the byte-for-byte pump. It frames `Content-Length` and chunked bodies to find the next request; upgrades, heads over 64 KiB and parse errors switch the connection to pass-through for good. A rejected request and its body never reach the server; the local answer is sent once earlier requests have their real responses and carries `X-WAYD-Rewrite: reject`. The inspector shows the original request and the local answer. Hits are counted per rule. Policy ABI 4 (`nativeSetRewrite`, `nativeRewriteHits`); Kotlin accepts 2 to 4.
+- **Storage and consent:** rules live in a JSON file under no-backup storage (no schema change). Adding a rule records `ConsentRecord("rewrite-v1:<pkg>")`; removing an app's last rule revokes it. A rule only acts on flows already decrypted under that app's decryption consent and can never switch decryption on. Blocks win: a blocked connection is never decrypted or rewritten.
+- **UI:** Controls → Rewrite rules, a separate section from per-app rules and block lists: add, enable, remove, hit count, engine status.
+- **Known limits:** request side only (response header and body edits are phase 2); HTTP/1.1 only; pipelined requests after a rejected one could receive answers out of order (clients rarely pipeline); a `100 Continue` response is counted as a finished response; rewritten requests are shown in the inspector in their original form.

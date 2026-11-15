@@ -840,4 +840,28 @@ That content can include things other people sent you or that were sent about th
     <string name="blist_failed">No usable list: it had no supported rules, was too large, could not be read, or was not HTTPS.</string>
     <string name="blist_imported">Imported. Review the counts, then enable it.</string>
     <string name="block_outcome_list">Blocked by a block list</string>
+    <string name="rw_title">Rewrite rules</string>
+    <string name="rw_intro">Change requests of one app before they leave: answer a request locally, remove or set a request header, or remove a query parameter. Rules apply only to connections WAYD already decrypts for that app (Settings → HTTPS decryption) and only to HTTP/1.1 requests; they never switch decryption on. A blocked connection is never rewritten.</string>
+    <string name="rw_vpn_off">Rules load into the engine when the WAYD VPN runs.</string>
+    <string name="rw_old_engine">This build\'s network engine does not support rewrite rules yet.</string>
+    <string name="rw_rejected">The engine rejected the rewrite rules; none is active.</string>
+    <string name="rw_active">Rewrite rules are loaded in the running engine.</string>
+    <string name="rw_add">Add rewrite rule</string>
+    <string name="rw_invalid">That rule is not valid or the limit is reached; nothing changed.</string>
+    <string name="rw_hits">applied %1$d times this run</string>
+    <string name="rw_consent">Saving records that you allow WAYD to change this app\'s decrypted requests. The app may misbehave; switch the rule off to undo.</string>
+    <string name="rw_pkg">App package name</string>
+    <string name="rw_host">Hostname</string>
+    <string name="rw_subdomains">Include subdomains</string>
+    <string name="rw_method">Method (empty = any)</string>
+    <string name="rw_pattern">Path and query to match</string>
+    <string name="rw_match_prefix">Starts with</string>
+    <string name="rw_match_exact">Exact</string>
+    <string name="rw_match_contains">Contains</string>
+    <string name="rw_action_reject">Answer locally</string>
+    <string name="rw_action_header_remove">Remove header</string>
+    <string name="rw_action_header_set">Set header</string>
+    <string name="rw_action_query_remove">Remove query parameter</string>
+    <string name="rw_arg_name">Name</string>
+    <string name="rw_arg_header_set">Header as “Name: value”</string>
 </resources>

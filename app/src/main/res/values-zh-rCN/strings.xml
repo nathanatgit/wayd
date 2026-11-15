@@ -840,4 +840,28 @@
     <string name="blist_failed">没有可用的列表：其中没有受支持的规则、文件过大、无法读取，或不是 HTTPS。</string>
     <string name="blist_imported">已导入。请查看数量后再启用。</string>
     <string name="block_outcome_list">被阻止列表阻止</string>
+    <string name="rw_title">改写规则</string>
+    <string name="rw_intro">在某个应用的请求发出前进行修改：本地应答请求、移除或设置请求头，或移除查询参数。规则仅作用于 WAYD 已为该应用解密的连接（设置 → HTTPS 解密），且仅限 HTTP/1.1 请求；规则不会开启解密。被阻止的连接不会被改写。</string>
+    <string name="rw_vpn_off">WAYD VPN 运行时规则才会载入引擎。</string>
+    <string name="rw_old_engine">此版本的网络引擎尚不支持改写规则。</string>
+    <string name="rw_rejected">引擎拒绝了改写规则，当前没有生效的规则。</string>
+    <string name="rw_active">改写规则已载入运行中的引擎。</string>
+    <string name="rw_add">添加改写规则</string>
+    <string name="rw_invalid">该规则无效或已达上限，未做任何更改。</string>
+    <string name="rw_hits">本次运行已应用 %1$d 次</string>
+    <string name="rw_consent">保存即记录你允许 WAYD 修改此应用已解密的请求。应用可能出现异常；关闭规则即可撤销。</string>
+    <string name="rw_pkg">应用包名</string>
+    <string name="rw_host">主机名</string>
+    <string name="rw_subdomains">包含子域名</string>
+    <string name="rw_method">方法（留空 = 任意）</string>
+    <string name="rw_pattern">要匹配的路径和查询</string>
+    <string name="rw_match_prefix">开头匹配</string>
+    <string name="rw_match_exact">完全匹配</string>
+    <string name="rw_match_contains">包含</string>
+    <string name="rw_action_reject">本地应答</string>
+    <string name="rw_action_header_remove">移除请求头</string>
+    <string name="rw_action_header_set">设置请求头</string>
+    <string name="rw_action_query_remove">移除查询参数</string>
+    <string name="rw_arg_name">名称</string>
+    <string name="rw_arg_header_set">请求头，格式为“名称: 值”</string>
 </resources>

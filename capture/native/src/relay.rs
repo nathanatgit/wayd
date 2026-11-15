@@ -180,7 +180,11 @@ async fn tcp_inner<S: AsyncRead + AsyncWrite + Unpin + Send>(id: u64, mut client
             if allow {
                 if let Some(r) = remote.take() {
                     let mut rec = crate::mitm::tls::Recording::new(client, first[..n].to_vec());
-                    match m.intercept_counted(&mut rec, r, id, &sink, Some(&control)).await {
+                    // Rewrite rules apply only to an attributed app; an unknown owner keeps the plain pump.
+                    let set = shared.rewrite();
+                    let owner = shared.blocking.metadata(id).0;
+                    let rewrite = (!set.is_empty() && !owner.is_empty()).then_some((set, owner));
+                    match m.intercept_counted(&mut rec, r, id, &sink, Some(&control), rewrite).await {
                         crate::mitm::tls::Outcome::Done(u, d) => {
                             sink.close(id, u, d);
                         }

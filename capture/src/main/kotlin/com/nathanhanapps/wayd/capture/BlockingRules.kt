@@ -52,6 +52,7 @@ class BlockingRules @Inject constructor(
     @ApplicationContext private val context: Context,
     private val db: WaydDatabase,
     private val lists: BlockListStore,
+    private val rewrites: RewriteStore,
 ) {
     private val mutex = Mutex()
     private val bridge = Any()
@@ -62,6 +63,10 @@ class BlockingRules @Inject constructor(
     private var temporary = emptyList<BlockRule>()
     private var installed = emptyList<BlockRule>()
     private var listsSupported = false
+    private var rewriteSupported = false
+    private val _rewriteInstalled = MutableStateFlow<Boolean?>(null)
+    /** Whether the running engine accepted the rewrite rules; null when the VPN is off or the engine predates them. */
+    val rewriteInstalled = _rewriteInstalled.asStateFlow()
     private val _listEntries = MutableStateFlow<Long?>(null)
     /** Entries the running engine loaded from the enabled block lists; null when the VPN is off or the engine predates lists. */
     val listEntries = _listEntries.asStateFlow()
@@ -84,10 +89,11 @@ class BlockingRules @Inject constructor(
         val h = synchronized(bridge) {
             check(handle == 0L)
             val version = engine.nativePolicyVersion()
-            check(version in 2..3) { "Incompatible native policy engine" }
+            check(version in 2..4) { "Incompatible native policy engine" }
             listsSupported = version >= 3
+            rewriteSupported = version >= 4
             engine.nativeStart(fd, mtu, wire(valid), routingProfile, routingOwners).also {
-                if (it != 0L) { net = engine; handle = it; installed = valid; pushLists() }
+                if (it != 0L) { net = engine; handle = it; installed = valid; pushLists(); pushRewrite() }
             }
         }
         publish(all, if (h != 0L) valid else emptyList())
@@ -97,6 +103,21 @@ class BlockingRules @Inject constructor(
     /** Caller holds [bridge]. A rejected file (-1) leaves the engine without lists rather than with a partial one. */
     private fun pushLists() {
         _listEntries.value = if (handle != 0L && listsSupported) net?.nativeSetBlockList(handle, lists.activePath()) else null
+    }
+
+    /** Caller holds [bridge]. */
+    private fun pushRewrite() {
+        _rewriteInstalled.value = if (handle != 0L && rewriteSupported) net?.nativeSetRewrite(handle, rewrites.wire(userId)) else null
+    }
+
+    /** Call after adding, enabling, disabling or deleting a rewrite rule. */
+    suspend fun reloadRewrite() = withContext(Dispatchers.IO) { mutex.withLock { synchronized(bridge) { pushRewrite() } } }
+
+    /** Rule id to times applied since the rules were last installed in the running engine. */
+    fun rewriteHits(): Map<Long, Long> = synchronized(bridge) {
+        if (handle == 0L || !rewriteSupported) emptyMap() else net?.nativeRewriteHits(handle).orEmpty().lineSequence().mapNotNull { l ->
+            l.split("	").takeIf { it.size == 2 }?.let { (it[0].toLongOrNull() ?: return@mapNotNull null) to (it[1].toLongOrNull() ?: 0L) }
+        }.toMap()
     }
 
     /** Call after enabling, disabling, importing or deleting a block list. */
@@ -109,6 +130,7 @@ class BlockingRules @Inject constructor(
             handle = 0L
             net = null
             _listEntries.value = null
+            _rewriteInstalled.value = null
         }
         val expired = temporary
         temporary = emptyList()

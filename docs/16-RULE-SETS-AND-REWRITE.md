@@ -4,7 +4,8 @@
 |---|---|
 | Block lists (Adblock / hosts), TCP hostname stage | **implemented** 2026-11-14 (D-064), not device-checked |
 | Block lists, DNS stage | **implemented** 2026-11-14 (D-065), not pushed, not device-checked |
-| Rewrite rules | design only |
+| Rewrite rules, phase 1 (request side: local answer, header and query edits) | **implemented** 2026-11-15 (D-066), not pushed, not device-checked |
+| Rewrite rules, phases 2–3 (redirect, response headers, body edits) | design only |
 | Plugin-format import/export | proposal only |
 | List hit counters, decision cache | not built |
 
@@ -60,14 +61,16 @@ Per app, on decrypted HTTP/1.1 only (the engine already forces HTTP/1.1 on decry
 
 | Action | Effect | Phase |
 |---|---|---|
-| `REJECT` (200 / 204 / empty JSON / 1×1 image) | answer locally, never contact the server | 1 |
-| `HEADER_REMOVE` / `HEADER_SET` (request or response) | drop or replace named headers | 1 |
-| `QUERY_REMOVE` | drop named query parameters | 1 |
+| `REJECT` (204 / empty 200 / empty JSON; 1×1 image later) | answer locally, never contact the server | 1 (done) |
+| `HEADER_REMOVE` / `HEADER_SET` on the request | drop or replace named headers | 1 (done) |
+| `HEADER_REMOVE` / `HEADER_SET` on the response | drop or replace named headers | 2 |
+| `QUERY_REMOVE` | drop named query parameters | 1 (done) |
 | `REDIRECT` (302 / 307) | local redirect | 2 |
 | `BODY_JSON_SET` / `BODY_JSON_REMOVE` | edit JSON fields by pointer | 2 |
 | `BODY_REPLACE` (literal or bounded regex) | text bodies ≤ 1 MiB with a time budget | 3 |
 
-- **Matching:** a URL regex compiled once (Rust `regex`, linear time), behind a hostname prefilter so flows without a rule stay on the byte-for-byte pass-through.
+- **Matching today (phase 1):** app + host (exact or with subdomains) + optional method + path/query prefix, exact or contains; no regex dependency yet.
+- **Matching planned:** a URL regex compiled once (Rust `regex`, linear time), behind a hostname prefilter so flows without a rule stay on the byte-for-byte pass-through.
 - **Engine work:** an active HTTP/1.1 stage that holds the head (and the body, for body actions), re-serialises with correct `Content-Length` / chunking, and decodes gzip before body edits.
 - **Evidence:** the inspector keeps the original and the rewritten message; each rule has a hit counter and Undo.
 - **AI:** may point to "add a rewrite for this request" as a suggestion; it never authors a rule.
