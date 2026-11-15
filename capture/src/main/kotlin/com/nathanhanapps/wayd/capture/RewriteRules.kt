@@ -20,7 +20,7 @@ import org.json.JSONObject
  * One rewrite rule for decrypted HTTP/1.1 requests of one app (phase 1, D-066). It only ever applies to flows WAYD already
  * decrypts for that app with the existing decryption consent; a rule cannot switch decryption on.
  *
- * [action]: `REJECT` ([arg] `204`, `200-empty`, `200-json`), `HEADER_REMOVE` (header name), `HEADER_SET` (`Name: value`),
+ * [action]: `REJECT` ([arg] `204`, `200-empty`, `200-json`, `200-array`), `HEADER_REMOVE` (header name), `HEADER_SET` (`Name: value`),
  * `QUERY_REMOVE` (parameter name), `REDIRECT` (`302 <url>` or `307 <url>`). [match]: `PREFIX`, `EXACT` or `CONTAINS` against the request path and query, or `REGEX` against the full URL (`https://host/path?query`).
  */
 data class RewriteRule(
@@ -43,7 +43,7 @@ data class RewriteRule(
         return BlockTargets.packageName(pkg) && BlockTargets.host(host) == host && '.' in host &&
             (method.isEmpty() || method.matches(Regex("[A-Za-z]{1,16}"))) && match in setOf("PREFIX", "EXACT", "CONTAINS", "REGEX") && (match != "REGEX" || engineRegex(pattern)) &&
             pattern.isNotEmpty() && pattern.length <= 2048 && text(pattern) && when (action) {
-                "REJECT" -> arg in setOf("204", "200-empty", "200-json")
+                "REJECT" -> arg in setOf("204", "200-empty", "200-json", "200-array")
                 "HEADER_REMOVE", "QUERY_REMOVE" -> token.matches(arg)
                 "REDIRECT" -> arg.split(" ", limit = 2).let { it.size == 2 && it[0] in setOf("302", "307") && (it[1].startsWith("https://") || it[1].startsWith("http://")) && it[1].length <= 2048 && it[1].none { c -> c.code <= 0x20 || c.code == 0x7f } }
                 "HEADER_SET" -> arg.split(": ", limit = 2).let { it.size == 2 && token.matches(it[0]) && it[1].length <= 1024 && it[1].none { c -> c.code < 0x20 || c.code == 0x7f } }
@@ -94,6 +94,21 @@ class RewriteStore @Inject constructor(@ApplicationContext context: Context, pri
             write(_rules.value + rule)
             rule
         } }
+
+    /** Adds rules read from a rule plugin for one app, skipping exact duplicates. Returns how many were added. */
+    suspend fun addAll(pkg: String, drafts: List<RewriteDraft>): Int = withContext(Dispatchers.IO) { mutex.withLock {
+        val now = System.currentTimeMillis()
+        var next = (_rules.value.maxOfOrNull { it.id } ?: 0L) + 1
+        val existing = _rules.value.map { it.copy(id = 0, enabled = true, createdAt = 0) }.toSet()
+        val added = drafts.asSequence()
+            .map { RewriteRule(0, pkg.trim(), it.host, it.subdomains, it.method, it.match, it.pattern, it.action, it.arg, true, 0) }
+            .filter { it.valid() && it !in existing }.distinct().take((MAX_RULES - _rules.value.size).coerceAtLeast(0))
+            .map { it.copy(id = next++, createdAt = now) }.toList()
+        if (added.isEmpty()) return@withLock 0
+        db.consentDao().upsert(ConsentRecord(feature(pkg.trim()), STATEMENT, now, null))
+        write(_rules.value + added)
+        added.size
+    } }
 
     suspend fun setEnabled(id: Long, on: Boolean) = withContext(Dispatchers.IO) { mutex.withLock { write(_rules.value.map { if (it.id == id) it.copy(enabled = on) else it }) } }
 

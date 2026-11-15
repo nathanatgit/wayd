@@ -25,7 +25,7 @@ Design: [16-RULE-SETS-AND-REWRITE.md](../16-RULE-SETS-AND-REWRITE.md). Built so 
 
 ## Rule exchange (P2)
 
-- Import: rule-plugin `DOMAIN` / `DOMAIN-SUFFIX` lines already load as block-list entries (D-067). Regex matching exists (D-069), so `[Rewrite]` reject / redirect lines can be imported next: the importer must ask which app the group applies to and take the host from `[MITM]` or the pattern. Check the keyword list against the format's documentation before writing the importer.
+- Import: done for block-list lines (D-067) and for `[Rewrite]` reject / redirect / request-header lines (D-070). Open: verify the keyword list against the format's documentation with real plugins; pick the app from a list instead of typing the package; import response and body edits once phase 2 exists. Check the keyword list against the format's documentation before writing the importer.
 - Export: per-app exact-host blocks and enabled lists as `DOMAIN` / `DOMAIN-SUFFIX` lines; rewrite rules once the formats line up. APP and IP rules stay in WAYD's JSON export.
 - Include block lists (metadata only) and rewrite rules in the existing reviewed JSON backup/import.
 

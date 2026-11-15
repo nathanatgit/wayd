@@ -847,6 +847,11 @@
     <string name="rw_rejected">引擎拒绝了改写规则，当前没有生效的规则。</string>
     <string name="rw_active">改写规则已载入运行中的引擎。</string>
     <string name="rw_add">添加改写规则</string>
+    <string name="rw_import">导入规则插件</string>
+    <string name="rw_import_none">该文件中没有可导入的改写规则。</string>
+    <string name="rw_import_summary">可导入 %1$d 条改写规则 · 跳过 %2$d 行（脚本、响应或正文修改、不支持的匹配）。</string>
+    <string name="rw_import_hosts">这些规则生效需要解密以下主机：%1$s</string>
+    <string name="rw_imported">已导入 %1$d 条规则。</string>
     <string name="rw_invalid">该规则无效或已达上限，未做任何更改。</string>
     <string name="rw_hits">本次运行已应用 %1$d 次</string>
     <string name="rw_consent">保存即记录你允许 WAYD 修改此应用已解密的请求。应用可能出现异常；关闭规则即可撤销。</string>

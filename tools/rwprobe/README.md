@@ -14,7 +14,7 @@ adb -s 320146880841 install -r tools/rwprobe/build/outputs/apk/debug/rwprobe-deb
 ## Prepare WAYD (Nat does this on the phone)
 
 1. WAYD's user CA installed, decryption on, and `com.nathanhanapps.wayd.rwprobe` added to the decrypted apps. The probe trusts user CAs.
-2. Controls → Rewrite rules, all for package `com.nathanhanapps.wayd.rwprobe`, host `httpbin.org`:
+2. Rewrite rules for package `com.nathanhanapps.wayd.rwprobe`. Easiest: 工具 → 阻止与改写 → scroll to 改写规则 → 导入规则插件 → pick `probe-rules.plugin` (in this folder; a copy is on the phone as `Download/wayd-probe-rules.plugin`) → type the package name → 导入. Or enter them by hand (host `httpbin.org`):
 
 | # | Method | Match | Pattern | Action | Argument |
 |---|---|---|---|---|---|
@@ -25,7 +25,7 @@ adb -s 320146880841 install -r tools/rwprobe/build/outputs/apk/debug/rwprobe-deb
 | 5 | GET | Exact | `/anything/old` | Redirect | `307 https://httpbin.org/anything/new` |
 | 6 | any | Regex | `^https://httpbin\.org/anything/v\d+/ads\b` | Answer locally | `204` |
 
-3. Controls → Block lists: import a list that contains the "blocked" host shown in the probe (default `example.org`, chosen because it is normally reachable, so a failure can only come from the list; a one-line file `||example.org^` is enough) and enable it.
+3. 工具 → 阻止与改写 → 阻止列表: import a list that contains the "blocked" host shown in the probe (default `example.org`, chosen because it is normally reachable, so a failure can only come from the list; a one-line file `||example.org^` is enough) and enable it.
 4. Start the WAYD VPN.
 
 ## Run

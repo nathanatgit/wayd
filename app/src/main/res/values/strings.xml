@@ -847,6 +847,11 @@ That content can include things other people sent you or that were sent about th
     <string name="rw_rejected">The engine rejected the rewrite rules; none is active.</string>
     <string name="rw_active">Rewrite rules are loaded in the running engine.</string>
     <string name="rw_add">Add rewrite rule</string>
+    <string name="rw_import">Import rule plugin</string>
+    <string name="rw_import_none">No rewrite rule in that file could be imported.</string>
+    <string name="rw_import_summary">%1$d rewrite rules can be imported · %2$d lines skipped (scripts, response or body edits, unsupported patterns).</string>
+    <string name="rw_import_hosts">Hosts that must be decrypted for these rules to apply: %1$s</string>
+    <string name="rw_imported">Imported %1$d rules.</string>
     <string name="rw_invalid">That rule is not valid or the limit is reached; nothing changed.</string>
     <string name="rw_hits">applied %1$d times this run</string>
     <string name="rw_consent">Saving records that you allow WAYD to change this app\'s decrypted requests. The app may misbehave; switch the rule off to undo.</string>

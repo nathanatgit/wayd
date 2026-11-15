@@ -12,7 +12,7 @@ const MAX_RULES: usize = 2_000;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
-    /// Answer locally and never contact the server: "204", "200-empty" or "200-json".
+    /// Answer locally and never contact the server: "204", "200-empty", "200-json" (`{}`) or "200-array" (`[]`).
     Reject(String),
     HeaderRemove(String),
     HeaderSet(String, String),
@@ -78,7 +78,7 @@ impl RewriteSet {
             } else { None };
             let token = |s: &str| !s.is_empty() && s.len() <= 128 && s.bytes().all(|c| c.is_ascii_alphanumeric() || b"-_.".contains(&c));
             let action = match f[6] {
-                "REJECT" if matches!(f[7], "204" | "200-empty" | "200-json") => Action::Reject(f[7].into()),
+                "REJECT" if matches!(f[7], "204" | "200-empty" | "200-json" | "200-array") => Action::Reject(f[7].into()),
                 "HEADER_REMOVE" if token(f[7]) => Action::HeaderRemove(f[7].into()),
                 "HEADER_SET" => {
                     let (name, value) = f[7].split_once(": ")?;
@@ -299,6 +299,7 @@ fn remove_query(target: &str, name: &str) -> String {
 fn local_response(kind: &str, head_request: bool) -> Vec<u8> {
     match kind {
         "200-json" if !head_request => b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nX-WAYD-Rewrite: reject\r\n\r\n{}".to_vec(),
+        "200-array" if !head_request => b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nX-WAYD-Rewrite: reject\r\n\r\n[]".to_vec(),
         "200-empty" if !head_request => b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nX-WAYD-Rewrite: reject\r\n\r\n".to_vec(),
         _ => b"HTTP/1.1 204 No Content\r\nX-WAYD-Rewrite: reject\r\n\r\n".to_vec(),
     }

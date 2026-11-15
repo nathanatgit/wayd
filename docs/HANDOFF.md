@@ -1,6 +1,6 @@
 # Handoff
 
-_Last updated: 2026-11-14 · **v0.5.0** released from `main` (versionCode 8) · decisions through D-069._
+_Last updated: 2026-11-14 · **v0.5.0** released from `main` (versionCode 8) · decisions through D-070._
 
 WAYD (在干嘛, `com.nathanhanapps.wayd`) is a local-only Android privacy monitor. A `VpnService` forwards traffic and applies local blocks; optional recording keeps evidence on the phone; consent-gated decryption reads supported HTTPS; rules produce findings; on-device Gemma (or an approved external OpenAI-compatible server) explains them.
 
@@ -8,30 +8,56 @@ Read [AGENTS.md](../AGENTS.md) first, then this file, then the doc for the modul
 
 ## Now
 
+_Handed off 2026-11-15, 12:20._
+
 | | State |
 |---|---|
-| Released | **v0.5.0** (2026-11-14): `wayd-v0.5.0.apk`, `wayd-clash-v0.5.0.apk`, D-060 to D-064. Release workflow and CI both pass. |
-| Unreleased | Branch `feat/dns-list-blocking` (D-065 to D-069), committed locally, **not pushed**: DNS-stage block lists, app-page AI chat, history-prompt eval test, **rewrite rules phase 1** (request side), name memory for unnamed connections, rule-plugin list import, docs revised. To-do list: [TODO.md](TODO.md). |
-| On the phone | NX733J `320146880841`: clash debug **0.5.0 + D-065 to D-069** installed over `com.nathanhanapps.wayd.d049` on 2026-11-15 11:52, data kept, plus the test probe `com.nathanhanapps.wayd.rwprobe` ([tools/rwprobe](../tools/rwprobe/README.md)). Probe baseline run 2026-11-15 with FlClash (not WAYD) as the active VPN: all requests reach the echo server, no FAIL, every rule check "no" as expected without rules. No WAYD feature has been exercised on the phone yet. |
-| Last validation | `cargo test --lib --features mitm` 37 passed; full Gradle build with native rebuild (`test`, both debug assemblies, both lints) passes: `build/d069-validation.log`. |
+| Released | **v0.5.0** (2026-11-14): D-060 to D-064. Release workflow and CI pass. |
+| Unreleased | Branch `feat/dns-list-blocking`, **local only, not pushed**, 12 commits ahead of `main`: D-065 DNS-stage block lists, app chat, eval test · D-066 rewrite rules (request side) · D-067 inferred hostnames, rule-plugin list import · D-068 redirect, list counters, `.gitattributes` · D-069 regex matching (new Rust `regex` dependency) · D-070 rewrite import from rule plugins · `tools/rwprobe` test app · docs and [TODO.md](TODO.md). The last commit is the D-070 work plus this handoff. |
+| On the phone | NX733J `320146880841`: clash debug with **everything through D-070** installed over `com.nathanhanapps.wayd.d049` on 2026-11-15 12:14, data kept (version still reads 0.5.0). Probe `com.nathanhanapps.wayd.rwprobe` installed. `Download/wayd-probe-rules.plugin` pushed for import. |
+| Last validation | `cargo test --lib --features mitm` 37 passed; full Gradle build with native rebuild (`test`, both debug assemblies, both lints) passes: `build/d070-validation.log`. |
+| Device evidence so far | One probe **baseline** run (2026-11-15, FlClash owned the VPN, no WAYD rules): 15 requests returned 200, no FAIL, every rule check "no". **No WAYD feature since v0.4.0 has been exercised on the phone.** |
+
+### Where the new screens are (Nat could not find them at first)
+
+There is no 管控 tab. Open **工具 → 阻止与改写** (or the 阻止与改写 row on 总览), then scroll: summary card → rule backup → **阻止列表** → **改写规则** → per-app rules.
+
+### Immediate next step: the probe run with WAYD
+
+Nat does on the phone (details: [tools/rwprobe/README.md](../tools/rwprobe/README.md)):
+
+1. Switch the VPN from FlClash to WAYD.
+2. Add `com.nathanhanapps.wayd.rwprobe` to the decrypted apps (WAYD user CA installed).
+3. 改写规则 → 导入规则插件 → `Download/wayd-probe-rules.plugin` → package `com.nathanhanapps.wayd.rwprobe`.
+4. 阻止列表 → import a one-line list `||example.org^` and enable it.
+
+Then run the probe (`adb shell am start -n com.nathanhanapps.wayd.rwprobe/.MainActivity --ez run true`, read `/sdcard/Android/data/com.nathanhanapps.wayd.rwprobe/files/result.txt`; in Git Bash prefix adb with `MSYS_NO_PATHCONV=1`). Expected: steps 2, 3, 5, 6, 7, 8 show `INFO … yes`, no `FAIL`. A Sonnet subagent is enough for the run; it must not start a VPN, tap the UI, use root or touch other packages.
 
 ### Not checked on a device (everything since D-061)
 
-Ask Nat to tap through these; do not start a VPN or change his rules without him.
+Full table: [todo/device-pass.md](todo/device-pass.md). Ask Nat to tap through; do not start a VPN or change his rules without him.
 
-1. **Labels and history** (D-061 to D-063): host rows, attention badges, relation chips, Block button, per-item "Ask AI", "AI check all connections" on Gemma (time per group, answer quality), APK dashboard, both locales and large fonts.
-2. **AI settings:** on-device Auto/Small/Medium, external effort and Large, saving and switching profiles, the per-send preview after a switch.
-3. **Chat** (Insights and app page): text, photo, video frames, audio file, push-to-talk; whether the installed Gemma E2B/E4B files load the vision/audio backends (if not, the chat must say it cannot take images or audio); external server with images/audio.
-4. **Block lists** (D-064, D-065): import from file and HTTPS URL, enable with consent, a listed host blocked for a live app, DNS-stage answer for a listed name (QUIC app), connection delay on non-HTTP apps, load time and memory with a large list.
-5. **Rewrite rules** (D-066): with an app under decryption, a local-answer rule (app gets the 204/200, server sees nothing, inspector shows `X-WAYD-Rewrite`), a header-remove and a query-remove rule, hit counts, a keep-alive connection that mixes matching and non-matching requests, a chunked upload.
-6. **AppOps / Thanox buttons**, new launcher icon.
+1. **Labels and history** (D-061 to D-063): host rows, attention badges, relation chips, Block button, per-item "Ask AI", "AI check all connections" on Gemma, APK dashboard, both locales and large fonts.
+2. **AI settings:** on-device Auto/Small/Medium, external effort and Large, profiles.
+3. **Chat** (Insights and app page): text, photo, video frames, audio file, push-to-talk; whether the installed Gemma files load vision/audio.
+4. **Block lists** (D-064, D-065, D-068): import, consent, a listed host blocked, DNS-stage answer, counters, hostname-wait delay on non-HTTP apps, a large list.
+5. **Rewrite rules** (D-066, D-068 to D-070): the probe run above; import of a real rule plugin.
+6. **Inferred hostnames** (D-067): coverage before/after.
+7. **AppOps / Thanox buttons**, new launcher icon.
 
 ### Next
 
-1. Device pass above; fix what it finds.
-2. Rewrite phase 2 (redirect, response headers, JSON body edits) and plugin-format import/export: [16-RULE-SETS-AND-REWRITE.md](16-RULE-SETS-AND-REWRITE.md).
-3. Hostname coverage: TTL-aware DNS correlation (M1 target ≥ 90%, last sample 78–85%).
-4. Run `HistoryEvalTest` against Gemma E2B/E4B through a local server and tune the prompt from the score.
+Full prioritised list: [TODO.md](TODO.md).
+
+1. Probe run and device pass; fix what they find.
+2. Push and merge the branch; tag `v0.6.0` (versionCode 9) unless Nat prefers otherwise.
+3. Rewrite phase 2 (response headers, JSON body edits; gzip dependency decision still open).
+4. Measure hostname coverage; run `HistoryEvalTest` against Gemma.
+
+### Open questions for Nat
+
+- Add a gzip library for body edits?
+- Push the branch before or after the device pass?
 
 ## Status
 
@@ -69,7 +95,8 @@ Where the recent work lives:
 | History and APK screens | `app/…/feature/apps/AppBlockingSection.kt`, `ApkDashboard.kt` |
 | Chat | `app/…/feature/ai/ChatUi.kt`, `InsightsChatViewModel.kt`, `ChatMedia.kt` |
 | Block lists | `capture/native/src/hostlist.rs`, `capture/…/BlockLists.kt`, `app/…/feature/controls/BlockListsSection.kt` |
-| Rewrite rules | `capture/native/src/mitm/rewrite.rs`, `capture/…/RewriteRules.kt`, `app/…/feature/controls/RewriteSection.kt` |
+| Rewrite rules | `capture/native/src/mitm/rewrite.rs`, `capture/…/RewriteRules.kt`, `RewritePlugin.kt` (import), `app/…/feature/controls/RewriteSection.kt` |
+| Test probe | `tools/rwprobe/` (standalone Gradle project; `./gradlew -p tools/rwprobe assembleDebug`) |
 
 ## Build and test (Windows)
 

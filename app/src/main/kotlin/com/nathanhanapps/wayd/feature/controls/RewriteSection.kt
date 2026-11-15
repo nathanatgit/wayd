@@ -43,7 +43,37 @@ import kotlinx.coroutines.launch
 
 /** Rewrite rules are their own rule set, separate from blocking (D-066). They act only on flows already decrypted for the app. */
 @HiltViewModel
-class RewriteViewModel @Inject constructor(private val store: RewriteStore, val blocking: BlockingRules, val labels: AppLabels) : ViewModel() {
+class RewriteViewModel @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
+    private val store: RewriteStore, val blocking: BlockingRules, val labels: AppLabels,
+) : ViewModel() {
+    /** A rule plugin that was read and is waiting for the user to choose the app it applies to. */
+    val pending = MutableStateFlow<com.nathanhanapps.wayd.capture.RewritePluginParser.Result?>(null)
+    val imported = MutableStateFlow<Int?>(null)
+
+    /** Reads a rule-plugin text file the user picked (≤ 2 MiB). Nothing is saved until an app is chosen and confirmed. */
+    fun readPlugin(uri: android.net.Uri) = viewModelScope.launch {
+        val text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { context.contentResolver.openInputStream(uri)?.use { it.readBytes().takeIf { b -> b.size <= 2 * 1024 * 1024 }?.toString(Charsets.UTF_8) } }.getOrNull()
+        }
+        val result = text?.let { com.nathanhanapps.wayd.capture.RewritePluginParser.parse(it.lineSequence()) }
+        if (result == null || result.rules.isEmpty()) { notice.value = R.string.rw_import_none; pending.value = null } else { notice.value = null; pending.value = result }
+    }
+
+    fun confirmImport(pkg: String) {
+        val drafts = pending.value?.rules ?: return
+        pending.value = null
+        viewModelScope.launch {
+            val n = runCatching { store.addAll(pkg, drafts) }.getOrDefault(0)
+            runCatching { blocking.reloadRewrite() }
+            imported.value = n
+            notice.value = if (n == 0) R.string.rw_invalid else null
+            refreshHits()
+        }
+    }
+
+    fun cancelImport() { pending.value = null }
+
     val rules = store.rules
     val hits = MutableStateFlow<Map<Long, Long>>(emptyMap())
     val notice = MutableStateFlow<Int?>(null)
@@ -74,6 +104,9 @@ fun RewriteSection(vm: RewriteViewModel = hiltViewModel()) {
     val installed by vm.blocking.rewriteInstalled.collectAsStateWithLifecycle()
     var adding by remember { mutableStateOf(false) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refreshHits() }
+    val pending by vm.pending.collectAsStateWithLifecycle()
+    val imported by vm.imported.collectAsStateWithLifecycle()
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { it?.let(vm::readPlugin) }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -89,7 +122,11 @@ fun RewriteSection(vm: RewriteViewModel = hiltViewModel()) {
                 style = MaterialTheme.typography.labelMedium,
                 color = if (policy.running && installed != true) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onClick = { adding = true }) { Text(stringResource(R.string.rw_add)) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { adding = true }) { Text(stringResource(R.string.rw_add)) }
+                TextButton(onClick = { pick.launch(arrayOf("*/*")) }) { Text(stringResource(R.string.rw_import)) }
+            }
+            imported?.takeIf { it > 0 }?.let { Text(stringResource(R.string.rw_imported, it), style = MaterialTheme.typography.bodySmall) }
             notice?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             rules.forEach { r ->
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -104,6 +141,24 @@ fun RewriteSection(vm: RewriteViewModel = hiltViewModel()) {
                 TextButton(onClick = { vm.delete(r.id) }) { Text(stringResource(R.string.block_remove)) }
             }
         }
+    }
+    pending?.let { p ->
+        var pkg by remember(p) { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = vm::cancelImport,
+            title = { Text(p.name ?: stringResource(R.string.rw_import)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.rw_import_summary, p.rules.size, p.skipped), style = MaterialTheme.typography.bodyMedium)
+                    val hosts = (p.rules.map { (if (it.subdomains) "*." else "") + it.host } + p.mitmHosts).distinct()
+                    Text(stringResource(R.string.rw_import_hosts, hosts.take(8).joinToString(", ") + if (hosts.size > 8) " …" else ""), style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.rw_consent), style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(pkg, { pkg = it.take(255) }, label = { Text(stringResource(R.string.rw_pkg)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = { TextButton(onClick = { vm.confirmImport(pkg) }, enabled = com.nathanhanapps.wayd.capture.BlockTargets.packageName(pkg.trim())) { Text(stringResource(R.string.blist_import)) } },
+            dismissButton = { TextButton(onClick = vm::cancelImport) { Text(stringResource(R.string.block_cancel)) } },
+        )
     }
     if (adding) AddRewriteDialog(onDismiss = { adding = false }) { pkg, host, sub, method, match, pattern, action, arg ->
         vm.add(pkg, host, sub, method, match, pattern, action, arg)
@@ -155,7 +210,7 @@ private fun AddRewriteDialog(onDismiss: () -> Unit, onAdd: (String, String, Bool
                     }
                 }
                 if (action == "REJECT") FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("204", "200-empty", "200-json").forEach { k -> FilterChip(arg == k, { arg = k }, { Text(k) }) }
+                    listOf("204", "200-empty", "200-json", "200-array").forEach { k -> FilterChip(arg == k, { arg = k }, { Text(k) }) }
                 } else OutlinedTextField(arg, { arg = it.take(1200) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                     label = { Text(stringResource(when (action) { "HEADER_SET" -> R.string.rw_arg_header_set; "REDIRECT" -> R.string.rw_arg_redirect; else -> R.string.rw_arg_name })) })
             }

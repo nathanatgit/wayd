@@ -6,7 +6,8 @@
 | Block lists, DNS stage | **implemented** 2026-11-14 (D-065), not pushed, not device-checked |
 | Rewrite rules, phase 1 (request side: local answer, header and query edits) | **implemented** 2026-11-15 (D-066), not pushed, not device-checked |
 | Rewrite rules, phases 2–3 (redirect, response headers, body edits) | design only |
-| Plugin-format import/export | proposal only |
+| Plugin-format import: block-list lines (D-067) and rewrite lines (D-070) | **implemented**, not device-checked |
+| Plugin-format export | proposal only |
 | List hit counters, decision cache | not built |
 
 Per-app blocking rules are specified in [13-BLOCKING.md](13-BLOCKING.md). This file covers the two newer rule sets and what they cost.

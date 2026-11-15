@@ -326,3 +326,13 @@ Nat approved adding a regex library to the engine.
 - The rule's app and host are still required and still decide whether a flow enters the rewrite stage at all, so a regex never runs on flows of other hosts.
 - Kotlin pre-checks a pattern (compiles, no look-around or back-reference) before saving; the engine has the final word.
 - Opens the way to importing `[Rewrite]` lines from rule plugins (not built: imported rules still need an app and a host).
+
+**D-070 · 2026-11-15 · import rewrite rules from rule-plugin text (Nat)**
+
+- **Import** (工具 → 阻止与改写 → 改写规则 → 导入规则插件): pick a text file, WAYD reads its `[Rewrite]` (also `[URL Rewrite]`, `[rewrite_local]`) section and shows how many rules can be imported, how many lines are skipped and which hosts must be decrypted; the user types the app's package name and confirms. Nothing is saved before that. Consent is recorded per app as for hand-made rules.
+- **Mapping:** `reject` / `reject-drop` → local 204; `reject-200` / `reject-img` → empty 200; `reject-dict` → `{}`; `reject-array` → `[]` (new local answer `200-array`); `302` / `307` → redirect (targets with `$1` substitutions are skipped); `header-del` → remove request header; `header-add` / `header-replace` → set request header; WAYD's own `query-del <name>` → remove query parameter. The `<regex> url <type>`, `<regex> <target> 302` and `<regex> - reject` forms are accepted.
+- **Scope:** plugin rules are global; WAYD rules need an app and a host. The host is read from the literal host in the pattern; if the host part is itself a regex, its literal suffix is used with subdomains (never a partial label, never a bare top-level label). The pattern is kept as a `REGEX` rule. Lines with no readable host are skipped.
+- **Skipped and counted:** scripts, response header and body edits, mock bodies, patterns the regex library cannot take.
+- `[MITM] hostname` is only displayed; it never switches decryption on. `[Rule]` lines belong to block lists (import the same file there).
+- The keyword list is from memory of the format; check it against the format's documentation when a real plugin fails to import.
+- `tools/rwprobe/probe-rules.plugin` holds the probe's six rules in this format.
