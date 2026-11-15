@@ -13,7 +13,7 @@
 - DNSMASQ rules
 - Clash rules
 - App specific traffic blocking
-- Traffic editing
+- Traffic editing (MITM)
 - LLM analysis: local Gemma4 or OpenAI compatible API.
 
 # Big Thanks and credit to
