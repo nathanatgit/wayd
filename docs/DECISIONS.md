@@ -302,3 +302,10 @@ Nat asked to implement the alter feature. Scope kept to the request side so noth
 - **Storage and consent:** rules live in a JSON file under no-backup storage (no schema change). Adding a rule records `ConsentRecord("rewrite-v1:<pkg>")`; removing an app's last rule revokes it. A rule only acts on flows already decrypted under that app's decryption consent and can never switch decryption on. Blocks win: a blocked connection is never decrypted or rewritten.
 - **UI:** Controls → Rewrite rules, a separate section from per-app rules and block lists: add, enable, remove, hit count, engine status.
 - **Known limits:** request side only (response header and body edits are phase 2); HTTP/1.1 only; pipelined requests after a rejected one could receive answers out of order (clients rarely pipeline); a `100 Continue` response is counted as a finished response; rewritten requests are shown in the inspector in their original form.
+
+**D-067 · 2026-11-15 · name memory for unnamed connections; rule-plugin list import (Nat)**
+
+- **Address → name memory** (`DnsIpMap`): DNS answers now carry their TTL (5-minute floor) and a fresh answer wins. A name a connection showed itself (SNI / HTTP Host) is remembered for its address for 24 h and names later unnamed connections to that address (QUIC, raw TCP) with the new source `HostSource.INFERRED`. A stale DNS answer is still used when nothing better exists, so coverage cannot drop. At VPN start the memory is seeded from the last day of recorded connections (up to 4,000), for apps that reuse cached addresses without a new DNS query.
+- `INFERRED` is an added enum value in the existing TEXT column (no schema change). It is never a block target (block targets still need SNI / HTTP Host) and it counts as a hostname in the coverage panel, so that figure now includes inferred names.
+- **List import** also accepts rule-plugin / rule-set lines: `DOMAIN,host` and `DOMAIN-SUFFIX,host` with no policy or a `REJECT…` policy become block-list entries; other rule types, other policies and the rewrite / MITM / script sections are counted as skipped.
+- Not measured: the effect on hostname coverage needs a capture on the phone.

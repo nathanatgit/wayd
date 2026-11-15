@@ -1,6 +1,6 @@
 # Handoff
 
-_Last updated: 2026-11-14 · **v0.5.0** released from `main` (versionCode 8) · decisions through D-066._
+_Last updated: 2026-11-14 · **v0.5.0** released from `main` (versionCode 8) · decisions through D-067._
 
 WAYD (在干嘛, `com.nathanhanapps.wayd`) is a local-only Android privacy monitor. A `VpnService` forwards traffic and applies local blocks; optional recording keeps evidence on the phone; consent-gated decryption reads supported HTTPS; rules produce findings; on-device Gemma (or an approved external OpenAI-compatible server) explains them.
 
@@ -11,9 +11,9 @@ Read [AGENTS.md](../AGENTS.md) first, then this file, then the doc for the modul
 | | State |
 |---|---|
 | Released | **v0.5.0** (2026-11-14): `wayd-v0.5.0.apk`, `wayd-clash-v0.5.0.apk`, D-060 to D-064. Release workflow and CI both pass. |
-| Unreleased | Branch `feat/dns-list-blocking` (D-065, D-066), committed locally, **not pushed**: DNS-stage block lists, app-page AI chat, history-prompt eval test, **rewrite rules phase 1** (request side), docs revised. |
+| Unreleased | Branch `feat/dns-list-blocking` (D-065 to D-067), committed locally, **not pushed**: DNS-stage block lists, app-page AI chat, history-prompt eval test, **rewrite rules phase 1** (request side), name memory for unnamed connections, rule-plugin list import, docs revised. To-do list: [TODO.md](TODO.md). |
 | On the phone | NX733J `320146880841`: clash debug **0.5.0 + D-065** (without D-066 rewrite rules) installed over `com.nathanhanapps.wayd.d049` on 2026-11-14, data kept. Nothing was opened or tested after install. |
-| Last validation | `cargo test --lib --features mitm` 35 passed; full Gradle build with native rebuild (`test`, both debug assemblies, both lints) passes: `build/d066-validation.log`. |
+| Last validation | `cargo test --lib --features mitm` 35 passed; full Gradle build with native rebuild (`test`, both debug assemblies, both lints) passes: `build/d067-validation.log`. |
 
 ### Not checked on a device (everything since D-061)
 

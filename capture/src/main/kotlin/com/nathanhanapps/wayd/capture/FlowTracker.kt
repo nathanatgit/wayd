@@ -234,7 +234,7 @@ class FlowTracker(
         if (!msg.isResponse || msg.rcode != 0) return
         val q = msg.questions.firstOrNull() ?: return
         val addrs = msg.answers.filter { it.type == DnsParser.A || it.type == DnsParser.AAAA }
-        addrs.forEach { dnsMap.put(it.data, q.name) }
+        addrs.forEach { dnsMap.put(it.data, q.name, env.now(), it.ttl) }
         if (!canRecord(s)) return
         sink.dns(
             DnsRecord(
@@ -255,8 +255,10 @@ class FlowTracker(
         val (host, source) = when {
             s.sni != null -> s.sni to HostSource.SNI
             s.httpHost != null -> s.httpHost to HostSource.HTTP_HOST
-            else -> dnsMap.get(dstIp).let { if (it != null) it to HostSource.DNS else null to null }
+            else -> dnsMap.resolve(dstIp, env.now()) ?: (null to null)
         }
+        // A name this connection showed itself can name later unnamed connections (QUIC, raw TCP) to the same address.
+        if (host != null && (source == HostSource.SNI || source == HostSource.HTTP_HOST)) dnsMap.learn(dstIp, host, env.now())
         val pkg = s.owner?.pkg ?: UNKNOWN_PKG
         val info = trackers.lookup(host)
         apps += pkg
@@ -323,18 +325,51 @@ fun interface InterceptGate {
     fun allow(pkg: String, proto: Int, dstPort: Int): Boolean
 }
 
-/** Small LRU of IP -> most recent DNS name that resolved to it. */
+/**
+ * Small LRU of address → names, used only when a connection shows no name of its own (D-067).
+ * - DNS answers: the name that resolved to the address, with its TTL. Fresh answers win.
+ * - Learned names: a name seen in SNI / HTTP Host on another connection to the same address (also seeded from recent
+ *   recorded connections at VPN start). Covers QUIC and other unnamed traffic to a server the app also reached over TLS.
+ * A stale DNS answer is still used when nothing better exists, as before, so coverage never drops.
+ */
 class DnsIpMap(private val max: Int = 4096) {
-    private val map = object : LinkedHashMap<String, String>(256, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?) = size > max
+    private class Entry(var dns: String? = null, var dnsAt: Long = 0, var ttlMs: Long = 0, var learned: String? = null, var learnedAt: Long = 0)
+
+    private val map = object : LinkedHashMap<String, Entry>(256, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>?) = size > max
     }
 
-    fun put(ip: String, name: String) {
-        map[ip] = name
+    @Synchronized
+    fun put(ip: String, name: String, now: Long = 0, ttlSeconds: Long = 0) {
+        map.getOrPut(ip) { Entry() }.apply { dns = name; dnsAt = now; ttlMs = ttlSeconds.coerceIn(0, 86_400) * 1000 }
     }
 
-    fun get(ip: String): String? = map[ip]
+    /** A name observed on a connection to this address. */
+    @Synchronized
+    fun learn(ip: String, name: String, now: Long) {
+        map.getOrPut(ip) { Entry() }.apply { if (now >= learnedAt) { learned = name; learnedAt = now } }
+    }
+
+    /** Best name for an address at [now]: fresh DNS answer, else a learned name from the last day, else the last DNS answer. */
+    @Synchronized
+    fun resolve(ip: String, now: Long): Pair<String, HostSource>? {
+        val e = map[ip] ?: return null
+        val dns = e.dns
+        if (dns != null && now - e.dnsAt <= maxOf(e.ttlMs, MIN_FRESH_MS)) return dns to HostSource.DNS
+        val learned = e.learned
+        if (learned != null && now - e.learnedAt <= LEARNED_MS) return learned to HostSource.INFERRED
+        return dns?.let { it to HostSource.DNS }
+    }
+
+    @Synchronized
+    fun get(ip: String): String? = map[ip]?.let { it.dns ?: it.learned }
 
     /** Normalises an address string the same way [InetAddress.getHostAddress] does. */
-    fun get(addr: InetAddress): String? = addr.hostAddress?.let { map[it] }
+    fun get(addr: InetAddress): String? = addr.hostAddress?.let { get(it) }
+
+    companion object {
+        /** Resolvers and apps keep using an address a little past very short TTLs. */
+        const val MIN_FRESH_MS = 5 * 60_000L
+        const val LEARNED_MS = 24 * 3_600_000L
+    }
 }
