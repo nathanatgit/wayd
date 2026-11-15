@@ -8,6 +8,12 @@ import org.junit.Test
 class RewritePluginParserTest {
     private fun parse(text: String) = RewritePluginParser.parse(text.lineSequence())
 
+    @Test fun probePluginFileImportsAllSixRules() {
+        val r = parse(java.io.File("../tools/rwprobe/probe-rules.plugin").readText())
+        assertEquals(6, r.rules.size)
+        assertEquals(0, r.skipped)
+    }
+
     @Test fun importsRejectsRedirectsAndRequestHeaderEdits() {
         val r = parse(
             """

@@ -5,4 +5,8 @@
     <string name="capture_notif_text">%1$d connections · %2$d apps</string>
     <string name="capture_notif_stop">Stop</string>
     <string name="capture_notif_processing">WAYD is processing traffic</string>
+    <string name="tile_label">WAYD</string>
+    <string name="tile_on">On</string>
+    <string name="tile_off">Off</string>
+    <string name="tile_starting">Starting…</string>
 </resources>
